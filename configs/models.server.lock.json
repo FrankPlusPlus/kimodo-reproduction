@@ -22,7 +22,14 @@
         "3acdd690e65c24f42a24581b8467af98bd3ca357444580f8012aacd2bd607921",
         "67e9ad31c8c32abf3a55ee7fc7217b3ecb35fd3c74d98a5bd233e0e4d6964f46"
       ],
-      "tokenizer_json_sha256": "b197f72effb9d5ed16ee0f5663e11e4cfac2ba62"
+      "non_weight_file_sha256": {
+        "config.json": "61f3de03a16ca8046b05dc777bce72717022bc8522152eee61a69072272ef54b",
+        "generation_config.json": "d1af74d8ba49428ab2faa65f7948165cc6bf52b740e57e840f8af772587c894c",
+        "model.safetensors.index.json": "146776fce3f6db1103aa6f249e65ee5544c5923ce6f971b092eee79aa6e5d37b",
+        "special_tokens_map.json": "462d91939dbc37178aa5a3eae7068d1990ccc92e09f288cc71f42cdf139d69cc",
+        "tokenizer.json": "e134af98b985517b4f068e3755ae90d4e9cd2d45d328325dc503f1c6b2d06cc7",
+        "tokenizer_config.json": "da0e3a7cce6e4d787e85eb1c24d548420e0d7fe2c7a214e192795c46e40d75bb"
+      }
     },
     "llm2vec_mntp_adapter": {
       "repo": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",

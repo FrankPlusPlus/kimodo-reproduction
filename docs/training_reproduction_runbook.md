@@ -74,7 +74,7 @@ benchmark split 位于本仓库 `artifacts/benchmark-metadata/splits/`。复建�
 启动第二份转换。完成后的唯一顺序是：构建 `train.raw.jsonl` → LLM2Vec 文本缓存生成
 `train.cached.jsonl` → repro stats/inventory → FM bridge/inventory/stats → 两卡 dry-run/短训。
 Qwen3-32B 下载用于研究未公开的数据增强边界，不阻塞公开 BONES-SEED baseline。
-LLM2Vec foundation 使用 NousResearch 对论文 Meta-Llama foundation 的公开逐分片等价重发布；
+LLM2Vec foundation 使用 NousResearch 对公开 loader 所指定 Meta-Llama foundation 的逐分片等价重发布；
 精确来源、revision 和上游等价哈希记录在 `configs/models.server.lock.json`。
 
 `--full-repeats`、`--event-repeats`、`--combined-event-repeats` 是显式的工程采样权重。论文只说按预设分布混合，却没有公布概率；默认均为 1，不能称为官方比例。构建器同时写入 `train.raw.jsonl.metadata.json`，冻结 metadata、timeline、split 的绝对路径、大小和 SHA-256。跨 motion 的 stitched clips 和 Qwen3-32B paraphrases 也未发布，本实现不会伪造它们。
@@ -101,8 +101,9 @@ LLM2Vec foundation 使用 NousResearch 对论文 Meta-Llama foundation 的公开
 
 Meta 原仓库为 gated 且当前账号未获批准。服务器改用
 `NousResearch/Meta-Llama-3-8B-Instruct@53346005...`：四个 BF16 权重分片、
-`config.json` 和 `tokenizer.json` 均与论文所用
-`meta-llama/Meta-Llama-3-8B-Instruct@8afb486c...` 一致。它不是独立训练的新模型，
+`config.json` 和 `tokenizer.json` 均与本复现选定的上游等价参考
+`meta-llama/Meta-Llama-3-8B-Instruct@8afb486c...` 一致；论文和公开 loader
+没有锁定该上游 commit。它不是独立训练的新模型，
 仍须遵守 Llama 3 license。两个公开 adapter 保持原 revision；不要改用 GGUF、GPTQ、
 AWQ 或二次微调权重。
 
