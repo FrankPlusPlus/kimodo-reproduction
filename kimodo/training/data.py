@@ -38,6 +38,41 @@ def _resolve_path(base: Path, value: str | None) -> Path | None:
     return path if path.is_absolute() else (base / path).resolve()
 
 
+def _load_training_motion_file(
+    path: Path, source_fps: float | None, target_fps: float
+) -> tuple[dict[str, torch.Tensor], int]:
+    """Load canonical training NPZs without deriving channels that are discarded.
+
+    The generic export loader completes a Kimodo motion with FK, velocities,
+    contacts and an ADMM-smoothed root. Training subsequently keeps only local
+    rotations/root positions, crops them, and derives all those channels again.
+    Canonical same-FPS Kimodo NPZs can therefore take this exact raw fast path;
+    every other source format or resampling case retains the generic loader.
+    """
+    effective_source = 30.0 if source_fps is None else float(source_fps)
+    if path.suffix.lower() == ".npz" and effective_source == float(target_fps):
+        with np.load(path, allow_pickle=False) as archive:
+            keys = set(archive.files)
+            is_kimodo = {"local_rot_mats", "root_positions"} <= keys
+            is_amass = {"trans", "pose_body", "root_orient"} <= keys
+            if is_kimodo and not is_amass:
+                local = torch.from_numpy(np.asarray(archive["local_rot_mats"]).copy()).float()
+                root = torch.from_numpy(np.asarray(archive["root_positions"]).copy()).float()
+                if local.ndim != 4 or local.shape[-2:] != (3, 3):
+                    raise ValueError(
+                        f"Canonical local_rot_mats must be [T,J,3,3], got {tuple(local.shape)}: {path}"
+                    )
+                if root.ndim != 2 or root.shape[-1] != 3 or len(root) != len(local):
+                    raise ValueError(
+                        f"Canonical root_positions must be [T,3] and match rotations, "
+                        f"got {tuple(root.shape)}: {path}"
+                    )
+                return {"local_rot_mats": local, "root_positions": root}, int(local.shape[1])
+    return load_motion_file(
+        str(path), source_fps=source_fps, target_fps=float(target_fps)
+    )
+
+
 def _manifest_sidecar_path(manifest_path: Path) -> Path:
     return manifest_path.with_suffix(manifest_path.suffix + ".metadata.json")
 
@@ -312,10 +347,8 @@ class MotionManifestDataset(Dataset):
     def __getitem__(self, index: int) -> dict[str, Any]:
         entry = self.entries[index]
         generator = self._generator(index)
-        motion, source_joints = load_motion_file(
-            str(entry.motion_path),
-            source_fps=entry.source_fps,
-            target_fps=float(self.fps),
+        motion, source_joints = _load_training_motion_file(
+            entry.motion_path, entry.source_fps, float(self.fps)
         )
         local_rotations = _convert_rotations_to_model_skeleton(
             motion["local_rot_mats"].float(), source_joints, self.skeleton

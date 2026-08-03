@@ -14,6 +14,10 @@ inventory="${training_data}/train.cached.references.jsonl"
 model_lock="${project_root}/configs/models.server.lock.json"
 text_device="${KIMODO_TEXT_DEVICE:-cuda:0}"
 
+# Match CUDA identifiers to the physical indices printed by nvidia-smi. This
+# server's default CUDA enumeration differs from PCI order.
+export CUDA_DEVICE_ORDER="${CUDA_DEVICE_ORDER:-PCI_BUS_ID}"
+
 if [[ ! -x "${python_bin}" ]]; then
   echo "Python environment is missing or not executable: ${python_bin}" >&2
   exit 2
@@ -42,12 +46,18 @@ for path in "${required_files[@]}"; do
 done
 
 "${python_bin}" - <<'PY'
+import os
+
 import torch
 
 count = torch.cuda.device_count() if torch.cuda.is_available() else 0
 if count != 2:
     raise SystemExit(f"Preparation requires exactly two visible allocated GPUs; torch sees {count}")
-print(f"GPU preflight passed: {count} visible devices", flush=True)
+expected = os.environ.get("KIMODO_EXPECTED_GPU_NAME", "NVIDIA H200 NVL")
+names = [torch.cuda.get_device_name(index) for index in range(count)]
+if any(name != expected for name in names):
+    raise SystemExit(f"Expected two {expected!r} devices, but CUDA exposes: {names}")
+print(f"GPU preflight passed: {names}", flush=True)
 PY
 
 mkdir -p "${training_data}" "${cache_dir}" "$(dirname -- "${stats_dir}")"
@@ -119,7 +129,8 @@ if [[ ! -e "${stats_dir}" ]]; then
     --output "${stats_dir}" \
     --split train \
     --skeleton-joints 30 \
-    --fps 30
+    --fps 30 \
+    --num-workers "${KIMODO_STATS_WORKERS:-16}"
 elif [[ "${stats_complete}" != true ]]; then
   echo "Normalization stats directory is incomplete; inspect before retrying: ${stats_dir}" >&2
   exit 2

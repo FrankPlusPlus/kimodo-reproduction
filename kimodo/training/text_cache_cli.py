@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from pathlib import Path
 
@@ -299,6 +300,9 @@ def _run_locked(args) -> None:
         )
     cache_dir.mkdir(parents=True, exist_ok=True)
     destination.parent.mkdir(parents=True, exist_ok=True)
+    encode_call_size = int(getattr(args, "encode_call_size", 64))
+    if encode_call_size < 1:
+        raise ValueError("encode_call_size must be positive")
     encoder_artifacts = _encoder_artifacts(args)
     cache_provenance = _cache_provenance(args)
     encoder, identity = _build_encoder(args)
@@ -310,6 +314,7 @@ def _run_locked(args) -> None:
         "source_manifest_sha256": _sha256_file(source),
         "dtype": "float32",
         "internal_batch_size": 1,
+        "outer_encode_call_size": encode_call_size,
         "cache_provenance": cache_provenance,
     }
     if encoder_artifacts is not None:
@@ -321,8 +326,45 @@ def _run_locked(args) -> None:
 
     temporary_path = None
     count = 0
+    embeddings_created = 0
     validated_embeddings = set()
+
+    def flush_records(records: list[dict], output) -> int:
+        nonlocal embeddings_created
+        prepared = []
+        missing: dict[str, tuple[str, Path]] = {}
+        for entry in records:
+            sanitized = sanitize_texts([str(entry["text"])])[0]
+            key = _cache_key(sanitized, identity)
+            embedding_path = cache_dir / f"{key}.npy"
+            if key not in validated_embeddings and key not in missing:
+                if _embedding_is_valid(embedding_path):
+                    validated_embeddings.add(key)
+                else:
+                    missing[key] = (sanitized, embedding_path)
+            prepared.append((entry, key, embedding_path))
+
+        if missing:
+            keys = list(missing)
+            texts = [missing[key][0] for key in keys]
+            features, lengths = encoder(texts)
+            if len(features) != len(keys) or len(lengths) != len(keys):
+                raise ValueError("Encoder batch cardinality does not match requested texts")
+            for index, key in enumerate(keys):
+                length = int(lengths[index])
+                array = features[index, :length].detach().float().cpu().numpy()
+                _atomic_save_embedding(missing[key][1], array)
+                validated_embeddings.add(key)
+                embeddings_created += 1
+
+        for entry, key, embedding_path in prepared:
+            entry["text_embedding"] = str(embedding_path)
+            entry["text_cache_key"] = key
+            output.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
+        return len(prepared)
+
     try:
+        started = time.perf_counter()
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
@@ -333,26 +375,28 @@ def _run_locked(args) -> None:
         ) as output:
             temporary_path = Path(output.name)
             with source.open("r", encoding="utf-8") as handle:
+                pending_records = []
                 for line_number, line in enumerate(handle, start=1):
                     if not line.strip():
                         continue
                     entry = json.loads(line)
                     if "text" not in entry:
                         raise ValueError(f"{source}:{line_number} has no text field")
-                    sanitized = sanitize_texts([str(entry["text"])])[0]
-                    key = _cache_key(sanitized, identity)
-                    embedding_path = cache_dir / f"{key}.npy"
-                    if key not in validated_embeddings:
-                        if not _embedding_is_valid(embedding_path):
-                            features, lengths = encoder([sanitized])
-                            length = int(lengths[0])
-                            array = features[0, :length].detach().float().cpu().numpy()
-                            _atomic_save_embedding(embedding_path, array)
-                        validated_embeddings.add(key)
-                    entry["text_embedding"] = str(embedding_path)
-                    entry["text_cache_key"] = key
-                    output.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
-                    count += 1
+                    pending_records.append(entry)
+                    if len(pending_records) >= encode_call_size:
+                        count += flush_records(pending_records, output)
+                        pending_records.clear()
+                        if count % (encode_call_size * 100) == 0:
+                            elapsed = time.perf_counter() - started
+                            print(
+                                f"Text-cache progress: {count} rows, "
+                                f"{len(validated_embeddings)} unique keys validated, "
+                                f"{embeddings_created} embeddings created, "
+                                f"{count / elapsed:.1f} rows/s",
+                                flush=True,
+                            )
+                if pending_records:
+                    count += flush_records(pending_records, output)
             output.flush()
             os.fsync(output.fileno())
         if destination.exists() or metadata_path.exists():
@@ -395,6 +439,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=("local", "api"), default="local")
     parser.add_argument("--api-url", default="http://127.0.0.1:9550/")
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--encode-call-size",
+        type=int,
+        default=64,
+        help=(
+            "Number of manifest rows grouped per encoder call. LLM2Vec still uses internal "
+            "batch_size=1, so this only removes process/Python overhead and preserves embeddings."
+        ),
+    )
     parser.add_argument(
         "--model-lock",
         help=(

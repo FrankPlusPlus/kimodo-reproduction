@@ -66,8 +66,8 @@ def test_two_gpu_profile_only_relaxes_runtime_scale():
     )
     assert config.paper_method_strict is True
     assert config.runtime.enforce_paper_scale is False
-    assert config.runtime.batch_size == 32
-    assert config.runtime.gradient_accumulation_steps == 4
+    assert config.runtime.batch_size == 128
+    assert config.runtime.gradient_accumulation_steps == 8
     assert config.data.require_paper_data_parity is True
     assert config.data.reference_verification == "inventory"
     assert config.model.detach_root_for_body is False
@@ -86,7 +86,7 @@ def test_public_two_gpu_profile_differs_only_in_paths_and_unavailable_data_claim
     assert public.paper_method_strict is False
     assert public.data.require_paper_data_parity is False
     assert public.runtime.enforce_paper_scale is False
-    assert public.runtime.batch_size * 2 * public.runtime.gradient_accumulation_steps == 256
+    assert public.runtime.batch_size * 2 * public.runtime.gradient_accumulation_steps == 2048
 
     def flatten(value, prefix=""):
         result = {}

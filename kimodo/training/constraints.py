@@ -151,15 +151,24 @@ class ConstraintCurriculumSampler:
         mask = torch.zeros_like(clean_motion, dtype=torch.bool)
         names: list[list[str]] = []
         maximum = self.maximum_sparse_keyframes(global_step)
+        lengths_list = lengths.detach().cpu().tolist()
+        if any(not 1 <= int(length) <= max_time for length in lengths_list):
+            raise ValueError(f"Invalid sequence lengths for T={max_time}: {lengths_list}")
 
         in_phase2 = global_step >= self.config.phase1_steps
-        for batch_index in range(batch_size):
-            length = int(lengths[batch_index].item())
-            if not 1 <= length <= max_time:
-                raise ValueError(f"Invalid sequence length {length} for T={max_time}")
+        if not in_phase2:
+            return ConstraintBatch(
+                torch.zeros_like(clean_motion),
+                mask,
+                [[] for _ in range(batch_size)],
+                maximum,
+            )
+
+        for batch_index, length_value in enumerate(lengths_list):
+            length = int(length_value)
             selected: list[str] = []
             choice = self._rand(generator)
-            if in_phase2 and choice >= self.config.no_constraint_probability:
+            if choice >= self.config.no_constraint_probability:
                 count = 2 if choice < (
                     self.config.no_constraint_probability + self.config.mix_two_probability
                 ) else 1

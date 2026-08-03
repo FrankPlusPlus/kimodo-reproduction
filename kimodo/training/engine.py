@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import json
 import os
 import random
@@ -180,9 +181,13 @@ def validate_paper_runtime_scale(config, context: DistributedContext) -> None:
 
 
 class KimodoTrainer:
-    def __init__(self, config, project_root: str | Path) -> None:
+    def __init__(self, config, project_root: str | Path, step_observer=None) -> None:
         self.config = config
         self.project_root = Path(project_root)
+        # Optional read-only instrumentation hook used by the standalone
+        # benchmark harness. Production training passes no observer, so the
+        # mathematical path and checkpoint behavior remain unchanged.
+        self.step_observer = step_observer
         self.context = initialize_distributed(config.runtime.device, config.runtime.distributed)
         validate_paper_runtime_scale(config, self.context)
         seed_everything(config.runtime.seed, self.context.rank)
@@ -248,7 +253,15 @@ class KimodoTrainer:
         self.micro_index = self.global_step * config.runtime.gradient_accumulation_steps
         self._last_dropout = None
 
-        dataset = build_training_dataset(config, self.motion_rep)
+        # The denoiser and loss use the device-resident representation above,
+        # while DataLoader workers construct motion features on CPU. Sharing
+        # the same instance leaves skeleton index buffers on CUDA and makes
+        # CPU forward kinematics fail before the first training step.
+        dataset_motion_rep = copy.deepcopy(self.motion_rep)
+        for value in vars(dataset_motion_rep).values():
+            if isinstance(value, torch.nn.Module):
+                value.cpu()
+        dataset = build_training_dataset(config, dataset_motion_rep)
         self.dataset = dataset
         # Use an epoch-addressable sampler even on one process. RandomSampler
         # creates its permutation from ambient RNG state when iteration starts,
@@ -308,6 +321,12 @@ class KimodoTrainer:
 
             save_resolved_config(config, self.output_dir / "config.resolved.yaml")
             save_provenance(self.provenance, self.output_dir / "provenance.json")
+
+    def _observed_section(self, name: str):
+        """Return an optional benchmark-only profiling range."""
+        if self.step_observer is None or not hasattr(self.step_observer, "section"):
+            return contextlib.nullcontext()
+        return self.step_observer.section(name)
 
     def _phase_dropout(self) -> float:
         if self.global_step < self.config.curriculum.phase1_steps:
@@ -387,7 +406,8 @@ class KimodoTrainer:
                     continue
                 skip_batches = 0
                 phase = self._apply_phase()
-                batch = _to_device(batch, self.context.device)
+                with self._observed_section("h2d"):
+                    batch = _to_device(batch, self.context.device)
                 if batch["text_features"] is None or batch["text_pad_mask"] is None:
                     raise RuntimeError(
                         "This production trainer requires cached LLM2Vec embeddings. "
@@ -396,78 +416,84 @@ class KimodoTrainer:
                 if batch["text_features"].shape[-1] != self.config.model.llm_dim:
                     raise ValueError("Cached text embedding width does not match model.llm_dim")
 
-                cpu_generator, noise_generator = self._step_generators(self.micro_index)
-                text_features, text_mask, text_dropped = _drop_text_conditioning(
-                    batch["text_features"],
-                    batch["text_pad_mask"],
-                    self.config.curriculum.text_dropout_probability,
-                    cpu_generator,
-                )
-                conditioning = self.constraint_sampler.sample(
-                    batch["clean_motion"], batch["lengths"], self.global_step, cpu_generator
-                )
-                for sample_index, patterns in enumerate(conditioning.pattern_names):
-                    dropped = bool(text_dropped[sample_index].item())
-                    constrained = bool(patterns)
-                    curriculum_counts["samples"] += 1
-                    curriculum_counts["text_dropped"] += float(dropped)
-                    curriculum_counts["constrained"] += float(constrained)
-                    curriculum_counts["two_patterns"] += float(len(patterns) == 2)
-                    branch = (
-                        "unconditional"
-                        if dropped and not constrained
-                        else "constraint_only"
-                        if dropped
-                        else "joint"
-                        if constrained
-                        else "text_only"
+                with self._observed_section("conditioning"):
+                    cpu_generator, noise_generator = self._step_generators(self.micro_index)
+                    text_features, text_mask, text_dropped = _drop_text_conditioning(
+                        batch["text_features"],
+                        batch["text_pad_mask"],
+                        self.config.curriculum.text_dropout_probability,
+                        cpu_generator,
                     )
-                    curriculum_counts[branch] += 1
-                    for pattern in patterns:
-                        curriculum_counts[f"pattern/{pattern}"] += 1
-                noise = torch.randn(
-                    batch["clean_motion"].shape,
-                    dtype=batch["clean_motion"].dtype,
-                    device=self.context.device,
-                    generator=noise_generator,
-                )
-                timesteps = torch.randint(
-                    self.config.model.num_diffusion_steps,
-                    (len(batch["clean_motion"]),),
-                    device=self.context.device,
-                    generator=noise_generator,
-                )
-                noisy_motion = self.diffusion.q_sample(batch["clean_motion"], timesteps, noise)
+                    conditioning = self.constraint_sampler.sample(
+                        batch["clean_motion"], batch["lengths"], self.global_step, cpu_generator
+                    )
+                    dropped_values = text_dropped.detach().cpu().tolist()
+                    for dropped_value, patterns in zip(
+                        dropped_values, conditioning.pattern_names, strict=True
+                    ):
+                        dropped = bool(dropped_value)
+                        constrained = bool(patterns)
+                        curriculum_counts["samples"] += 1
+                        curriculum_counts["text_dropped"] += float(dropped)
+                        curriculum_counts["constrained"] += float(constrained)
+                        curriculum_counts["two_patterns"] += float(len(patterns) == 2)
+                        branch = (
+                            "unconditional"
+                            if dropped and not constrained
+                            else "constraint_only"
+                            if dropped
+                            else "joint"
+                            if constrained
+                            else "text_only"
+                        )
+                        curriculum_counts[branch] += 1
+                        for pattern in patterns:
+                            curriculum_counts[f"pattern/{pattern}"] += 1
+                with self._observed_section("noise_and_diffusion"):
+                    noise = torch.randn(
+                        batch["clean_motion"].shape,
+                        dtype=batch["clean_motion"].dtype,
+                        device=self.context.device,
+                        generator=noise_generator,
+                    )
+                    timesteps = torch.randint(
+                        self.config.model.num_diffusion_steps,
+                        (len(batch["clean_motion"]),),
+                        device=self.context.device,
+                        generator=noise_generator,
+                    )
+                    noisy_motion = self.diffusion.q_sample(batch["clean_motion"], timesteps, noise)
 
                 sync_now = (self.micro_index + 1) % accumulation == 0
                 sync_context = contextlib.nullcontext()
                 if isinstance(self.model, DistributedDataParallel) and not sync_now:
                     sync_context = self.model.no_sync()
                 with sync_context, _autocast_context(self.context.device, self.config.runtime.precision):
-                    prediction = self.model(
-                        noisy_motion,
-                        batch["valid_frames"],
-                        text_features,
-                        text_mask,
-                        timesteps,
-                        first_heading_angle=batch["first_heading_angle"],
-                        motion_mask=conditioning.motion_mask,
-                        observed_motion=conditioning.observed_motion,
-                    )
-                    losses = self.loss(prediction, batch["clean_motion"], batch["valid_frames"])
-                finite_flag = torch.tensor(
-                    float(torch.isfinite(losses["total"]).item()),
-                    device=self.context.device,
-                )
-                if self.context.world_size > 1:
-                    dist.all_reduce(finite_flag, op=dist.ReduceOp.MIN)
-                if not bool(finite_flag.item()):
-                    self._save()
-                    raise FloatingPointError(f"Non-finite loss at global_step={self.global_step}")
+                    with self._observed_section("model_forward"):
+                        prediction = self.model(
+                            noisy_motion,
+                            batch["valid_frames"],
+                            text_features,
+                            text_mask,
+                            timesteps,
+                            first_heading_angle=batch["first_heading_angle"],
+                            motion_mask=conditioning.motion_mask,
+                            observed_motion=conditioning.observed_motion,
+                        )
+                    with self._observed_section("seven_term_loss"):
+                        losses = self.loss(prediction, batch["clean_motion"], batch["valid_frames"])
+                with self._observed_section("finite_check"):
+                    finite_flag = torch.isfinite(losses["total"]).to(dtype=torch.float32)
+                    if self.context.world_size > 1:
+                        dist.all_reduce(finite_flag, op=dist.ReduceOp.MIN)
+                    if not bool(finite_flag.item()):
+                        self._save()
+                        raise FloatingPointError(f"Non-finite loss at global_step={self.global_step}")
                 # Backpropagate valid-frame numerators. At the optimizer
                 # boundary gradients are normalized once by the global count,
                 # making accumulation/DDP equivalent to one global batch.
-                self.scaler.scale(losses.frame_sums["total"]).backward()
+                with self._observed_section("backward_and_ddp"):
+                    self.scaler.scale(losses.frame_sums["total"]).backward()
                 accumulated_valid_frames += float(losses.valid_frame_count.detach().item())
                 for name, value in losses.frame_sums.items():
                     detached = value.detach().float()
@@ -479,26 +505,28 @@ class KimodoTrainer:
                 if not sync_now:
                     continue
 
-                self.scaler.unscale_(self.optimizer)
-                global_valid_frames = torch.tensor(
-                    accumulated_valid_frames,
-                    device=self.context.device,
-                    dtype=torch.float32,
-                )
-                if self.context.world_size > 1:
-                    dist.all_reduce(global_valid_frames, op=dist.ReduceOp.SUM)
-                gradient_scale = self.context.world_size / float(global_valid_frames.item())
-                for parameter in self.model.parameters():
-                    if parameter.grad is not None:
-                        parameter.grad.mul_(gradient_scale)
-                if self.config.optimizer.gradient_clip_norm is not None:
-                    torch.nn.utils.clip_grad_norm_(
-                        self.model.parameters(), self.config.optimizer.gradient_clip_norm
+                with self._observed_section("gradient_normalize_and_clip"):
+                    self.scaler.unscale_(self.optimizer)
+                    global_valid_frames = torch.tensor(
+                        accumulated_valid_frames,
+                        device=self.context.device,
+                        dtype=torch.float32,
                     )
-                previous_scale = self.scaler.get_scale()
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-                self.optimizer.zero_grad(set_to_none=True)
+                    if self.context.world_size > 1:
+                        dist.all_reduce(global_valid_frames, op=dist.ReduceOp.SUM)
+                    gradient_scale = self.context.world_size / float(global_valid_frames.item())
+                    for parameter in self.model.parameters():
+                        if parameter.grad is not None:
+                            parameter.grad.mul_(gradient_scale)
+                    if self.config.optimizer.gradient_clip_norm is not None:
+                        torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.config.optimizer.gradient_clip_norm
+                        )
+                with self._observed_section("optimizer"):
+                    previous_scale = self.scaler.get_scale()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad(set_to_none=True)
                 step_skipped = self.scaler.is_enabled() and self.scaler.get_scale() < previous_scale
                 if step_skipped:
                     accumulated_valid_frames = 0.0
@@ -509,7 +537,11 @@ class KimodoTrainer:
                 self.global_step += 1
 
                 if self.ema is not None and self.global_step % self.config.ema.update_every == 0:
-                    self.ema.update(unwrap_model(self.model))
+                    with self._observed_section("ema"):
+                        self.ema.update(unwrap_model(self.model))
+
+                if self.step_observer is not None:
+                    self.step_observer.on_optimizer_step_end(self)
 
                 if self.global_step % self.config.runtime.log_every == 0:
                     logged_sums = {

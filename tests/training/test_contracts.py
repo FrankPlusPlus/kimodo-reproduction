@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import copy
 import argparse
+import copy
 import csv
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 import torch
 from omegaconf import OmegaConf
@@ -17,7 +18,11 @@ from kimodo.motion_rep.reps.kimodo_motionrep import KimodoMotionRep
 from kimodo.skeleton.registry import build_skeleton
 from kimodo.training.config import CurriculumConfig, LossConfig, ModelConfig, TrainingConfig
 from kimodo.training.constraints import ConstraintCurriculumSampler
-from kimodo.training.data import MotionManifestDataset, collate_motion_batch
+from kimodo.training.data import (
+    MotionManifestDataset,
+    _load_training_motion_file,
+    collate_motion_batch,
+)
 from kimodo.training.ema import ExponentialMovingAverage
 from kimodo.training.losses import KimodoLoss
 from kimodo.training.manifest_cli import build_manifest
@@ -77,6 +82,19 @@ def test_data_representation_and_all_constraint_families(training_fixture):
     foot_slice = rep.slice_dict["foot_contacts"]
     assert torch.equal(observed[[1, 5], foot_slice], contacts)
     assert mask[[1, 5], foot_slice].all()
+
+
+def test_canonical_training_npz_fast_path_preserves_raw_inputs(training_fixture, monkeypatch):
+    expected = np.load(training_fixture["motion"], allow_pickle=False)
+
+    def reject_generic_loader(*args, **kwargs):
+        raise AssertionError("canonical same-FPS NPZ must not invoke the completing loader")
+
+    monkeypatch.setattr("kimodo.training.data.load_motion_file", reject_generic_loader)
+    motion, joints = _load_training_motion_file(training_fixture["motion"], 30.0, 30.0)
+    assert joints == 30
+    assert np.array_equal(motion["local_rot_mats"].numpy(), expected["local_rot_mats"])
+    assert np.array_equal(motion["root_positions"].numpy(), expected["root_positions"])
 
 
 def test_bones_manifest_full_event_and_combined_crops(training_fixture, tmp_path):
@@ -176,6 +194,17 @@ def test_diffusion_loss_and_adam_atan2_contract(training_fixture):
     changed = target.clone()
     changed[..., 0] = 1.0
     assert physical(changed, target, torch.ones_like(valid))["root_position"].item() > 0
+
+    random_target = torch.randn_like(target)
+    direct_root, direct_joints = physical._target_positions(random_target)
+    inverse = rep.inverse(
+        random_target,
+        is_normalized=False,
+        posed_joints_from="positions",
+        return_numpy=False,
+    )
+    assert torch.equal(direct_root, inverse["root_positions"])
+    assert torch.equal(direct_joints, inverse["posed_joints"])
 
     diffusion = Diffusion(1000)
     schedule, mapping = diffusion.space_timesteps(100)

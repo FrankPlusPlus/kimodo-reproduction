@@ -61,6 +61,25 @@ class KimodoLoss:
         self.skeleton = motion_rep.skeleton
         self.config = config
 
+    def _target_positions(self, target_raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Decode only the target tensors consumed by the FK loss.
+
+        ``KimodoMotionRep.inverse(..., posed_joints_from="positions")`` also
+        converts target 6D rotations to matrices and then to local rotations,
+        but those rotations are discarded by this loss.  Reconstructing the
+        root and posed joints directly is exactly the position branch of that
+        inverse method.
+        """
+        smooth_root = target_raw[..., self.motion_rep.slice_dict["smooth_root_pos"]]
+        local_positions = target_raw[
+            ..., self.motion_rep.slice_dict["local_joints_positions"]
+        ].reshape(*target_raw.shape[:2], self.skeleton.nbjoints, 3)
+        posed_joints = local_positions.clone()
+        posed_joints[..., 0] += smooth_root[..., None, 0]
+        posed_joints[..., 2] += smooth_root[..., None, 2]
+        root_positions = posed_joints[..., self.skeleton.root_idx, :]
+        return root_positions, posed_joints
+
     def __call__(
         self,
         prediction: torch.Tensor,
@@ -107,19 +126,14 @@ class KimodoLoss:
         global_rotations = cont6d_to_matrix(rotation_data)
         local_rotations = global_rots_to_local_rots(global_rotations, self.skeleton)
 
-        target_output = self.motion_rep.inverse(
-            target_raw,
-            is_normalized=False,
-            posed_joints_from="positions",
-            return_numpy=False,
-        )
+        target_root_positions, target_posed_joints = self._target_positions(target_raw)
         _, predicted_fk_positions, _ = self.skeleton.fk(
             local_rotations,
-            target_output["root_positions"],
+            target_root_positions,
         )
         frame_sums["forward_kinematics"] = _masked_smooth_l1_frame_sum(
             predicted_fk_positions,
-            target_output["posed_joints"],
+            target_posed_joints,
             valid_frames,
             self.config.smooth_l1_beta,
         )

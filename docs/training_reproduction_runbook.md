@@ -91,6 +91,8 @@ LLM2Vec foundation 使用 NousResearch 对公开 loader 所指定 Meta-Llama fou
   --output-manifest ../kimodo-training-data/train.cached.jsonl \
   --cache-dir ../kimodo-training-data/text-cache \
   --provider local \
+  --device cuda:0 \
+  --encode-call-size 64 \
   --model-lock configs/models.server.lock.json \
   --foundation-model /home/yezitao/data/yzt/kimodo-repro/models/llm2vec/foundation \
   --foundation-revision 53346005fb0ef11d3b6a83b12c895cca40156b6c \
@@ -99,6 +101,10 @@ LLM2Vec foundation 使用 NousResearch 对公开 loader 所指定 Meta-Llama fou
   --supervised-model /home/yezitao/data/yzt/kimodo-repro/models/llm2vec/supervised-adapter \
   --supervised-revision baa8ebf04a1c2500e61288e7dad65e8ae42601a7
 ```
+
+`--device` 是硬放置约束：即使进程可见多张 GPU，LLM2Vec 也只在指定设备上运行，
+不会为每次 encode 建立多卡进程池。`--encode-call-size` 只把多行文本合并到一次 Python
+调用；LLM2Vec 内部仍固定 `batch_size=1`，因此缓存 embedding 与逐条调用相同。
 
 Meta 原仓库为 gated 且当前账号未获批准。服务器改用
 `NousResearch/Meta-Llama-3-8B-Instruct@53346005...`：四个 BF16 权重分片、
@@ -118,7 +124,8 @@ AWQ 或二次微调权重。
   --output /home/yezitao/PublicWorkspace/yzt/kimodo-training-data/stats/repro-soma30-30fps \
   --split train \
   --skeleton-joints 30 \
-  --fps 30
+  --fps 30 \
+  --num-workers 16
 ```
 
 输出必须为：
@@ -131,7 +138,7 @@ stats/
   stats.metadata.json          # manifest hash、唯一 clip/帧数、heading 假设
 ```
 
-论文未披露 stats 拟合方法。当前工程默认对每个唯一 motion/time-span 枚举全部不重叠的最长 10 秒窗口，每窗独立做首帧 root 归零和确定性均匀 heading；不足两帧的尾窗会与前窗重新平衡。该策略覆盖全部训练帧且可重复，但必须标成 `[DEFAULT]`。
+论文未披露 stats 拟合方法。当前工程默认对每个唯一 motion/time-span 枚举全部不重叠的最长 10 秒窗口，每窗独立做首帧 root 归零和确定性均匀 heading；不足两帧的尾窗会与前窗重新平衡。该策略覆盖全部训练帧且可重复，但必须标成 `[DEFAULT]`。不同 motion 可由多个 CPU worker 并行处理；每个 motion 的 float64 moments 始终按 manifest motion 顺序归并，所以 worker 数量不改变输出。共享服务器默认只使用 16 个进程，可通过 `KIMODO_STATS_WORKERS` 调整。
 
 正式训练前需一次性建立并完整校验 manifest 引用清单。`build` 会读取并 SHA-256
 所有唯一 motion、embedding 和来源 sidecar；训练启动只校验 manifest、inventory 与
@@ -200,8 +207,8 @@ scripts/train_two_gpu_seed.sh
 ```
 
 严格 profile 保持 `paper_method_strict=true` 和数据增强门禁，只设置
-`runtime.enforce_paper_scale=false`。两个 profile 都采用保守起点
-`32 × 2 ranks × 4 accumulation = global batch 256`。GPU 型号、可见设备、world size、
+`runtime.enforce_paper_scale=false`。默认 H200 配置为
+`128 × 2 ranks × 8 accumulation = global batch 2048`。GPU 型号、可见设备、world size、
 local batch、accumulation 和 effective global batch 会写入 provenance。正式长跑前应在
 真实 300 帧 batch 上完成显存/吞吐 profiling；如果修改 batch/accumulation，必须创建
 新的正式 run，不得用训练关键配置不同的 checkpoint 强行恢复。

@@ -6,6 +6,10 @@ project_root="$(cd -- "${script_dir}/.." && pwd)"
 python_bin="${KIMODO_PYTHON:-${project_root}/.venv/bin/python}"
 config_path="${KIMODO_TWO_GPU_CONFIG:-${project_root}/configs/training/kimodo_soma_seed_public_two_gpu.yaml}"
 
+# Make CUDA_VISIBLE_DEVICES use the physical PCI/nvidia-smi ordering on this
+# host, whose default CUDA runtime ordering is different.
+export CUDA_DEVICE_ORDER="${CUDA_DEVICE_ORDER:-PCI_BUS_ID}"
+
 if [[ ! -x "${python_bin}" ]]; then
   echo "Python environment is missing or not executable: ${python_bin}" >&2
   exit 2
@@ -35,6 +39,7 @@ if count != 2:
         f"torch sees {count}. Set CUDA_VISIBLE_DEVICES to the two devices allocated to this tenant."
     )
 devices = []
+expected = os.environ.get("KIMODO_EXPECTED_GPU_NAME", "NVIDIA H200 NVL")
 for index in range(count):
     props = torch.cuda.get_device_properties(index)
     devices.append(
@@ -45,6 +50,9 @@ for index in range(count):
             "compute_capability": [int(props.major), int(props.minor)],
         }
     )
+names = [device["name"] for device in devices]
+if any(name != expected for name in names):
+    raise SystemExit(f"Expected two {expected!r} devices, but CUDA exposes: {names}")
 print(
     json.dumps(
         {

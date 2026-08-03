@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 import torch
 
+from kimodo.model.llm2vec.llm2vec import LLM2Vec
 from kimodo.training import stats_cli, text_cache_cli
 
 
@@ -20,12 +21,34 @@ class _FakeEncoder:
         self.fail_after = fail_after
 
     def __call__(self, texts: list[str]):
-        assert len(texts) == 1
-        if self.fail_after is not None and len(self.calls) >= self.fail_after:
+        if self.fail_after is not None and len(self.calls) + len(texts) > self.fail_after:
             raise RuntimeError("injected encoder failure")
-        self.calls.append(texts[0])
-        value = float(len(self.calls))
-        return torch.full((1, 1, 4096), value), [1]
+        values = []
+        for text in texts:
+            self.calls.append(text)
+            values.append(torch.full((1, 4096), float(len(self.calls))))
+        return torch.stack(values), [1] * len(values)
+
+
+def test_llm2vec_explicit_device_never_enters_visible_multi_gpu_pool(monkeypatch):
+    encoder = object.__new__(LLM2Vec)
+    encoder.eval = lambda: encoder
+    encoder.to = lambda device: encoder
+    encoder._text_length = lambda unused: 1
+    encoder._convert_to_str = lambda instruction, text: text
+    encoder._encode = lambda texts, device, convert_to_numpy: torch.tensor(
+        [[float(len(text))] for text in texts]
+    )
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+
+    result = encoder.encode(
+        ["short", "longer"],
+        batch_size=1,
+        show_progress_bar=False,
+        device="cuda:1",
+    )
+
+    assert result.tolist() == [[5.0], [6.0]]
 
 
 def _text_cache_args(source, destination, cache_dir):
@@ -295,14 +318,14 @@ def test_stats_loads_each_motion_once_without_dropping_distinct_spans(
     manifest.write_text(
         "".join(json.dumps(record) + "\n" for record in records), encoding="utf-8"
     )
-    original_loader = stats_cli.load_motion_file
+    original_loader = stats_cli._load_training_motion_file
     calls = []
 
     def counting_loader(*args, **kwargs):
         calls.append((args, kwargs))
         return original_loader(*args, **kwargs)
 
-    monkeypatch.setattr(stats_cli, "load_motion_file", counting_loader)
+    monkeypatch.setattr(stats_cli, "_load_training_motion_file", counting_loader)
     output = tmp_path / "stats"
     stats_cli.compute_stats(
         argparse.Namespace(

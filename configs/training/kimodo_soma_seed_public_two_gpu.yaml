@@ -10,7 +10,7 @@ data:
   fps: 30
   max_seconds: 10.0
   min_frames: 30
-  num_workers: 8
+  num_workers: 16
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: false
@@ -84,8 +84,10 @@ runtime:
   seed: 1234
   device: auto
   precision: bf16
-  batch_size: 32
-  gradient_accumulation_steps: 4
+  # 2 ranks * 128 local * 8 accumulation = paper global batch 2048.
+  # This is only ~5% slower than local 256 but uses ~56 rather than ~105 GiB.
+  batch_size: 128
+  gradient_accumulation_steps: 8
   log_every: 10
   checkpoint_every: 10000
   milestone_every: 100000

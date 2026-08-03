@@ -17,7 +17,7 @@ This repository provides:
 
 ## Training Reconstruction
 
-This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Start with the [paper-parity audit](docs/paper_training_parity_audit.md), then follow the [training runbook](docs/training_reproduction_runbook.md). The strict production profile fails closed when the paper-described Qwen3-32B paraphrases or diffusion-generated cross-motion transitions are absent; disable that gate only for an explicitly labeled engineering baseline.
+This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Start with the [paper-parity audit](docs/paper_training_parity_audit.md), then follow the [training runbook](docs/training_reproduction_runbook.md). Two-H200 batch/memory/timing measurements are recorded in the [H200 benchmark](docs/h200_training_benchmark.md). The strict production profile fails closed when the paper-described Qwen3-32B paraphrases or diffusion-generated cross-motion transitions are absent; disable that gate only for an explicitly labeled engineering baseline.
 
 <div align="center">
   <img src="assets/teaser.gif" width="1280">

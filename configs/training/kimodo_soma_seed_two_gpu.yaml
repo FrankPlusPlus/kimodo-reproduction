@@ -11,7 +11,7 @@ data:
   fps: 30
   max_seconds: 10.0
   min_frames: 30
-  num_workers: 8
+  num_workers: 16
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: false
@@ -88,10 +88,9 @@ runtime:
   seed: 1234
   device: auto
   precision: bf16
-  # Conservative starting point: 32 x 2 ranks x 4 accumulation = 256.
-  # Profile real 300-frame batches before raising the local batch.
-  batch_size: 32
-  gradient_accumulation_steps: 4
+  # Preserve the paper's global batch with ample H200 memory headroom.
+  batch_size: 128
+  gradient_accumulation_steps: 8
   log_every: 10
   checkpoint_every: 10000
   milestone_every: 100000

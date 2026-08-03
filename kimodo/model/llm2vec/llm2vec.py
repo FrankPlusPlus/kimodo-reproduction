@@ -387,6 +387,7 @@ class LLM2Vec(nn.Module):
         if isinstance(sentences[0], str):
             sentences = [[""] + [sentence] for sentence in sentences]
 
+        device_was_explicit = device is not None
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -406,8 +407,12 @@ class LLM2Vec(nn.Module):
         sentences_sorted = [sentences[idx] for idx in length_sorted_idx]
         all_embeddings = []
 
-        if torch.cuda.device_count() <= 1:
-            # This branch also support mps devices
+        if device_was_explicit or torch.cuda.device_count() <= 1:
+            # An explicitly selected device is a hard placement contract.  In
+            # particular, a tenant may expose two training GPUs while assigning
+            # text preprocessing to only one of them.  Do not create a fresh
+            # multi-GPU process pool for every encode() call in that case.
+            # This branch also supports MPS devices.
             self.to(device)
             for start_index in trange(
                 0,
