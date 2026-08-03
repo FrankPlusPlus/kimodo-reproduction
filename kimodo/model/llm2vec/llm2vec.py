@@ -44,7 +44,7 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import torch
 import torch.multiprocessing as mp
-from peft import PeftModel
+from peft import PeftConfig, PeftModel
 from torch import Tensor, device, nn
 from tqdm.autonotebook import tqdm, trange
 from transformers import (
@@ -116,26 +116,75 @@ class LLM2Vec(nn.Module):
         cls,
         base_model_name_or_path,
         peft_model_name_or_path=None,
+        foundation_model_name_or_path=None,
         merge_peft=False,
         enable_bidirectional=True,
         base_revision=None,
         peft_revision=None,
+        foundation_revision=None,
         **kwargs,
     ):
         # pop out encoder args
         keys = ["pooling_mode", "max_length", "doc_max_length", "skip_instruction"]
         encoder_args = {key: kwargs.pop(key, None) for key in keys if kwargs.get(key) is not None}
 
-        tokenizer = AutoTokenizer.from_pretrained(base_model_name_or_path, revision=base_revision)
+        download_kwargs = {
+            key: kwargs[key]
+            for key in ("cache_dir", "token", "local_files_only", "force_download")
+            if kwargs.get(key) is not None
+        }
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            base_model_name_or_path,
+            revision=base_revision,
+            **download_kwargs,
+        )
         tokenizer.pad_token = tokenizer.eos_token
         tokenizer.padding_side = "left"
 
-        config = AutoConfig.from_pretrained(base_model_name_or_path, revision=base_revision)
+        config = AutoConfig.from_pretrained(
+            base_model_name_or_path,
+            revision=base_revision,
+            **download_kwargs,
+        )
         config_class_name = config.__class__.__name__
 
         model_class = cls._get_model_class(config_class_name, enable_bidirectional=enable_bidirectional)
 
-        model = model_class.from_pretrained(base_model_name_or_path, revision=base_revision, **kwargs)
+        if foundation_model_name_or_path is None:
+            # Backward-compatible inference path. Transformers discovers the
+            # foundation model from the adapter config, matching the released
+            # Kimodo loader when no independently pinned foundation is given.
+            model = model_class.from_pretrained(base_model_name_or_path, revision=base_revision, **kwargs)
+        else:
+            # A PEFT repo and its foundation model live in different Git
+            # histories. Passing the adapter revision through Transformers'
+            # automatic adapter discovery also passes it to the foundation
+            # repo, where that commit cannot exist. Load all three layers
+            # explicitly so every revision is applied only to its own repo.
+            mntp_config = PeftConfig.from_pretrained(
+                base_model_name_or_path,
+                revision=base_revision,
+                **download_kwargs,
+            )
+            model = model_class.from_pretrained(
+                foundation_model_name_or_path,
+                revision=foundation_revision,
+                config=config,
+                **kwargs,
+            )
+            canonical_foundation = getattr(mntp_config, "base_model_name_or_path", None)
+            if canonical_foundation:
+                # prepare_for_tokenization relies on the canonical Llama model
+                # identity even when the frozen snapshot is loaded locally.
+                model.config._name_or_path = canonical_foundation
+            model = PeftModel.from_pretrained(
+                model,
+                base_model_name_or_path,
+                revision=base_revision,
+                **download_kwargs,
+            )
+            model = model.merge_and_unload()
 
         if os.path.isdir(base_model_name_or_path) and os.path.exists(f"{base_model_name_or_path}/config.json"):
             with open(f"{base_model_name_or_path}/config.json", "r") as fIn:
@@ -144,11 +193,12 @@ class LLM2Vec(nn.Module):
             model.config._name_or_path = config._name_or_path
 
         # For special case where config.json and adapter weights are in the same directory
-        if hasattr(model, "peft_config"):
+        if foundation_model_name_or_path is None and hasattr(model, "peft_config"):
             model = PeftModel.from_pretrained(
                 model,
                 base_model_name_or_path,
                 revision=base_revision,
+                **download_kwargs,
             )
             model = model.merge_and_unload()
 
@@ -157,6 +207,7 @@ class LLM2Vec(nn.Module):
                 model,
                 peft_model_name_or_path,
                 revision=peft_revision,
+                **download_kwargs,
             )
             if merge_peft:
                 model = model.merge_and_unload()

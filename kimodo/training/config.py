@@ -23,6 +23,12 @@ class DataConfig:
     prefetch_factor: int = 2
     persistent_workers: bool = False
     require_cached_text: bool = True
+    # ``full`` hashes every referenced motion/embedding at trainer startup and
+    # is suitable only for small fixtures. ``inventory`` trusts a previously
+    # built, content-addressed inventory and hashes only the manifest,
+    # inventory, and inventory metadata at startup.
+    reference_verification: str = "full"
+    reference_inventory: str | None = None
     # Fail closed unless the manifest proves that the paper-described Qwen
     # paraphrases and diffusion-generated cross-motion transitions are present.
     # Keep this false for synthetic/engineering smoke runs; the paper-aligned
@@ -125,6 +131,9 @@ class RuntimeConfig:
     resume: str | None = None
     initial_global_step: int = 0
     distributed: str = "auto"
+    # Keep method parity independent from the disclosed 16-GPU/global-batch
+    # scale. Two-GPU reconstructions turn only this gate off.
+    enforce_paper_scale: bool = True
     dry_run: bool = False
     max_steps_override: int | None = None
 
@@ -161,6 +170,12 @@ class TrainingConfig:
         if self.data.persistent_workers:
             raise ValueError(
                 "persistent_workers is disabled: worker dataset copies would not receive set_epoch updates"
+            )
+        if self.data.reference_verification not in {"full", "inventory"}:
+            raise ValueError("data.reference_verification must be 'full' or 'inventory'")
+        if self.data.reference_verification == "inventory" and not self.data.reference_inventory:
+            raise ValueError(
+                "data.reference_inventory is required when reference_verification='inventory'"
             )
         if self.curriculum.phase1_steps < 0 or self.curriculum.phase2_steps < 0:
             raise ValueError("phase step counts must be non-negative")
@@ -273,6 +288,21 @@ class TrainingConfig:
         if require_paths:
             if not self.data.manifest or not Path(self.data.manifest).is_file():
                 raise FileNotFoundError(f"Training manifest does not exist: {self.data.manifest!r}")
+            if self.data.reference_verification == "inventory" and not Path(
+                str(self.data.reference_inventory)
+            ).is_file():
+                raise FileNotFoundError(
+                    "Reference inventory does not exist: "
+                    f"{self.data.reference_inventory!r}. Build and fully verify it before training."
+                )
+            if self.data.reference_verification == "inventory":
+                inventory_metadata = Path(
+                    str(self.data.reference_inventory) + ".metadata.json"
+                )
+                if not inventory_metadata.is_file():
+                    raise FileNotFoundError(
+                        f"Reference inventory metadata does not exist: {inventory_metadata}"
+                    )
             if self.model.checkpoint_dir is None and (
                 not self.model.stats_path or not Path(self.model.stats_path).is_dir()
             ):

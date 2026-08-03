@@ -85,6 +85,19 @@ def test_epoch_boundary_resume_with_accumulation(training_fixture, tmp_path):
     assert all(torch.equal(expected[key], actual[key]) for key in expected)
 
 
+def test_fresh_run_rejects_nonempty_output_directory(training_fixture, tmp_path):
+    project_root = Path(__file__).resolve().parents[2]
+    output = tmp_path / "belongs-to-another-run"
+    output.mkdir()
+    marker = output / "marker.txt"
+    marker.write_text("preserve me", encoding="utf-8")
+
+    with pytest.raises(FileExistsError, match="output_dir is not empty"):
+        KimodoTrainer(_config(training_fixture, output, 1), project_root)
+
+    assert marker.read_text(encoding="utf-8") == "preserve me"
+
+
 def test_resume_rejects_recipe_or_referenced_data_changes(training_fixture, tmp_path):
     project_root = Path(__file__).resolve().parents[2]
     output = tmp_path / "guarded"

@@ -93,15 +93,30 @@ def compute_stats(args) -> None:
     for entry in source_entries:
         key = (entry.motion_path, entry.start_time, entry.end_time)
         unique.setdefault(key, entry)
+    # Caption variants are contiguous in manifests produced by our builder, but
+    # temporal spans for the same source motion remain distinct.  Group those
+    # spans so a large 120 Hz BVH is parsed and resampled exactly once.  The
+    # order of both motion groups and spans within a group is stable.
+    grouped_entries = {}
+    source_fps_by_motion = {}
+    for entry in unique.values():
+        prior_source_fps = source_fps_by_motion.setdefault(entry.motion_path, entry.source_fps)
+        if prior_source_fps != entry.source_fps:
+            raise ValueError(
+                "A motion cannot have multiple source_fps values while computing stats: "
+                f"{entry.motion_path} ({prior_source_fps!r} and {entry.source_fps!r})"
+            )
+        grouped_entries.setdefault(entry.motion_path, []).append(entry)
     global_moments = OnlineMoments(motion_rep.global_root_dim)
     local_moments = OnlineMoments(motion_rep.local_root_dim)
     body_moments = OnlineMoments(motion_rep.body_dim)
     window_count = 0
     window_lengths: list[int] = []
-    for key, entry in unique.items():
+    for motion_path, motion_entries in grouped_entries.items():
+        first_entry = motion_entries[0]
         motion, source_joints = load_motion_file(
-            str(entry.motion_path),
-            source_fps=entry.source_fps,
+            str(motion_path),
+            source_fps=first_entry.source_fps,
             target_fps=float(args.fps),
         )
         local_rotations = _convert_rotations_to_model_skeleton(
@@ -109,45 +124,50 @@ def compute_stats(args) -> None:
         )
         root_positions = motion["root_positions"].float()
         source_length = int(local_rotations.shape[0])
-        start_time = 0.0 if entry.start_time is None else entry.start_time
-        end_time = source_length / args.fps if entry.end_time is None else entry.end_time
-        start_frame = max(0, int(round(start_time * args.fps)))
-        end_frame = min(source_length, int(round(end_time * args.fps)))
-        if start_time < 0 or end_time <= start_time or end_frame - start_frame < 2:
-            raise ValueError(
-                f"Invalid or too-short temporal span for stats: {entry.sample_id!r} "
-                f"({start_time}..{end_time})"
-            )
-        local_rotations = local_rotations[start_frame:end_frame]
-        root_positions = root_positions[start_frame:end_frame]
-        for window_index, (window_start, window_end) in enumerate(
-            _covering_windows(end_frame - start_frame, max_frames)
-        ):
-            window_length = window_end - window_start
-            lengths = torch.tensor([window_length])
-            features = motion_rep(
-                local_rotations[window_start:window_end].unsqueeze(0),
-                root_positions[window_start:window_end].unsqueeze(0),
-                to_normalize=False,
-                lengths=lengths,
-            )
-            features = motion_rep.translate_2d_to_zero(features)
-            generator = torch.Generator(device="cpu")
-            generator.manual_seed(_window_seed(args.seed, key, window_index))
-            target_heading = torch.rand((1,), generator=generator, dtype=features.dtype) * (
-                2.0 * torch.pi
-            )
-            features = motion_rep.rotate_to(features, target_heading)
-            global_root = features[..., motion_rep.root_slice]
-            local_root = motion_rep.global_root_to_local_root(
-                global_root, normalized=False, lengths=lengths
-            )
-            body = features[..., motion_rep.body_slice]
-            global_moments.update(global_root[0])
-            local_moments.update(local_root[0])
-            body_moments.update(body[0])
-            window_count += 1
-            window_lengths.append(window_length)
+        for entry in motion_entries:
+            start_time = 0.0 if entry.start_time is None else entry.start_time
+            end_time = source_length / args.fps if entry.end_time is None else entry.end_time
+            start_frame = max(0, int(round(start_time * args.fps)))
+            end_frame = min(source_length, int(round(end_time * args.fps)))
+            # The FM bridge preserves row IDs exactly. Bind augmentation to the
+            # selected representative sample rather than an absolute path so a
+            # symlink or mount relocation cannot change comparison statistics.
+            key = (entry.sample_id,)
+            if start_time < 0 or end_time <= start_time or end_frame - start_frame < 2:
+                raise ValueError(
+                    f"Invalid or too-short temporal span for stats: {entry.sample_id!r} "
+                    f"({start_time}..{end_time})"
+                )
+            span_local_rotations = local_rotations[start_frame:end_frame]
+            span_root_positions = root_positions[start_frame:end_frame]
+            for window_index, (window_start, window_end) in enumerate(
+                _covering_windows(end_frame - start_frame, max_frames)
+            ):
+                window_length = window_end - window_start
+                lengths = torch.tensor([window_length])
+                features = motion_rep(
+                    span_local_rotations[window_start:window_end].unsqueeze(0),
+                    span_root_positions[window_start:window_end].unsqueeze(0),
+                    to_normalize=False,
+                    lengths=lengths,
+                )
+                features = motion_rep.translate_2d_to_zero(features)
+                generator = torch.Generator(device="cpu")
+                generator.manual_seed(_window_seed(args.seed, key, window_index))
+                target_heading = torch.rand((1,), generator=generator, dtype=features.dtype) * (
+                    2.0 * torch.pi
+                )
+                features = motion_rep.rotate_to(features, target_heading)
+                global_root = features[..., motion_rep.root_slice]
+                local_root = motion_rep.global_root_to_local_root(
+                    global_root, normalized=False, lengths=lengths
+                )
+                body = features[..., motion_rep.body_slice]
+                global_moments.update(global_root[0])
+                local_moments.update(local_root[0])
+                body_moments.update(body[0])
+                window_count += 1
+                window_lengths.append(window_length)
 
     for name, moments in (
         ("global_root", global_moments),

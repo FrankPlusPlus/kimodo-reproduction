@@ -108,6 +108,20 @@ def _source_record(path: Path | None) -> dict | None:
 def build_manifest(args) -> dict[str, int]:
     metadata = Path(args.metadata).expanduser().resolve()
     dataset_root = Path(args.dataset_root).expanduser().resolve()
+    motion_cache_value = getattr(args, "motion_cache_root", None)
+    motion_cache_root = (
+        Path(motion_cache_value).expanduser().resolve()
+        if motion_cache_value
+        else None
+    )
+    if motion_cache_root is not None and args.skeleton != "soma_uniform":
+        raise ValueError("--motion-cache-root currently supports only soma_uniform")
+    motion_cache_fps = float(getattr(args, "motion_cache_fps", 30.0))
+    if motion_cache_fps <= 0:
+        raise ValueError("--motion-cache-fps must be positive")
+    if motion_cache_root is not None and abs(motion_cache_fps - 30.0) > 1e-9:
+        raise ValueError("the canonical SOMA30 motion cache contract is fixed to 30 fps")
+    manifest_fps = motion_cache_fps if motion_cache_root is not None else args.source_fps
     split_file = Path(args.split_file).expanduser().resolve()
     temporal_labels = (
         Path(args.temporal_labels).expanduser().resolve() if args.temporal_labels else None
@@ -122,6 +136,7 @@ def build_manifest(args) -> dict[str, int]:
         raise FileExistsError(f"Refusing to overwrite manifest: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     counts = {"motions": 0, "full": 0, "event": 0, "combined": 0, "missing": 0}
+    seen_split_keys: set[str] = set()
     with destination.open("x", encoding="utf-8") as output:
         for row in _read_rows(metadata):
             motion_value = _clean_text(row.get(path_column))
@@ -130,9 +145,13 @@ def build_manifest(args) -> dict[str, int]:
             key = _row_key(row, motion_value)
             if key not in split_keys:
                 continue
-            motion_path = Path(motion_value)
-            if not motion_path.is_absolute():
-                motion_path = dataset_root / motion_path
+            seen_split_keys.add(key)
+            if motion_cache_root is None:
+                motion_path = Path(motion_value)
+                if not motion_path.is_absolute():
+                    motion_path = dataset_root / motion_path
+            else:
+                motion_path = motion_cache_root / Path(key).with_suffix(".npz")
             if not motion_path.is_file():
                 counts["missing"] += 1
                 if not args.allow_missing:
@@ -153,7 +172,7 @@ def build_manifest(args) -> dict[str, int]:
                             "motion": str(motion_path.resolve()),
                             "text": text,
                             "split": args.split_name,
-                            "source_fps": args.source_fps,
+                            "source_fps": manifest_fps,
                             "sample_kind": "full",
                             "text_source": f"bones_seed_metadata:{text_column}",
                             "augmentation_provenance": "dataset_annotation",
@@ -173,7 +192,7 @@ def build_manifest(args) -> dict[str, int]:
                             "motion": str(motion_path.resolve()),
                             "text": text,
                             "split": args.split_name,
-                            "source_fps": args.source_fps,
+                            "source_fps": manifest_fps,
                             "start_time": float(event["start_time"]),
                             "end_time": float(event["end_time"]),
                             "sample_kind": "event",
@@ -196,7 +215,7 @@ def build_manifest(args) -> dict[str, int]:
                             "motion": str(motion_path.resolve()),
                             "text": f"{first_text} Then, {second_text}",
                             "split": args.split_name,
-                            "source_fps": args.source_fps,
+                            "source_fps": manifest_fps,
                             "start_time": float(first["start_time"]),
                             "end_time": float(second["end_time"]),
                             "sample_kind": "combined_events",
@@ -206,13 +225,30 @@ def build_manifest(args) -> dict[str, int]:
                         output,
                     )
                     counts["combined"] += 1
+    missing_from_metadata = sorted(split_keys - seen_split_keys)
     metadata_record = {
         "schema_version": 1,
         "builder": "kimodo.training.manifest_cli",
         "dataset_root": str(dataset_root),
+        "motion_cache_root": None if motion_cache_root is None else str(motion_cache_root),
+        "motion_storage": (
+            "source_dataset_files"
+            if motion_cache_root is None
+            else "offline_canonical_soma30_npz_cache"
+        ),
         "skeleton": args.skeleton,
         "split_name": args.split_name,
-        "source_fps": args.source_fps,
+        "split_accounting": {
+            "official_entries": len(split_keys),
+            "matched_metadata_entries": len(seen_split_keys),
+            "missing_from_metadata_count": len(missing_from_metadata),
+            "missing_from_metadata": missing_from_metadata,
+        },
+        "source_dataset_fps": args.source_fps,
+        "manifest_motion_fps": manifest_fps,
+        "motion_cache_fps": (
+            None if motion_cache_root is None else motion_cache_fps
+        ),
         "repeat_counts": {
             "full": args.full_repeats,
             "event": args.event_repeats,
@@ -289,6 +325,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--temporal-labels")
     parser.add_argument("--split-file", required=True)
     parser.add_argument("--dataset-root", required=True)
+    parser.add_argument(
+        "--motion-cache-root",
+        help="Optional 30 fps SOMA30 NPZ cache laid out as <date>/<filename>.npz",
+    )
+    parser.add_argument(
+        "--motion-cache-fps",
+        type=float,
+        default=30.0,
+        help="FPS of --motion-cache-root assets (kept separate from raw dataset FPS)",
+    )
     parser.add_argument("--skeleton", choices=tuple(PATH_COLUMNS), default="soma_uniform")
     parser.add_argument("--output", required=True)
     parser.add_argument("--split-name", default="train")

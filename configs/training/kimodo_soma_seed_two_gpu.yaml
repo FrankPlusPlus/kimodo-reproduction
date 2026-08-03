@@ -1,10 +1,12 @@
-# Kimodo paper-aligned production defaults. Values not explicitly disclosed by
-# the paper are catalogued in docs/training_reproduction_spec.md.
+# Public BONES-SEED, paper-method-strict two-GPU profile.
+# Only the disclosed 16-GPU/global-batch scale gate is relaxed. Paths can be
+# relocated without editing this file by setting KIMODO_SHARED_ROOT and
+# KIMODO_LOCAL_ROOT.
 schema_version: 1
 paper_method_strict: true
 
 data:
-  manifest: data/bones_seed/train.jsonl
+  manifest: ${oc.env:KIMODO_SHARED_ROOT,/home/yezitao/data/yzt/kimodo-repro}/manifests/train.cached.jsonl
   split: train
   fps: 30
   max_seconds: 10.0
@@ -15,17 +17,17 @@ data:
   persistent_workers: false
   require_cached_text: true
   reference_verification: inventory
-  reference_inventory: data/bones_seed/train.references.jsonl
-  # Fail-closed paper-asset schema gate. This intentionally rejects plain BONES-SEED
-  # manifest until Qwen3-32B paraphrases and diffusion-transition stitched clips
-  # with provenance have been supplied, but cannot certify NVIDIA's unpublished recipe.
+  reference_inventory: ${oc.env:KIMODO_SHARED_ROOT,/home/yezitao/data/yzt/kimodo-repro}/manifests/train.cached.references.jsonl
+  # This remains fail-closed: the final training manifest must contain
+  # schema-consistent Qwen3-32B and diffusion-transition rows with provenance.
+  # It cannot certify the unpublished official prompt/mixture/protocol.
   require_paper_data_parity: true
 
 model:
   checkpoint_dir: null
   checkpoint_weights: null
   skeleton_joints: 30
-  stats_path: data/bones_seed/stats/soma30-30fps
+  stats_path: ${oc.env:KIMODO_SHARED_ROOT,/home/yezitao/data/yzt/kimodo-repro}/stats/soma30-30fps
   fps: 30
   num_diffusion_steps: 1000
   motion_mask_mode: concat
@@ -40,7 +42,6 @@ model:
   norm_first: false
   input_first_heading_angle: true
   use_text_mask: false
-  # PAPER Sec. 5: the interleaved two-stage denoiser trains end-to-end.
   detach_root_for_body: false
 
 curriculum:
@@ -83,12 +84,14 @@ ema:
   update_every: 10
 
 runtime:
-  output_dir: outputs/kimodo-soma-seed-reproduction
+  output_dir: ${oc.env:KIMODO_LOCAL_ROOT,/home/yezitao/PublicWorkspace/yzt/kimodo-reproduction}/outputs/kimodo-soma-seed-two-gpu
   seed: 1234
   device: auto
   precision: bf16
-  batch_size: 128
-  gradient_accumulation_steps: 1
+  # Conservative starting point: 32 x 2 ranks x 4 accumulation = 256.
+  # Profile real 300-frame batches before raising the local batch.
+  batch_size: 32
+  gradient_accumulation_steps: 4
   log_every: 10
   checkpoint_every: 10000
   milestone_every: 100000
@@ -96,6 +99,6 @@ runtime:
   resume: null
   initial_global_step: 0
   distributed: auto
-  enforce_paper_scale: true
+  enforce_paper_scale: false
   dry_run: false
   max_steps_override: null

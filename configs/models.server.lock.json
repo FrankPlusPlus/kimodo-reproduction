@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "storage_root": "/home/yezitao/data/yzt/kimodo-repro/models",
+  "models": {
+    "official_kimodo_seed": {
+      "repo": "nvidia/Kimodo-SOMA-SEED-v1.1",
+      "revision": "aae3af194322c60d21bc44062b64c3fec912be50",
+      "local_path": "Kimodo-SOMA-SEED-v1.1",
+      "gated": false,
+      "model_safetensors_sha256": "ba8145cd5c8a3340b236fb2dce030ce5b151d1ef2c8491cfd2dc4d5f7c42b177"
+    },
+    "llm2vec_foundation": {
+      "repo": "meta-llama/Meta-Llama-3-8B-Instruct",
+      "revision": "8afb486c1db24fe5011ec46dfbe5b5dccdb575c2",
+      "local_path": "llm2vec/foundation",
+      "gated": true
+    },
+    "llm2vec_mntp_adapter": {
+      "repo": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
+      "revision": "31474e395ada192e8ed1586db6be79fb3b70c9c0",
+      "local_path": "llm2vec/mntp-adapter",
+      "gated": false
+    },
+    "llm2vec_supervised_adapter": {
+      "repo": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
+      "revision": "baa8ebf04a1c2500e61288e7dad65e8ae42601a7",
+      "local_path": "llm2vec/supervised-adapter",
+      "gated": false
+    },
+    "qwen_paraphrase_tool": {
+      "repo": "Qwen/Qwen3-32B",
+      "revision": "9216db5781bf21249d130ec9da846c4624c16137",
+      "local_path": "Qwen3-32B",
+      "gated": false,
+      "expected_repo_bytes": 65540298478,
+      "training_role": "offline augmentation only; not loaded by DDPM/FM training"
+    }
+  }
+}

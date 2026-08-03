@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import shutil
 
 import numpy as np
 import pytest
@@ -217,3 +218,67 @@ def test_manifest_sidecar_does_not_claim_unavailable_paper_augmentations(
             normalize=False,
             require_paper_data_parity=True,
         )
+
+
+def test_manifest_uses_canonical_30fps_for_offline_motion_cache(
+    training_fixture, tmp_path
+):
+    metadata = tmp_path / "cache-metadata.csv"
+    with metadata.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "filename",
+                "take_date",
+                "move_soma_uniform_path",
+                "content_natural_desc_1",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "filename": "motion",
+                "take_date": "230101",
+                "move_soma_uniform_path": "soma_uniform/bvh/230101/motion.bvh",
+                "content_natural_desc_1": "A person walks.",
+            }
+        )
+    split = tmp_path / "cache-split.txt"
+    split.write_text("230101/motion\n", encoding="utf-8")
+    cache = tmp_path / "cache" / "230101"
+    cache.mkdir(parents=True)
+    shutil.copy2(training_fixture["motion"], cache / "motion.npz")
+
+    def args(fps):
+        return argparse.Namespace(
+            metadata=str(metadata),
+            temporal_labels=None,
+            split_file=str(split),
+            dataset_root=str(tmp_path),
+            motion_cache_root=str(cache.parent),
+            motion_cache_fps=fps,
+            skeleton="soma_uniform",
+            output=str(tmp_path / f"cached-{fps}.jsonl"),
+            split_name="train",
+            source_fps=120.0,
+            full_repeats=1,
+            event_repeats=0,
+            combined_event_repeats=0,
+            allow_missing=False,
+        )
+
+    build_manifest(args(30.0))
+    manifest = tmp_path / "cached-30.0.jsonl"
+    assert json.loads(manifest.read_text(encoding="utf-8"))["source_fps"] == 30.0
+    dataset = MotionManifestDataset(
+        manifest,
+        "train",
+        KimodoMotionRep(build_skeleton(30), fps=30, stats_path=None),
+        min_frames=2,
+        require_cached_text=False,
+        normalize=False,
+        augment=False,
+    )
+    assert dataset[0]["length"] == 8
+    with pytest.raises(ValueError, match="fixed to 30 fps"):
+        build_manifest(args(120.0))

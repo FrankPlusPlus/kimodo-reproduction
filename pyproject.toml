@@ -59,6 +59,7 @@ kimodo_compute_stats = "kimodo.training.stats_cli:main"
 kimodo_cache_text = "kimodo.training.text_cache_cli:main"
 kimodo_build_manifest = "kimodo.training.manifest_cli:main"
 kimodo_create_smoke_fixture = "kimodo.training.smoke_fixture_cli:main"
+kimodo_reference_inventory = "kimodo.training.reference_inventory_cli:main"
 
 [tool.setuptools]
 include-package-data = true

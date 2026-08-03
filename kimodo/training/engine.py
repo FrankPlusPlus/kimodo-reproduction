@@ -159,7 +159,7 @@ def build_training_dataset(config, motion_rep):
 
 def validate_paper_runtime_scale(config, context: DistributedContext) -> None:
     """Enforce the paper's disclosed 16-rank/global-batch-2048 training scale."""
-    if not config.paper_method_strict:
+    if not config.paper_method_strict or not config.runtime.enforce_paper_scale:
         return
     effective_global_batch = (
         context.world_size
@@ -187,6 +187,33 @@ class KimodoTrainer:
         validate_paper_runtime_scale(config, self.context)
         seed_everything(config.runtime.seed, self.context.rank)
         self.output_dir = Path(config.runtime.output_dir).expanduser().resolve()
+        output_error = None
+        if self.context.is_main and not config.runtime.resume:
+            if self.output_dir.exists() and (
+                not self.output_dir.is_dir() or next(self.output_dir.iterdir(), None) is not None
+            ):
+                output_error = (
+                    f"fresh training output_dir is not empty: {self.output_dir}; "
+                    "choose a new directory or set runtime.resume to an exact checkpoint"
+                )
+        if self.context.world_size > 1:
+            payload = [output_error]
+            dist.broadcast_object_list(payload, src=0)
+            output_error = payload[0]
+        if output_error is not None:
+            raise FileExistsError(output_error)
+        # Validate provenance before allocating the 283M-parameter model and
+        # optimizer. Rank zero performs the filesystem work once; peers wait
+        # for the compact result.
+        if self.context.is_main:
+            provenance = collect_provenance(config, self.project_root, context=self.context)
+        else:
+            provenance = None
+        if self.context.world_size > 1:
+            payload = [provenance]
+            dist.broadcast_object_list(payload, src=0)
+            provenance = payload[0]
+        self.provenance = provenance
         self.model = build_trainable_denoiser(config.model, config.curriculum, self.context.device)
         validate_model_contract(self.model, config.model)
         self.model.train()
@@ -204,15 +231,6 @@ class KimodoTrainer:
         self.optimizer = build_optimizer(self.model, config.optimizer)
         self.ema = ExponentialMovingAverage(bare, config.ema.decay) if config.ema.enabled else None
         self.scaler = torch.amp.GradScaler("cuda", enabled=config.runtime.precision == "fp16")
-        if self.context.is_main:
-            provenance = collect_provenance(config, self.project_root)
-        else:
-            provenance = None
-        if self.context.world_size > 1:
-            payload = [provenance]
-            dist.broadcast_object_list(payload, src=0)
-            provenance = payload[0]
-        self.provenance = provenance
         protected_steps = {config.curriculum.phase1_steps, config.total_steps}
         if config.runtime.milestone_every:
             protected_steps.update(

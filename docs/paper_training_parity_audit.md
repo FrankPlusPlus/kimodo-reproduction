@@ -98,7 +98,7 @@
 
 已经有单元/集成证据覆盖：Figure 9 两阶段 tensor 数据流和梯度、DDPM forward 公式、Eq. (1) loss/权重、五类约束、phase/mix 频率、重采样、stats 全覆盖、严格 manifest gate、tiny 两阶段训练、单机与 2-rank resume、官方 checkpoint strict load。
 
-最终集成自检为 `42 passed, 1 skipped`，官方 1.1 GB checkpoint gate 单独为 `2 passed`。独立 verifier 已在最终文件状态上复跑严格配置门禁和完整测试套件，并将“论文明确训练方法的严格代码门禁与文档披露”审批为 `PASS`；论文完整数据、算力与私有评测实验仍为 `BLOCKED/NOT-TESTED`。
+最终集成自检为 `50 passed, 1 skipped`，官方 1.1 GB checkpoint gate 单独为 `2 passed`。独立 verifier 已在最终文件状态上复跑严格配置门禁和完整测试套件，并将“论文明确训练方法的严格代码门禁与文档披露”审批为 `PASS`；论文完整数据、算力与私有评测实验仍为 `BLOCKED/NOT-TESTED`。严格 manifest gate 只校验自声明 schema、hash 与 provenance，不能证明未公开 prompt、mixture 或 transition 协议与官方私有 recipe 相同。
 
 以下仍不能标为 `verified`：
 

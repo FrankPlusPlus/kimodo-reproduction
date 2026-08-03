@@ -51,12 +51,13 @@ def _is_sha256(value: Any) -> bool:
 
 
 def validate_paper_data_parity_manifest(path: str | Path) -> dict[str, Any]:
-    """Fail closed unless a manifest explicitly proves the paper's data recipe.
+    """Fail closed unless required augmentation rows have auditable provenance.
 
     The released BONES-SEED inputs cannot satisfy this gate by themselves.  A
     separately generated manifest must include the Qwen paraphrase and stitched
-    transition artifacts plus their generator/checkpoint provenance.  This
-    validates provenance/schema, not semantic quality of generated assets.
+    transition artifacts plus their generator/checkpoint provenance. This is
+    only a self-consistency/schema gate: it cannot prove the unpublished prompt,
+    sampling mixture, or transition protocol matches NVIDIA's private recipe.
     """
     manifest_path = Path(path).expanduser().resolve()
     sidecar_path = _manifest_sidecar_path(manifest_path)
@@ -182,6 +183,16 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
     entries: list[ManifestEntry] = []
     seen_ids: set[str] = set()
     seen_motion_split: dict[Path, str] = {}
+    # Large manifests repeat one motion across captions/events and one text
+    # embedding across duplicate descriptions. Avoid millions of redundant NFS
+    # metadata operations while retaining fail-closed path validation.
+    file_exists: dict[Path, bool] = {}
+
+    def is_file_cached(path: Path) -> bool:
+        if path not in file_exists:
+            file_exists[path] = path.is_file()
+        return file_exists[path]
+
     with manifest_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
@@ -207,9 +218,9 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
             if split is not None and entry_split != split:
                 continue
             embedding_path = _resolve_path(base, raw.get("text_embedding"))
-            if not motion_path.is_file():
+            if not is_file_cached(motion_path):
                 raise FileNotFoundError(f"Motion file does not exist: {motion_path}")
-            if embedding_path is not None and not embedding_path.is_file():
+            if embedding_path is not None and not is_file_cached(embedding_path):
                 raise FileNotFoundError(f"Text embedding does not exist: {embedding_path}")
             entries.append(
                 ManifestEntry(

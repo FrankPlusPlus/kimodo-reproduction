@@ -22,6 +22,8 @@ class LLM2VecEncoder:
         device: str = "auto",
         base_revision: str | None = None,
         peft_revision: str | None = None,
+        foundation_model_name_or_path: str | None = None,
+        foundation_revision: str | None = None,
     ) -> None:
         torch_dtype = getattr(torch, dtype)
         self.llm_dim = llm_dim
@@ -31,6 +33,10 @@ class LLM2VecEncoder:
         if "TEXT_ENCODERS_DIR" in os.environ:
             base_model_name_or_path = os.path.join(os.environ["TEXT_ENCODERS_DIR"], base_model_name_or_path)
             peft_model_name_or_path = os.path.join(os.environ["TEXT_ENCODERS_DIR"], peft_model_name_or_path)
+            if foundation_model_name_or_path is not None:
+                foundation_model_name_or_path = os.path.join(
+                    os.environ["TEXT_ENCODERS_DIR"], foundation_model_name_or_path
+                )
 
         self.model = LLM2Vec.from_pretrained(
             base_model_name_or_path=base_model_name_or_path,
@@ -39,6 +45,8 @@ class LLM2VecEncoder:
             cache_dir=cache_dir,
             base_revision=base_revision,
             peft_revision=peft_revision,
+            foundation_model_name_or_path=foundation_model_name_or_path,
+            foundation_revision=foundation_revision,
         )
 
         env_device = os.environ.get("TEXT_ENCODER_DEVICE")

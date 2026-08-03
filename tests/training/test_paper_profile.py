@@ -23,6 +23,8 @@ def test_production_profile_enforces_paper_method_defaults():
     assert config.paper_method_strict is True
     assert config.model.detach_root_for_body is False
     assert config.data.require_paper_data_parity is True
+    assert config.data.reference_verification == "inventory"
+    assert config.runtime.enforce_paper_scale is True
 
     config.model.detach_root_for_body = True
     with pytest.raises(ValueError, match="paper_method_strict rejects"):
@@ -47,6 +49,68 @@ def test_strict_profile_rejects_heading_step_and_runtime_scale_deviations():
     with pytest.raises(RuntimeError, match="world_size=1"):
         training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=1))
     training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=16))
+
+    # Hardware scale is an explicit, independently recorded exception. It
+    # must not disable any of the method-level strict validation above.
+    config.runtime.enforce_paper_scale = False
+    training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=2))
+    config.model.input_first_heading_angle = False
+    with pytest.raises(ValueError, match="input_first_heading_angle"):
+        config.validate(require_paths=False)
+
+
+def test_two_gpu_profile_only_relaxes_runtime_scale():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_two_gpu.yaml",
+        ["runtime.dry_run=true"],
+    )
+    assert config.paper_method_strict is True
+    assert config.runtime.enforce_paper_scale is False
+    assert config.runtime.batch_size == 32
+    assert config.runtime.gradient_accumulation_steps == 4
+    assert config.data.require_paper_data_parity is True
+    assert config.data.reference_verification == "inventory"
+    assert config.model.detach_root_for_body is False
+    training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=2))
+
+
+def test_public_two_gpu_profile_differs_only_in_paths_and_unavailable_data_claims():
+    strict = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_two_gpu.yaml",
+        ["runtime.dry_run=true"],
+    )
+    public = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_public_two_gpu.yaml",
+        ["runtime.dry_run=true"],
+    )
+    assert public.paper_method_strict is False
+    assert public.data.require_paper_data_parity is False
+    assert public.runtime.enforce_paper_scale is False
+    assert public.runtime.batch_size * 2 * public.runtime.gradient_accumulation_steps == 256
+
+    def flatten(value, prefix=""):
+        result = {}
+        for key, item in value.items():
+            name = f"{prefix}.{key}" if prefix else key
+            if isinstance(item, dict):
+                result.update(flatten(item, name))
+            else:
+                result[name] = item
+        return result
+
+    strict_values = flatten(strict.to_dict())
+    public_values = flatten(public.to_dict())
+    differences = {
+        key for key in strict_values if strict_values[key] != public_values[key]
+    }
+    assert differences == {
+        "paper_method_strict",
+        "data.manifest",
+        "data.reference_inventory",
+        "data.require_paper_data_parity",
+        "model.stats_path",
+        "runtime.output_dir",
+    }
 
 
 def test_engine_forwards_strict_paper_data_policy(monkeypatch):
