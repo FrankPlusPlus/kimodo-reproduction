@@ -176,6 +176,18 @@ export KIMODO_LOCAL_ROOT=/home/yezitao/PublicWorkspace/yzt/kimodo-reproduction
 scripts/train_two_gpu_seed.sh
 ```
 
+首次准备可用一个可恢复入口依次生成 text cache、stats、reference inventory，然后直接
+调用同一个两卡 launcher。已有阶段必须通过 provenance 校验才会复用：
+
+```bash
+export CUDA_VISIBLE_DEVICES=<allocated-device-a>,<allocated-device-b>
+scripts/prepare_and_train_two_gpu_seed.sh
+```
+
+只准备资产、不启动训练时设置 `KIMODO_PREPARE_ONLY=1`。这个入口仍是公开 BONES-SEED
+engineering reproduction；Qwen paraphrase 与跨 motion transition 的论文私有 recipe
+没有公开，不能通过“一键”脚本补造或宣称完整复现。
+
 launcher 默认使用可训练的公开数据 engineering profile：它显式设置
 `paper_method_strict=false`、`data.require_paper_data_parity=false`，但模型、loss、optimizer、
 两阶段 curriculum 和 EMA 数值均与 strict two-GPU profile 相同。它不能标成完整论文数据
