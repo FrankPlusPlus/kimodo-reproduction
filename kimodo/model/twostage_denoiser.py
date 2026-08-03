@@ -20,16 +20,16 @@ class TwostageDenoiser(nn.Module):
         motion_rep,
         motion_mask_mode,
         ckpt_path: Optional[str] = None,
-        detach_root_for_body: bool = False,
+        detach_root_for_body: bool = True,
         **kwargs,
     ):
         """Build root and body transformer blocks; optionally load checkpoint from ckpt_path."""
         super().__init__()
         self.motion_rep = motion_rep
         self.motion_mask_mode = motion_mask_mode
-        # The paper explicitly describes the interleaved two-stage denoiser as
-        # being trained end-to-end.  Keep detaching available only as a public-
-        # code compatibility ablation; it must not be the model-level default.
+        # Match the released training branch: both stages are optimized in one
+        # interleaved forward/update, while the root-to-body conversion is
+        # detached.  False is an explicit gradient-coupled ablation.
         self.detach_root_for_body = bool(detach_root_for_body)
 
         # it should be a dual motion_rep

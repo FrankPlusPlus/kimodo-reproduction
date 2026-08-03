@@ -59,11 +59,10 @@ class ModelConfig:
     norm_first: bool = False
     input_first_heading_angle: bool = True
     use_text_mask: bool = False
-    # The paper explicitly says that the interleaved two-stage denoiser trains
-    # end-to-end, so body loss must reach the root stage through the predicted
-    # local-root condition.  True remains available only as a released-code
-    # compatibility ablation.
-    detach_root_for_body: bool = False
+    # The released implementation jointly trains both stages but explicitly
+    # detaches the root-to-body conversion in training mode.  Allowing body loss
+    # through the bridge remains available as a gradient-coupled ablation.
+    detach_root_for_body: bool = True
 
 
 @dataclass
@@ -239,7 +238,6 @@ class TrainingConfig:
                 "data.fps": (self.data.fps, 30),
                 "data.max_seconds": (self.data.max_seconds, 10.0),
                 "data.require_paper_data_parity": (self.data.require_paper_data_parity, True),
-                "model.detach_root_for_body": (self.model.detach_root_for_body, False),
                 "model.latent_dim": (self.model.latent_dim, 1024),
                 "model.num_layers": (self.model.num_layers, 16),
                 "model.num_heads": (self.model.num_heads, 8),

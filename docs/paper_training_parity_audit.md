@@ -10,7 +10,7 @@
 
 ## 2. 本轮发现并修复的问题
 
-1. **两阶段梯度语义**：论文 Sec. 5 p.12 明确说 interleaved two-stage denoiser `trains end-to-end`。paper profile 已从 `detach_root_for_body=true` 改为 `false`；body loss 现在能经预测 local-root 条件反传到 root stage。`true` 仅保留为公开代码兼容消融。
+1. **两阶段梯度语义**：论文 Sec. 5 p.12 说 interleaved two-stage denoiser `trains end-to-end`，但官方公开训练代码明确在 root→body conversion 使用 `no_grad + detach`。生产 profile 默认 `detach_root_for_body=true`，把 end-to-end 解释为两个 stage 在同一 forward/loss/update 中联合训练；`false` 是梯度耦合消融。
 2. **两阶段计算缺少直接证据**：新增 Figure 9 tensor-level test，逐项检查约束覆盖、mask 拼接、完整输入进入 root stage、global-root 转 local-root、imputed noisy body 进入 body stage、最终 root/body 拼接及端到端梯度。
 3. **数据增强可被静默遗漏**：生产配置新增 `require_paper_data_parity=true` 并接入 trainer。缺少 Qwen paraphrase、stitched transition 或其 provenance 时 fail closed。
 4. **manifest provenance 太弱**：普通构建器逐行记录原始文本/时间标签来源，sidecar 明确列出缺失增强；严格 gate 校验 manifest SHA-256、Qwen3-32B 归属、prompt hash、两条不同 source motion、source time ranges、transition checkpoint hash 和 transition frame range。
@@ -42,7 +42,7 @@
 | STAGE-04 | predicted local root 与 `x_in` body features进入 body stage | body input contract | `VERIFIED` tensor oracle |
 | STAGE-05 | 最终输出 concat predicted global root 与 predicted body | output contract | `VERIFIED` |
 | STAGE-06 | 两个 transformer，各 16 layers、8 heads、latent 1024 | production config + official strict-load shape | `VERIFIED`；FFN/GELU/post-norm 为 `ARTIFACT` |
-| STAGE-07 | interleaved two-stage end-to-end training | paper profile `detach_root_for_body=false` | `VERIFIED`，含 body-loss-to-root gradient test |
+| STAGE-07 | interleaved two-stage joint training | production profile `detach_root_for_body=true` | `VERIFIED-CODE`；`false` 梯度耦合路径另有测试 |
 | DIFF-01 | DDPM；每步均匀采样 `t` 和 Gaussian noise；预测 clean `x0` | engine + `Diffusion.q_sample` | `VERIFIED` formula oracle |
 | DIFF-02 | `T=1000` | config validation 固定 1000 | `VERIFIED` |
 | LOSS-01 | 六项 representation Smooth-L1 + FK Smooth-L1 | `KimodoLoss` | `VERIFIED` |
@@ -81,7 +81,7 @@
 `configs/training/kimodo_soma_seed_reproduction.yaml` 是严格方法 profile：
 
 - `paper_method_strict=true`，覆盖论文明确数值和语义的 override 会被配置校验拒绝；
-- `model.detach_root_for_body=false`；
+- `model.detach_root_for_body=true`；
 - `data.require_paper_data_parity=true`；
 - 缺少 paper augmentations 或 provenance 时拒绝训练。
 - 运行时必须是 16 ranks，且 `world_size * local_batch * accumulation = 2048`；strict profile 禁止用 `max_steps_override` 缩短论文 1M-step 训练。

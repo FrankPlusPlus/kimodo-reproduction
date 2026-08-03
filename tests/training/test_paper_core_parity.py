@@ -36,7 +36,7 @@ class _BodyStage(nn.Module):
         return x[..., :1].expand(*x.shape[:2], self.body_dim)
 
 
-def test_two_stage_paper_dataflow_and_default_end_to_end(training_fixture):
+def test_two_stage_gradient_coupled_ablation_dataflow(training_fixture):
     """Fig. 9 / Sec. 4.2: impute -> root -> local root -> body -> concat."""
     motion_rep = KimodoMotionRep(
         build_skeleton(30), fps=30, stats_path=str(training_fixture["stats"])
@@ -56,6 +56,7 @@ def test_two_stage_paper_dataflow_and_default_end_to_end(training_fixture):
         norm_first=False,
         num_text_tokens_override=2,
         input_first_heading_angle=True,
+        detach_root_for_body=False,
     )
     assert model.detach_root_for_body is False
 
@@ -163,6 +164,25 @@ def test_eq1_has_all_six_direct_terms_exact_weights_and_valid_frame_reduction(
         prediction[..., motion_rep.slice_dict[feature_name]] = 0.5
         losses = criterion(prediction, target, valid)
         assert torch.allclose(losses[term_name], torch.tensor(0.125))
+
+
+def test_bf16_variable_length_frame_count_is_not_quantized(training_fixture):
+    motion_rep = KimodoMotionRep(
+        build_skeleton(30), fps=30, stats_path=str(training_fixture["stats"])
+    )
+    criterion = KimodoLoss(
+        motion_rep,
+        LossConfig(direct_feature_domain="normalized", smooth_l1_beta=1.0),
+    )
+    prediction = torch.zeros(1, 258, motion_rep.motion_rep_dim, dtype=torch.bfloat16)
+    target = torch.zeros_like(prediction)
+    valid = torch.zeros(1, 258, dtype=torch.bool)
+    valid[:, :257] = True
+
+    losses = criterion(prediction, target, valid)
+
+    assert losses.valid_frame_count.dtype == torch.int64
+    assert losses.valid_frame_count.item() == 257
 
 
 def test_paper_phase_dropout_values_reach_attention_and_embedding_dropout():

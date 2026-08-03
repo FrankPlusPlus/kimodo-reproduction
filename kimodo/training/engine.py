@@ -384,7 +384,7 @@ class KimodoTrainer:
             self.epoch += completed_epochs
             self.batch_in_epoch = skip_batches
         started = time.time()
-        accumulated_valid_frames = 0.0
+        accumulated_valid_frames = 0
         accumulated_loss_sums: dict[str, torch.Tensor] = {}
         curriculum_counts = {
             "samples": 0.0,
@@ -494,7 +494,7 @@ class KimodoTrainer:
                 # making accumulation/DDP equivalent to one global batch.
                 with self._observed_section("backward_and_ddp"):
                     self.scaler.scale(losses.frame_sums["total"]).backward()
-                accumulated_valid_frames += float(losses.valid_frame_count.detach().item())
+                accumulated_valid_frames += int(losses.valid_frame_count.detach().item())
                 for name, value in losses.frame_sums.items():
                     detached = value.detach().float()
                     accumulated_loss_sums[name] = accumulated_loss_sums.get(
@@ -510,7 +510,7 @@ class KimodoTrainer:
                     global_valid_frames = torch.tensor(
                         accumulated_valid_frames,
                         device=self.context.device,
-                        dtype=torch.float32,
+                        dtype=torch.int64,
                     )
                     if self.context.world_size > 1:
                         dist.all_reduce(global_valid_frames, op=dist.ReduceOp.SUM)
@@ -529,7 +529,7 @@ class KimodoTrainer:
                     self.optimizer.zero_grad(set_to_none=True)
                 step_skipped = self.scaler.is_enabled() and self.scaler.get_scale() < previous_scale
                 if step_skipped:
-                    accumulated_valid_frames = 0.0
+                    accumulated_valid_frames = 0
                     accumulated_loss_sums.clear()
                     for name in curriculum_counts:
                         curriculum_counts[name] = 0.0
@@ -583,7 +583,7 @@ class KimodoTrainer:
                     )
                     self.logger.write(record)
 
-                accumulated_valid_frames = 0.0
+                accumulated_valid_frames = 0
                 accumulated_loss_sums.clear()
                 for name in curriculum_counts:
                     curriculum_counts[name] = 0.0

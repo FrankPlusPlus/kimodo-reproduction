@@ -21,14 +21,15 @@ def test_production_profile_enforces_paper_method_defaults():
         ["runtime.dry_run=true"],
     )
     assert config.paper_method_strict is True
-    assert config.model.detach_root_for_body is False
+    assert config.model.detach_root_for_body is True
     assert config.data.require_paper_data_parity is True
     assert config.data.reference_verification == "inventory"
     assert config.runtime.enforce_paper_scale is True
 
-    config.model.detach_root_for_body = True
-    with pytest.raises(ValueError, match="paper_method_strict rejects"):
-        config.validate(require_paths=False)
+    # The paper does not specify cross-bridge autograd, so strict paper values
+    # do not reject the explicit gradient-coupled ablation.
+    config.model.detach_root_for_body = False
+    config.validate(require_paths=False)
 
 
 def test_strict_profile_rejects_heading_step_and_runtime_scale_deviations():
@@ -70,7 +71,7 @@ def test_two_gpu_profile_only_relaxes_runtime_scale():
     assert config.runtime.gradient_accumulation_steps == 8
     assert config.data.require_paper_data_parity is True
     assert config.data.reference_verification == "inventory"
-    assert config.model.detach_root_for_body is False
+    assert config.model.detach_root_for_body is True
     training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=2))
 
 

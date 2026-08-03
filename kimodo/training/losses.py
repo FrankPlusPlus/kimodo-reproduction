@@ -98,7 +98,10 @@ class KimodoLoss:
             direct_prediction = prediction
             direct_target = target
 
-        valid_frame_count = valid_frames.sum().to(dtype=prediction.dtype).clamp_min(1)
+        # Counts are discrete normalization metadata, not model activations.
+        # Keeping them in int64 prevents BF16 from rounding variable-length
+        # batches (for example 257 valid frames becomes 256 in BF16).
+        valid_frame_count = valid_frames.sum(dtype=torch.int64).clamp_min(1)
         frame_sums: dict[str, torch.Tensor] = {}
         for term_name, feature_name in self.FEATURE_TERMS:
             feature_slice = self.motion_rep.slice_dict[feature_name]

@@ -245,10 +245,10 @@ For performance, a training constraint sampler may generate the normalized tenso
 
 ## 9. Two-stage forward and `self.training`
 
-The root network first predicts normalized global root. That prediction is converted to normalized local-root features and fed to the body network. The initial upstream snapshot detached this bridge in training mode, but the paper explicitly describes end-to-end training. The current reconstruction therefore exposes `detach_root_for_body`:
+The root network first predicts normalized global root. That prediction is converted to normalized local-root features and fed to the body network. The released implementation explicitly detaches this bridge in training mode, while the paper describes the two stages as interleaved/end-to-end without specifying cross-bridge autograd. The reconstruction therefore exposes `detach_root_for_body`:
 
-- paper profile: `detach_root_for_body=false`; body loss can update `root_model` through the local-root bridge;
-- upstream-compatibility ablation: `detach_root_for_body=true`; conversion is detached during training;
+- released-code/paper-compatible profile: `detach_root_for_body=true`; conversion is detached during joint training;
+- gradient-coupled ablation: `detach_root_for_body=false`; body loss can update `root_model` through the local-root bridge;
 - eval mode keeps the bridge differentiable for guidance.
 
 Consequences:
@@ -461,7 +461,7 @@ These tests are required before long training:
 3. **Motion conversion test:** known rotation/root sequence to normalized features and inverse; padded batch equals per-sample valid prefixes; length-1 input is rejected.
 4. **Diffusion test:** fixed generator makes `q_sample` deterministic; manual formula equals implementation; `t` shape/dtype validation; training target is `x0`.
 5. **Forward-shape test:** constrained and unconstrained calls return `[B,T,D]` for every supported predictor skeleton.
-6. **Gradient-partition test:** in paper mode body loss reaches `root_model`; in `detach=true` compatibility mode it cannot; eval-mode bridge remains differentiable outside inference mode.
+6. **Gradient-partition test:** in the released-code profile (`detach=true`) body loss cannot reach `root_model`; in the gradient-coupled ablation (`detach=false`) it can; eval-mode bridge remains differentiable outside inference mode.
 7. **Mask test:** corrupting padded motion/text values does not alter valid predictions under the chosen official config; all loss terms are zero on padding.
 8. **Text test:** provider returns `[B,L,E]`; local encoder is frozen; dropped/empty text has zero features and zero valid length; cache key changes with revision/dtype/sanitizer.
 9. **Constraint parity tests:** root-only, root+heading, full-body, and each end-effector family; compare direct sampler tensors bit-for-bit/tolerance with `create_conditions_from_constraints_batched`; verify no constraints.

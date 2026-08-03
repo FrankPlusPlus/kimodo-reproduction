@@ -42,7 +42,8 @@ model:
   norm_first: false
   input_first_heading_angle: true
   use_text_mask: false
-  detach_root_for_body: false
+  # CODE default; false is an explicit gradient-coupled ablation.
+  detach_root_for_body: true
 
 curriculum:
   phase1_steps: 500000

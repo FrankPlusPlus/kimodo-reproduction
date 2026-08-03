@@ -314,9 +314,9 @@ SOMA30 + concat mask 的 shape 合同：
 
 ### 6.2 公开实现与论文的梯度差异
 
-论文 Sec. 5 p.12 说 interleaved two-stage denoiser “trains end-to-end”。初始上游公开实现的训练分支曾在 global→local conversion 使用 `no_grad` 并 `detach`；当前复现已把该行为变成显式兼容开关，而不是训练态的无条件行为。`detach_root_for_body=true` 时 body loss 不经 local-root condition 反传到 root stage；`false` 时保持端到端梯度。
+论文 Sec. 5 p.12 说 interleaved two-stage denoiser “trains end-to-end”，但没有明确规定 body loss 必须穿过 global→local bridge。官方公开实现从初始提交起就在训练态对该 conversion 使用 `no_grad` 并 `detach`；两个 stage 仍在同一 forward、总 loss 和 optimizer step 中联合训练。`detach_root_for_body=true` 时 body loss 不经 local-root condition 反传到 root stage；`false` 时使用梯度耦合 bridge。
 
-**实现决定 [PAPER]**：本复现的 paper profile 默认 `detach_root_for_body=false`，使 body loss 能经预测 local-root 条件更新 root stage；`true` 保留为 `[CODE]` 兼容消融。这里的“paper profile”表示遵守论文明确语义，不代表已知 NVIDIA 私有 trainer 的 autograd 实现。
+**实现决定 [CODE + PAPER-COMPATIBLE]**：生产 profile 默认 `detach_root_for_body=true`，匹配作者公开训练代码，并把论文 “end-to-end” 解释为联合而非分阶段训练。`false` 保留为论文措辞的字面强解释/梯度耦合消融；建议小规模 A/B，但不得把任一私有 trainer 的 autograd 行为宣称为论文明确事实。
 
 ### 6.3 Loss
 
@@ -459,7 +459,7 @@ Family-specific defaults：
 1. **Feature round-trip**：local rotation/root → feature → inverse，root/joint rotation/position 误差在数值容差内；SOMA30 输出维度 369。
 2. **Diffusion identity tests**：`q_sample(t=0)`、schedule monotonic、DDIM shape/dtype/device；固定 seed 输出 deterministic。
 3. **Constraint imputation tests**：每种 mask 只覆盖预期 feature；full-body position 自动含 root reference；无 constraint 与零 mask 等价。
-4. **Gradient tests**：paper profile 默认 `detach=false`，body loss 必须能经 local-root bridge 更新 root stage；root loss也必须更新 root stage；`detach=true` 兼容消融中 body loss不得经该 bridge 更新 root stage。
+4. **Gradient tests**：生产 profile 默认 `detach=true`，body loss 不得经 local-root bridge 更新 root stage，而 root loss仍须更新 root stage；`detach=false` 梯度耦合消融中 body loss必须能穿过 bridge。
 5. **CFG dropout coverage**：Phase 2 长期统计接近 joint 81%、constraint-only 9%、text-only 9%、unconditional 1%。
 6. **Resume equivalence**：同 seed 连续 100 step 与 50+resume+50 的权重/optimizer/EMA 在容差内一致。
 7. **Overfit smoke**：32 clips 可把 reconstruction/FK loss 显著压低，并在约束 frame 接近 GT。

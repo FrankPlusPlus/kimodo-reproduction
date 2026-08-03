@@ -40,8 +40,9 @@ model:
   norm_first: false
   input_first_heading_angle: true
   use_text_mask: false
-  # PAPER Sec. 5: the interleaved two-stage denoiser trains end-to-end.
-  detach_root_for_body: false
+  # CODE: released training detaches this bridge. PAPER "end-to-end" is
+  # interpreted as joint interleaved training, not specified cross-bridge autograd.
+  detach_root_for_body: true
 
 curriculum:
   phase1_steps: 500000

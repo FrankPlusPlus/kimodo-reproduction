@@ -76,7 +76,7 @@ model sha256 before/after:
 - direct loss 的 physical/normalized 域、SmoothL1 β、精确 reduction 与 FK 坐标/root 约定；
 - Kimodo 实际 Adam-atan2 λ/betas/weight decay/warmup/scheduler；
 - 训练精度、gradient clipping、seed；
-- dropout 覆盖范围、Phase 边界 optimizer/EMA 行为；root→body 在 paper profile 中按论文端到端语义设为不 detach，公开代码 detach 仅作兼容消融；
+- dropout 覆盖范围、Phase 边界 optimizer/EMA 行为；root→body 生产 profile 按公开训练代码设为 detach，论文 “end-to-end” 不足以确定私有 trainer 是否允许跨 bridge 梯度；
 - 官方 stats、clip/crop、caption/timeline、原文/paraphrase/stitch 的混合分布；
 - Qwen3 paraphrase 与 transition stitching recipe；
 - 五类 constraint 的 family/关键帧/dense span/heading/冲突精确分布；

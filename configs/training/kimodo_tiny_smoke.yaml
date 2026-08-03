@@ -32,7 +32,7 @@ model:
   norm_first: false
   input_first_heading_angle: true
   use_text_mask: false
-  detach_root_for_body: false
+  detach_root_for_body: true
 curriculum:
   phase1_steps: 1
   phase2_steps: 1

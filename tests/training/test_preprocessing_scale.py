@@ -345,3 +345,52 @@ def test_stats_loads_each_motion_once_without_dropping_distinct_spans(
     assert metadata["preprocessing"]["stats_window_count"] == 5
     # Full clip [3, 3, 2] plus two distinct 3-frame temporal spans.
     assert metadata["frame_counts"] == {"global_root": 14, "local_root": 14, "body": 14}
+
+
+def test_stats_worker_count_preserves_numeric_arrays(training_fixture, tmp_path):
+    manifest = tmp_path / "train.jsonl"
+    manifest.write_text(
+        json.dumps(
+            {
+                "id": "clip",
+                "motion": str(training_fixture["motion"]),
+                "text": "A person moves.",
+                "split": "train",
+                "source_fps": 30,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    outputs = []
+    for workers in (1, 2):
+        output = tmp_path / f"stats-{workers}"
+        stats_cli.compute_stats(
+            argparse.Namespace(
+                manifest=str(manifest),
+                output=str(output),
+                split="train",
+                skeleton_joints=30,
+                fps=30,
+                seed=1234,
+                max_seconds=10.0,
+                num_workers=workers,
+            )
+        )
+        outputs.append(output)
+
+    for group in ("global_root", "local_root", "body"):
+        for filename in ("mean.npy", "std.npy"):
+            single = np.load(outputs[0] / group / filename, allow_pickle=False)
+            parallel = np.load(outputs[1] / group / filename, allow_pickle=False)
+            assert np.array_equal(single, parallel)
+
+    single_metadata = json.loads(
+        (outputs[0] / "stats.metadata.json").read_text(encoding="utf-8")
+    )
+    parallel_metadata = json.loads(
+        (outputs[1] / "stats.metadata.json").read_text(encoding="utf-8")
+    )
+    assert single_metadata["preprocessing"]["worker_processes"] == 1
+    assert parallel_metadata["preprocessing"]["worker_processes"] == 2

@@ -138,7 +138,7 @@ stats/
   stats.metadata.json          # manifest hash、唯一 clip/帧数、heading 假设
 ```
 
-论文未披露 stats 拟合方法。当前工程默认对每个唯一 motion/time-span 枚举全部不重叠的最长 10 秒窗口，每窗独立做首帧 root 归零和确定性均匀 heading；不足两帧的尾窗会与前窗重新平衡。该策略覆盖全部训练帧且可重复，但必须标成 `[DEFAULT]`。不同 motion 可由多个 CPU worker 并行处理；每个 motion 的 float64 moments 始终按 manifest motion 顺序归并，所以 worker 数量不改变输出。共享服务器默认只使用 16 个进程，可通过 `KIMODO_STATS_WORKERS` 调整。
+论文未披露 stats 拟合方法。当前工程默认对每个唯一 motion/time-span 枚举全部不重叠的最长 10 秒窗口，每窗独立做首帧 root 归零和确定性均匀 heading；不足两帧的尾窗会与前窗重新平衡。该策略覆盖全部训练帧且可重复，但必须标成 `[DEFAULT]`。不同 motion 可由多个 CPU worker 并行处理；每个 motion 的 float64 moments 始终按 manifest motion 顺序归并，所以 worker 数量不改变六个数值统计数组。`stats.metadata.json` 会如实记录 worker 数，因此整个目录的内容 hash 会不同。共享服务器默认只使用 16 个进程，可通过 `KIMODO_STATS_WORKERS` 调整。
 
 正式训练前需一次性建立并完整校验 manifest 引用清单。`build` 会读取并 SHA-256
 所有唯一 motion、embedding 和来源 sidecar；训练启动只校验 manifest、inventory 与
@@ -259,7 +259,7 @@ local batch、accumulation 和 effective global batch 会写入 provenance。正
 ## 7. 两个必须保留的消融开关
 
 - `loss.direct_feature_domain=physical|normalized`：论文未说明直接六项 loss 的计算域。工程默认 `physical`；FK 始终在物理域。
-- `model.detach_root_for_body=false|true`：论文明确称 interleaved two-stage denoiser 端到端训练，因此 paper profile 默认 `false`；`true` 只保留为公开代码训练分支兼容消融。
+- `model.detach_root_for_body=true|false`：官方公开训练分支在 global→local bridge 使用 `no_grad + detach`；生产 profile 因此默认 `true`。论文的 “end-to-end” 可解释为两阶段在同一 forward/loss/optimizer step 中联合训练，并未明确要求 body loss 穿过 bridge。`false` 保留为梯度耦合消融。
 
 在作者给出信息前，两项都必须写入实验记录，不得倒推成“官方设置”。
 
