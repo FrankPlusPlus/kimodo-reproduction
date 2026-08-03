@@ -73,8 +73,9 @@ benchmark split 位于本仓库 `artifacts/benchmark-metadata/splits/`。复建�
 当前服务器已经有且只应保留一份 `kimodo-fm-prepare-bones` 转换进程；它完成前不要再
 启动第二份转换。完成后的唯一顺序是：构建 `train.raw.jsonl` → LLM2Vec 文本缓存生成
 `train.cached.jsonl` → repro stats/inventory → FM bridge/inventory/stats → 两卡 dry-run/短训。
-Qwen3-32B 下载用于研究未公开的数据增强边界，不阻塞公开 BONES-SEED baseline；
-真正阻塞文本缓存的是 gated Meta-Llama foundation。
+Qwen3-32B 下载用于研究未公开的数据增强边界，不阻塞公开 BONES-SEED baseline。
+LLM2Vec foundation 使用 NousResearch 对论文 Meta-Llama foundation 的公开逐分片等价重发布；
+精确来源、revision 和上游等价哈希记录在 `configs/models.server.lock.json`。
 
 `--full-repeats`、`--event-repeats`、`--combined-event-repeats` 是显式的工程采样权重。论文只说按预设分布混合，却没有公布概率；默认均为 1，不能称为官方比例。构建器同时写入 `train.raw.jsonl.metadata.json`，冻结 metadata、timeline、split 的绝对路径、大小和 SHA-256。跨 motion 的 stitched clips 和 Qwen3-32B paraphrases 也未发布，本实现不会伪造它们。
 
@@ -91,16 +92,19 @@ Qwen3-32B 下载用于研究未公开的数据增强边界，不阻塞公开 BON
   --cache-dir ../kimodo-training-data/text-cache \
   --provider local \
   --foundation-model /home/yezitao/data/yzt/kimodo-repro/models/llm2vec/foundation \
-  --foundation-revision 8afb486c1db24fe5011ec46dfbe5b5dccdb575c2 \
+  --foundation-revision 53346005fb0ef11d3b6a83b12c895cca40156b6c \
   --mntp-model /home/yezitao/data/yzt/kimodo-repro/models/llm2vec/mntp-adapter \
   --mntp-revision 31474e395ada192e8ed1586db6be79fb3b70c9c0 \
   --supervised-model /home/yezitao/data/yzt/kimodo-repro/models/llm2vec/supervised-adapter \
   --supervised-revision baa8ebf04a1c2500e61288e7dad65e8ae42601a7
 ```
 
-foundation `meta-llama/Meta-Llama-3-8B-Instruct` 是 gated 模型。先在浏览器接受
-license，然后在服务器执行 `hf auth login`；不要在聊天中发送 token。两个公开 adapter
-已下载并固定 revision，foundation 是当前唯一授权门禁。
+Meta 原仓库为 gated 且当前账号未获批准。服务器改用
+`NousResearch/Meta-Llama-3-8B-Instruct@53346005...`：四个 BF16 权重分片、
+`config.json` 和 `tokenizer.json` 均与论文所用
+`meta-llama/Meta-Llama-3-8B-Instruct@8afb486c...` 一致。它不是独立训练的新模型，
+仍须遵守 Llama 3 license。两个公开 adapter 保持原 revision；不要改用 GGUF、GPTQ、
+AWQ 或二次微调权重。
 
 如复用官方 text-encoder 服务，可改为 `--provider api --api-url ...`。API 服务自身的模型 revision 必须另行固定并记录。
 
