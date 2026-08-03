@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import multiprocessing
+import threading
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -33,6 +37,13 @@ def _text_cache_args(source, destination, cache_dir):
     )
 
 
+def _hold_output_lock(lock_path, ready, release):
+    with text_cache_cli._exclusive_output_lock(Path(lock_path)):
+        ready.set()
+        if not release.wait(timeout=10):
+            raise RuntimeError("timed out waiting to release test lock")
+
+
 def test_text_cache_streams_equivalent_rows_and_reuses_cache(monkeypatch, tmp_path):
     source = tmp_path / "source.jsonl"
     records = [
@@ -53,10 +64,14 @@ def test_text_cache_streams_equivalent_rows_and_reuses_cache(monkeypatch, tmp_pa
     text_cache_cli.run(_text_cache_args(source, destination, cache_dir))
 
     assert encoder.calls == ["A person walks.", "A person jumps."]
+    metadata = json.loads(
+        destination.with_suffix(".jsonl.metadata.json").read_text(encoding="utf-8")
+    )
+    bound_identity = metadata["encoder"]
     actual = destination.read_text(encoding="utf-8").splitlines()
     expected = []
     for record in records:
-        key = text_cache_cli._cache_key(record["text"], identity)
+        key = text_cache_cli._cache_key(record["text"], bound_identity)
         expected_record = {
             **record,
             "text_embedding": str((cache_dir / f"{key}.npy").resolve()),
@@ -69,10 +84,20 @@ def test_text_cache_streams_equivalent_rows_and_reuses_cache(monkeypatch, tmp_pa
     assert actual == expected
     assert len(list(cache_dir.glob("*.npy"))) == 2
     assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
-    metadata = json.loads(
-        destination.with_suffix(".jsonl.metadata.json").read_text(encoding="utf-8")
-    )
     assert metadata["internal_batch_size"] == 1
+
+    corrupt_key = text_cache_cli._cache_key("A person walks.", bound_identity)
+    (cache_dir / f"{corrupt_key}.npy").write_bytes(b"truncated")
+    second_destination = tmp_path / "derived" / "cached-second.jsonl"
+    second_encoder = _FakeEncoder()
+    monkeypatch.setattr(
+        text_cache_cli,
+        "_build_encoder",
+        lambda args: (second_encoder, identity),
+    )
+    text_cache_cli.run(_text_cache_args(source, second_destination, cache_dir))
+    assert second_encoder.calls == ["A person walks."]
+    assert text_cache_cli._embedding_is_valid(cache_dir / f"{corrupt_key}.npy")
 
 
 def test_text_cache_failure_does_not_publish_partial_manifest(monkeypatch, tmp_path):
@@ -98,6 +123,132 @@ def test_text_cache_failure_does_not_publish_partial_manifest(monkeypatch, tmp_p
     assert not destination.exists()
     assert not destination.with_suffix(".jsonl.metadata.json").exists()
     assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
+
+
+def test_text_cache_interrupted_embedding_write_is_not_reused(monkeypatch, tmp_path):
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps({"id": "a", "text": "A person walks."}) + "\n", encoding="utf-8")
+    destination = tmp_path / "cached.jsonl"
+    cache_dir = tmp_path / "cache"
+    encoder = _FakeEncoder()
+    monkeypatch.setattr(
+        text_cache_cli,
+        "_build_encoder",
+        lambda args: (encoder, "fake-encoder:revision"),
+    )
+
+    def interrupted_save(output, array, *, allow_pickle):
+        output.write(b"partial")
+        raise OSError("injected write failure")
+
+    monkeypatch.setattr(text_cache_cli.np, "save", interrupted_save)
+    with pytest.raises(OSError, match="injected write failure"):
+        text_cache_cli.run(_text_cache_args(source, destination, cache_dir))
+    assert not list(cache_dir.glob("*.npy"))
+    assert not list(cache_dir.glob(".*.tmp"))
+    assert not destination.exists()
+    assert not destination.with_suffix(".jsonl.metadata.json").exists()
+
+
+def test_text_cache_never_publishes_manifest_before_sidecar(monkeypatch, tmp_path):
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps({"id": "a", "text": "A person walks."}) + "\n", encoding="utf-8")
+    destination = tmp_path / "cached.jsonl"
+    encoder = _FakeEncoder()
+    monkeypatch.setattr(
+        text_cache_cli,
+        "_build_encoder",
+        lambda args: (encoder, "fake-encoder:revision"),
+    )
+    monkeypatch.setattr(
+        text_cache_cli,
+        "_atomic_write_json",
+        lambda path, payload: (_ for _ in ()).throw(OSError("injected sidecar failure")),
+    )
+
+    with pytest.raises(OSError, match="injected sidecar failure"):
+        text_cache_cli.run(_text_cache_args(source, destination, tmp_path / "cache"))
+    assert not destination.exists()
+    assert not destination.with_suffix(".jsonl.metadata.json").exists()
+
+
+def test_text_cache_rejects_orphaned_sidecar(monkeypatch, tmp_path):
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps({"id": "a", "text": "A person walks."}) + "\n", encoding="utf-8")
+    destination = tmp_path / "cached.jsonl"
+    destination.with_suffix(".jsonl.metadata.json").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(FileExistsError, match="orphaned derived output"):
+        text_cache_cli.run(_text_cache_args(source, destination, tmp_path / "cache"))
+
+
+def test_text_cache_exclusive_lock_keeps_manifest_and_sidecar_consistent(
+    monkeypatch, tmp_path
+):
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps({"id": "a", "text": "A person walks."}) + "\n", encoding="utf-8")
+    destination = tmp_path / "cached.jsonl"
+    entered = threading.Event()
+    release = threading.Event()
+    encoder = _FakeEncoder()
+
+    def blocking_build(args):
+        entered.set()
+        assert release.wait(timeout=10)
+        return encoder, "fake-encoder:revision"
+
+    monkeypatch.setattr(text_cache_cli, "_build_encoder", blocking_build)
+    errors = []
+
+    def first_run():
+        try:
+            text_cache_cli.run(_text_cache_args(source, destination, tmp_path / "cache"))
+        except Exception as error:  # pragma: no cover - asserted via errors below
+            errors.append(error)
+
+    thread = threading.Thread(target=first_run)
+    thread.start()
+    assert entered.wait(timeout=10)
+    with pytest.raises(FileExistsError, match="output is locked"):
+        text_cache_cli.run(_text_cache_args(source, destination, tmp_path / "cache"))
+    release.set()
+    thread.join(timeout=10)
+    assert not thread.is_alive()
+    assert not errors
+
+    sidecar_path = destination.with_suffix(".jsonl.metadata.json")
+    sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert sidecar["output"]["sha256"] == hashlib.sha256(destination.read_bytes()).hexdigest()
+    assert not destination.with_suffix(".jsonl.lock").exists()
+
+
+def test_text_cache_rejects_stale_output_lock(tmp_path):
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps({"id": "a", "text": "A person walks."}) + "\n", encoding="utf-8")
+    destination = tmp_path / "cached.jsonl"
+    lock = destination.with_suffix(".jsonl.lock")
+    lock.write_text('{"hostname":"old-host","pid":123}\n', encoding="utf-8")
+    with pytest.raises(FileExistsError, match="Inspect the recorded process"):
+        text_cache_cli.run(_text_cache_args(source, destination, tmp_path / "cache"))
+    assert lock.exists()
+
+
+def test_text_cache_output_lock_is_exclusive_across_processes(tmp_path):
+    context = multiprocessing.get_context("spawn")
+    ready = context.Event()
+    release = context.Event()
+    lock = tmp_path / "cached.jsonl.lock"
+    process = context.Process(target=_hold_output_lock, args=(str(lock), ready, release))
+    process.start()
+    assert ready.wait(timeout=10)
+    try:
+        with pytest.raises(FileExistsError, match="output is locked"):
+            with text_cache_cli._exclusive_output_lock(lock):
+                pytest.fail("second process unexpectedly acquired the output lock")
+    finally:
+        release.set()
+        process.join(timeout=10)
+    assert process.exitcode == 0
+    assert not lock.exists()
 
 
 def test_stats_loads_each_motion_once_without_dropping_distinct_spans(

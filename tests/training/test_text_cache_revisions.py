@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
@@ -182,7 +183,7 @@ def test_text_cache_identity_and_sidecar_record_all_three_artifacts(tmp_path):
         text_cache_cli.run(args)
 
     sidecar = json.loads((tmp_path / "cached.jsonl.metadata.json").read_text(encoding="utf-8"))
-    assert sidecar["schema_version"] == 2
+    assert sidecar["schema_version"] == 3
     assert sidecar["encoder_artifacts"] == {
         "foundation": {
             "model_name_or_path": "/models/foundation",
@@ -201,6 +202,55 @@ def test_text_cache_identity_and_sidecar_record_all_three_artifacts(tmp_path):
     expected_key = text_cache_cli._cache_key("A person walks.", sidecar["encoder"])
     assert cached["text_cache_key"] == expected_key
     assert (tmp_path / "cache" / f"{expected_key}.npy").is_file()
+
+
+def test_local_artifact_content_and_model_lock_bind_cache_key(tmp_path):
+    args = _local_cache_args(tmp_path)
+    source = tmp_path / "source.jsonl"
+    source.write_text(json.dumps({"id": "one", "text": "A person walks."}) + "\n", encoding="utf-8")
+    lock = tmp_path / "models.lock.json"
+    lock.write_text('{"revision":"one"}\n', encoding="utf-8")
+    args.model_lock = str(lock)
+    for name, value in (("foundation", b"base"), ("mntp", b"mntp"), ("supervised", b"sup")):
+        directory = tmp_path / name
+        directory.mkdir()
+        (directory / "weights.bin").write_bytes(value)
+        cache_metadata = directory / ".cache" / "huggingface"
+        cache_metadata.mkdir(parents=True)
+        (cache_metadata / "stale.incomplete").write_bytes(b"ignored")
+    args.foundation_model = str(tmp_path / "foundation")
+    args.mntp_model = str(tmp_path / "mntp")
+    args.supervised_model = str(tmp_path / "supervised")
+    fake_encoder = MagicMock(return_value=(torch.ones(1, 1, 4096), [1]))
+
+    with patch.object(text_cache_cli, "_build_encoder", return_value=(fake_encoder, "fake")):
+        text_cache_cli.run(args)
+
+    first_sidecar = json.loads(
+        (tmp_path / "cached.jsonl.metadata.json").read_text(encoding="utf-8")
+    )
+    first_row = json.loads((tmp_path / "cached.jsonl").read_text(encoding="utf-8"))
+    assert first_sidecar["schema_version"] == 3
+    assert first_sidecar["cache_provenance"]["model_lock"]["sha256"] == text_cache_cli._sha256_file(lock)
+    implementation_hashes = first_sidecar["cache_provenance"]["implementation_file_sha256"]
+    assert "kimodo/model/llm2vec/models/bidirectional_llama.py" in implementation_hashes
+    assert "kimodo/model/llm2vec/models/utils.py" in implementation_hashes
+    assert first_sidecar["encoder_artifacts"]["foundation"]["content"]["files"]["weights.bin"] == {
+        "sha256": hashlib.sha256(b"base").hexdigest(),
+        "size": 4,
+    }
+    assert all(
+        ".cache" not in name
+        for name in first_sidecar["encoder_artifacts"]["foundation"]["content"]["files"]
+    )
+
+    (tmp_path / "foundation" / "weights.bin").write_bytes(b"changed")
+    args.output_manifest = str(tmp_path / "cached-second.jsonl")
+    args.cache_dir = str(tmp_path / "cache-second")
+    with patch.object(text_cache_cli, "_build_encoder", return_value=(fake_encoder, "fake")):
+        text_cache_cli.run(args)
+    second_row = json.loads((tmp_path / "cached-second.jsonl").read_text(encoding="utf-8"))
+    assert first_row["text_cache_key"] != second_row["text_cache_key"]
 
 
 def test_text_cache_cli_accepts_new_names_and_legacy_adapter_aliases():

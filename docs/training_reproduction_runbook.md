@@ -91,6 +91,7 @@ LLM2Vec foundation 使用 NousResearch 对公开 loader 所指定 Meta-Llama fou
   --output-manifest ../kimodo-training-data/train.cached.jsonl \
   --cache-dir ../kimodo-training-data/text-cache \
   --provider local \
+  --model-lock configs/models.server.lock.json \
   --foundation-model /home/yezitao/data/yzt/kimodo-repro/models/llm2vec/foundation \
   --foundation-revision 53346005fb0ef11d3b6a83b12c895cca40156b6c \
   --mntp-model /home/yezitao/data/yzt/kimodo-repro/models/llm2vec/mntp-adapter \

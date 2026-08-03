@@ -35,13 +35,27 @@
       "repo": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
       "revision": "31474e395ada192e8ed1586db6be79fb3b70c9c0",
       "local_path": "llm2vec/mntp-adapter",
-      "gated": false
+      "gated": false,
+      "model_file_sha256": {
+        "adapter_config.json": "1d3bbf14142865885ea8d0dbc1fb261adf4f5d14ddbdc939efb47c4913037813",
+        "adapter_model.safetensors": "de9c8736618a13173c6a1623cdef1b75e86c69317f1073ae82cd516ac36a632d",
+        "attn_mask_utils.py": "86e463e1b82f27e3d3a8b9a1f76995dea3d8a7a41e5ece0431b27f084c143975",
+        "config.json": "416c570276487324e49dca7c3d79e212b948d9cb2282fa734b1fa8014de041d1",
+        "modeling_llama_encoder.py": "05d27ca70e23ab92a793107fae1848589fd30046aaa6fea088e9fbe1f9073367",
+        "special_tokens_map.json": "849070cae53bd45439e64ce5b1ddd650a66081b1bd47895c5a58939a05055579",
+        "tokenizer.json": "52b583ee1699c6ca4468f70885bd5f96dd1f7517292362a67581038afc04f4d8",
+        "tokenizer_config.json": "0655c52e874137e4a455228155d982c4ea18419f461a10ceb57054995fec4223"
+      }
     },
     "llm2vec_supervised_adapter": {
       "repo": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
       "revision": "baa8ebf04a1c2500e61288e7dad65e8ae42601a7",
       "local_path": "llm2vec/supervised-adapter",
-      "gated": false
+      "gated": false,
+      "model_file_sha256": {
+        "adapter_config.json": "2a1265e4a7829c16dad38a5175ec8ac41ea1e851654da5044ace2437615a58ba",
+        "adapter_model.safetensors": "53f8f94ebdf396667ba99dd96e78203edae27bbcdbd1cf5f12b611e1d916b225"
+      }
     },
     "qwen_paraphrase_tool": {
       "repo": "Qwen/Qwen3-32B",
