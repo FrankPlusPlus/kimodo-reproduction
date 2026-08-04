@@ -42,6 +42,7 @@ Kimodo is a **ki**nematic **mo**tion **d**iffusi**o**n model trained on a large-
 - [Command Line Interface](user_guide/cli.md)
 - [Interactive Demo](interactive_demo/index.md)
 - [Project Structure](project_structure.md)
+- [Training Reconstruction](training_reconstruction.md)
 
 ```{toctree}
 :maxdepth: 3
@@ -50,6 +51,7 @@ Kimodo is a **ki**nematic **mo**tion **d**iffusi**o**n model trained on a large-
 
 getting_started/installation
 getting_started/quick_start
+training_reconstruction
 ```
 
 ```{toctree}

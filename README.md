@@ -17,15 +17,19 @@ This repository provides:
 
 ## Training Reconstruction
 
-This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. A fresh clone uses a pinned resource catalog plus one machine-local paths YAML:
+This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Before downloading, accept the gated BONES-SEED license, authenticate with `hf auth login`, pin a compatible flowmatching commit, and place the machine-local paths on storage with roughly 230–260 GB free **plus checkpoint capacity**:
 
 ```bash
+git -C /path/to/kimodo-flowmatching checkout 840e31a11eed6bbe895a033097bbe7cb70a29101
 scripts/resources/setup_env.sh --flowmatching-repo /path/to/kimodo-flowmatching
+.venv/bin/hf auth login  # after accepting https://huggingface.co/datasets/bones-studio/seed
 cp resources/paths.example.yaml resources/paths.local.yaml  # edit storage paths
+scripts/resources/resources.sh --paths resources/paths.local.yaml plan
+df -h /path/to/raw-parent /path/to/prepared-parent /path/to/run-parent
 scripts/resources/resources.sh --paths resources/paths.local.yaml all
 ```
 
-Existing datasets/models can be assigned with `existing_path` and are verified before zero-copy reuse. The pipeline emits the paths YAML consumed by the training launcher; method and hardware hyperparameters stay in separate YAML files. See the [portable training runbook](docs/training_reproduction_runbook.md), [paper-parity audit](docs/paper_training_parity_audit.md), and [H200 benchmark](docs/h200_training_benchmark.md). The strict profile fails closed when the unpublished Qwen paraphrases or transition data are absent; the public profile is explicitly an engineering baseline.
+Never put the Hugging Face token in YAML or Git. Existing datasets/models can be assigned with `existing_path` and are verified before zero-copy reuse. The pipeline emits the paths YAML consumed by the training launcher; method and hardware hyperparameters stay in separate YAML files. Read the [fresh-server prerequisites and full engineering/paper-alignment guide](docs/reproduction_end_to_end_guide.md#16-推荐运行方式) before running `all`, then use the [portable training runbook](docs/training_reproduction_runbook.md), [paper-parity audit](docs/paper_training_parity_audit.md), and [H200 benchmark](docs/h200_training_benchmark.md) as focused references. The strict profile fails closed when the unpublished Qwen paraphrases or transition data are absent; the public profile is explicitly an engineering baseline.
 
 <div align="center">
   <img src="assets/teaser.gif" width="1280">
