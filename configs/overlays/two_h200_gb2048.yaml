@@ -1,0 +1,11 @@
+# Hardware-only overlay: 2 ranks * 128 local * 8 accumulation = global 2048.
+# It deliberately contains no dataset, model, loss, curriculum, or server path.
+data:
+  num_workers: 16
+
+runtime:
+  batch_size: 128
+  gradient_accumulation_steps: 8
+  precision: bf16
+  distributed: auto
+  enforce_paper_scale: false

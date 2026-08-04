@@ -1,0 +1,253 @@
+schema_version: 1
+
+# This catalog contains immutable remote identities only. Machine-local paths
+# belong in paths YAML. The default train-minimal group deliberately excludes
+# Qwen and the official inference checkpoint.
+groups:
+  train-minimal:
+    - bones_seed
+    - kimodo_benchmark
+    - llm2vec_foundation
+    - llm2vec_mntp_adapter
+    - llm2vec_supervised_adapter
+  official-oracle:
+    - official_kimodo_seed
+  paper-exploration:
+    - qwen_paraphrase_tool
+
+resources:
+  bones_seed:
+    repo_id: bones-studio/seed
+    repo_type: dataset
+    revision: 2f59b2077b9da34dd4e43618e705c7cb962c9a66
+    expected_bytes: 45392986217
+    purpose: Public SOMA-Uniform motion source, metadata, and timeline labels.
+    post_fetch: Extract soma_uniform.tar.gz, then build the canonical 30 Hz SOMA30 cache.
+    files:
+      LICENSE.md:
+        sha256: eb9b70b084e0a5dcda8465a4be2ba2f5b81e3c3800305c727777a3176defbc5f
+        size: 21781
+      README.md:
+        sha256: 1a97246f811199ecd8193ff57d603a4f5229974ed874d99a930806c6a107747a
+        size: 16901
+      metadata/seed_metadata_v002_temporal_labels.jsonl:
+        sha256: 302da3c319bbed4f712fa22a4d71b5288493911140cd72579e29de2ac324d634
+        size: 58447630
+      metadata/seed_metadata_v004.csv:
+        sha256: 71d09422034946d17dbb0db027d569408c486545bdb12f7979d55e6ffd9bbc39
+        size: 146411608
+      soma_uniform.tar.gz:
+        sha256: 0c1fd91628d2644d0d7c0b735ae64faa5fa79834280bc1ce7860a871e55f912c
+        size: 45188088297
+
+  kimodo_benchmark:
+    repo_id: nvidia/Kimodo-Motion-Gen-Benchmark
+    repo_type: dataset
+    revision: 2727f526a0c543001d5332b6eabf72d7e3acf14a
+    expected_bytes: 5315071
+    purpose: Official leakage-safe BONES-SEED train split used by this reconstruction.
+    post_fetch: none
+    files:
+      splits/train_split_paths.txt:
+        sha256: 9fd3d85c1be6c44234f17b86840c71a6cbf36aa5d2294547fb5b89d7a624c5b8
+        size: 5315071
+
+  llm2vec_foundation:
+    repo_id: NousResearch/Meta-Llama-3-8B-Instruct
+    repo_type: model
+    revision: 53346005fb0ef11d3b6a83b12c895cca40156b6c
+    expected_bytes: 16069769481
+    purpose: Non-gated byte-equivalent Llama-3 8B foundation for offline LLM2Vec caching.
+    post_fetch: Run the text-cache preprocessing stage; this model is not loaded by training.
+    files:
+      LICENSE:
+        sha256: 475211637354ce4c14b9c3dacccbefbaba735fe1b0db97d6c4fd11cd1356819f
+        size: 7801
+      README.md:
+        sha256: 252e24dbe733b0d700101a82ff184059462d8cea11ff97b9f4824a66e6f7273e
+        size: 39069
+      USE_POLICY.md:
+        sha256: 003513f595a20b7d63c609dfe80879531acb9caef6376fcc109bf0827471f3d1
+        size: 4696
+      config.json:
+        sha256: 61f3de03a16ca8046b05dc777bce72717022bc8522152eee61a69072272ef54b
+        size: 654
+      generation_config.json:
+        sha256: d1af74d8ba49428ab2faa65f7948165cc6bf52b740e57e840f8af772587c894c
+        size: 187
+      model-00001-of-00004.safetensors:
+        sha256: d8cf9c4d0dd972e1a2131bfe656235ee98221679711a3beef6d46dadf0f20b5c
+        size: 4976698672
+      model-00002-of-00004.safetensors:
+        sha256: 8d4782b4a69ef03845159ce1a15e272aadaaf134dc138d68f616098e8531729c
+        size: 4999802720
+      model-00003-of-00004.safetensors:
+        sha256: 3acdd690e65c24f42a24581b8467af98bd3ca357444580f8012aacd2bd607921
+        size: 4915916176
+      model-00004-of-00004.safetensors:
+        sha256: 67e9ad31c8c32abf3a55ee7fc7217b3ecb35fd3c74d98a5bd233e0e4d6964f46
+        size: 1168138808
+      model.safetensors.index.json:
+        sha256: 146776fce3f6db1103aa6f249e65ee5544c5923ce6f971b092eee79aa6e5d37b
+        size: 23950
+      special_tokens_map.json:
+        sha256: 462d91939dbc37178aa5a3eae7068d1990ccc92e09f288cc71f42cdf139d69cc
+        size: 73
+      tokenizer.json:
+        sha256: e134af98b985517b4f068e3755ae90d4e9cd2d45d328325dc503f1c6b2d06cc7
+        size: 9085698
+      tokenizer_config.json:
+        sha256: da0e3a7cce6e4d787e85eb1c24d548420e0d7fe2c7a214e192795c46e40d75bb
+        size: 50977
+
+  llm2vec_mntp_adapter:
+    repo_id: McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp
+    repo_type: model
+    revision: 31474e395ada192e8ed1586db6be79fb3b70c9c0
+    expected_bytes: 176985478
+    purpose: MNTP adapter and tokenizer for the released LLM2Vec encoder.
+    post_fetch: Run together with the foundation and supervised adapter.
+    files:
+      README.md:
+        sha256: a5e6ec837f09b94f5acd585e67c83fae843ed80769ec3e565b3a6b4b81ca085b
+        size: 3315
+      adapter_config.json:
+        sha256: 1d3bbf14142865885ea8d0dbc1fb261adf4f5d14ddbdc939efb47c4913037813
+        size: 794
+      adapter_model.safetensors:
+        sha256: de9c8736618a13173c6a1623cdef1b75e86c69317f1073ae82cd516ac36a632d
+        size: 167829552
+      attn_mask_utils.py:
+        sha256: 86e463e1b82f27e3d3a8b9a1f76995dea3d8a7a41e5ece0431b27f084c143975
+        size: 11132
+      config.json:
+        sha256: 416c570276487324e49dca7c3d79e212b948d9cb2282fa734b1fa8014de041d1
+        size: 781
+      modeling_llama_encoder.py:
+        sha256: 05d27ca70e23ab92a793107fae1848589fd30046aaa6fea088e9fbe1f9073367
+        size: 2856
+      special_tokens_map.json:
+        sha256: 849070cae53bd45439e64ce5b1ddd650a66081b1bd47895c5a58939a05055579
+        size: 335
+      tokenizer.json:
+        sha256: 52b583ee1699c6ca4468f70885bd5f96dd1f7517292362a67581038afc04f4d8
+        size: 9085671
+      tokenizer_config.json:
+        sha256: 0655c52e874137e4a455228155d982c4ea18419f461a10ceb57054995fec4223
+        size: 51042
+
+  llm2vec_supervised_adapter:
+    repo_id: McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised
+    repo_type: model
+    revision: baa8ebf04a1c2500e61288e7dad65e8ae42601a7
+    expected_bytes: 167893048
+    purpose: Supervised LLM2Vec adapter used after MNTP merging.
+    post_fetch: Run together with the foundation and MNTP adapter.
+    files:
+      README.md:
+        sha256: e821992eb2485dcbab0f8903ae3819d806db6f587dfd179adafe31ef28fdda1d
+        size: 62702
+      adapter_config.json:
+        sha256: 2a1265e4a7829c16dad38a5175ec8ac41ea1e851654da5044ace2437615a58ba
+        size: 794
+      adapter_model.safetensors:
+        sha256: 53f8f94ebdf396667ba99dd96e78203edae27bbcdbd1cf5f12b611e1d916b225
+        size: 167829552
+
+  official_kimodo_seed:
+    repo_id: nvidia/Kimodo-SOMA-SEED-v1.1
+    repo_type: model
+    revision: aae3af194322c60d21bc44062b64c3fec912be50
+    expected_bytes: 1133185711
+    opt_in: true
+    purpose: Optional released EMA inference bundle used as a compatibility oracle.
+    post_fetch: It is not a full-state Phase-1 training checkpoint and cannot resume paper training.
+    files:
+      config.yaml:
+        sha256: 905664ad05779b0e28c391b85dc81c9de166418bd5f471ef605f75ab746ce391
+        size: 675
+      model.safetensors:
+        sha256: ba8145cd5c8a3340b236fb2dce030ce5b151d1ef2c8491cfd2dc4d5f7c42b177
+        size: 1133185036
+
+  qwen_paraphrase_tool:
+    repo_id: Qwen/Qwen3-32B
+    repo_type: model
+    revision: 9216db5781bf21249d130ec9da846c4624c16137
+    expected_bytes: 65540268929
+    opt_in: true
+    purpose: Optional exploration tool; the paper's exact prompt and sampling recipe are unavailable.
+    post_fetch: Not required by DDPM or FM training and never included in train-minimal.
+    files:
+      config.json:
+        sha256: 97e295b63283935788fac5e4f8860862a56d4089538cafc93f0431f2ebe483bb
+        size: 728
+      generation_config.json:
+        sha256: 2325da0f15bb848e018c5ae071b7943332e9f871d6b60e2ed22ca97d4cb993d2
+        size: 239
+      merges.txt:
+        sha256: 8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5
+        size: 1671853
+      model-00001-of-00017.safetensors:
+        sha256: 52562b2ff97f61764260273e71bf5b4cf8a66f569399398f26dec0300fcf1316
+        size: 3957109648
+      model-00002-of-00017.safetensors:
+        sha256: e26764b2c6878e3fb7198895fa833ec62838d84a19665e6abfbae43c6daf02b3
+        size: 3900791760
+      model-00003-of-00017.safetensors:
+        sha256: 6c5ba7bed9c52bc121e75cbe8a7be46936d0006cc80f42a6d5886ed40b4c2a62
+        size: 3900791760
+      model-00004-of-00017.safetensors:
+        sha256: f736f6ac4d8c30866107fb1185a05b3c3cfce9717720082f466fa44e691bcec8
+        size: 3900791800
+      model-00005-of-00017.safetensors:
+        sha256: a52ed375c083209c54d42ac510afeb1fbb5af4f193be2dc7d103f665a0f212d3
+        size: 3900791800
+      model-00006-of-00017.safetensors:
+        sha256: 37fae28990b0e4a70228549d040c0393e87bee3820d59e58e47844974d8dff5b
+        size: 3900791800
+      model-00007-of-00017.safetensors:
+        sha256: 37776006aeaba29eca8bc73b2b963fe3477e1c2e3f6a27cb9527be75b905e1bf
+        size: 3900791800
+      model-00008-of-00017.safetensors:
+        sha256: 73e74e9129674fe330948005075d70ab4fa0b92b68fb220c5a693f9cea553730
+        size: 3900791800
+      model-00009-of-00017.safetensors:
+        sha256: a044b3602a01bd8ea62ff51badf9cc038ab1d73d97399480e6a55b4c86fa7fa6
+        size: 3900791800
+      model-00010-of-00017.safetensors:
+        sha256: 9966612ba7ecfc2cd2e592fb95224b86d743271ff88e172cc272a4b26382aa75
+        size: 3900791800
+      model-00011-of-00017.safetensors:
+        sha256: e2a058a0ac7d4b992b731c29221ecfb4b76b8a48d9004d0e8a62ba44f699845c
+        size: 3900791800
+      model-00012-of-00017.safetensors:
+        sha256: 58a1aa89093fea07325f787072a468e3482a470ff4b7fe5ead5f749683907c40
+        size: 3900791800
+      model-00013-of-00017.safetensors:
+        sha256: 35f3381bab31a23370c37d922290aeecdf603418336058fb86fe42d8f51ac40c
+        size: 3900791800
+      model-00014-of-00017.safetensors:
+        sha256: 8713b062ddc178acf5917610b7f4b64eede833b2ea4aa37bd562dcf2f3a3339d
+        size: 3900791800
+      model-00015-of-00017.safetensors:
+        sha256: bec439d23931821a236d8f62fa79deecf5551bd25602278aa2ae0ce432b378cf
+        size: 3900791800
+      model-00016-of-00017.safetensors:
+        sha256: e569139fadd61fe7c8f9eb1c976d9a627cae48c57ddf228cfbd0593c59c64ff7
+        size: 3900791800
+      model-00017-of-00017.safetensors:
+        sha256: 1f47c318fcd7797c0f85b4233cb754438b10e795b8bc874889090c416a94bd38
+        size: 3055341992
+      model.safetensors.index.json:
+        sha256: bed42c6c55274bc08a1f616bceb3bcb84b3f02cb6584c573bd18c6519291ecd0
+        size: 58330
+      tokenizer.json:
+        sha256: aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4
+        size: 11422654
+      tokenizer_config.json:
+        sha256: d5d09f07b48c3086c508b30d1c9114bd1189145b74e982a265350c923acd8101
+        size: 9732
+      vocab.json:
+        sha256: ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910
+        size: 2776833

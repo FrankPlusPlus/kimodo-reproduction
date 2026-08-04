@@ -29,8 +29,8 @@ from kimodo.training.manifest_cli import build_manifest
 from kimodo.training.modeling import build_trainable_denoiser, validate_model_contract
 from kimodo.training.optim import AdamAtan2
 from kimodo.training.provenance import code_fingerprints
-from kimodo.training.stats_cli import compute_stats
 from kimodo.training.smoke_fixture_cli import create_smoke_fixture
+from kimodo.training.stats_cli import compute_stats
 
 
 def _motion_rep(training_fixture):
@@ -156,7 +156,7 @@ def test_bones_manifest_full_event_and_combined_crops(training_fixture, tmp_path
     source_record = json.loads(
         manifest.with_suffix(".jsonl.metadata.json").read_text(encoding="utf-8")
     )
-    assert source_record["sources"]["metadata"]["path"] == str(metadata)
+    assert source_record["sources"]["metadata"]["path"] == metadata.name
     assert source_record["sources"]["split_file"]["sha256"]
     assert source_record["sources"]["temporal_labels"]["sha256"]
 
@@ -374,6 +374,8 @@ def test_stats_metadata_and_training_code_snapshot(training_fixture, tmp_path):
     assert metadata["unique_clips"] == 1
     assert metadata["frame_counts"] == {"global_root": 8, "local_root": 8, "body": 8}
     assert metadata["heading_augmentation"] == "deterministic_uniform"
+    assert metadata["schema_version"] == 2
+    assert len(metadata["files"]) == 6
 
     project_root = Path(__file__).resolve().parents[2]
     snapshot = code_fingerprints(project_root)

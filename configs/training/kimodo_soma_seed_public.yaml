@@ -1,29 +1,30 @@
-# Trainable two-GPU BONES-SEED engineering reconstruction. Every paper-disclosed
-# model/loss/curriculum value is retained; only hardware scale is reduced. The
+# Trainable BONES-SEED engineering reconstruction. Every paper-disclosed
+# model/loss/curriculum value is retained. Hardware scale belongs in an overlay. The
 # unavailable official Qwen/transition data recipe is explicitly not claimed.
 schema_version: 1
 paper_method_strict: false
 
 data:
-  manifest: ${oc.env:KIMODO_TRAINING_DATA,/home/yezitao/PublicWorkspace/yzt/kimodo-training-data}/train.cached.jsonl
+  # Supplied by --paths; production recipes contain no server mount paths.
+  manifest: ""
   split: train
   fps: 30
   max_seconds: 10.0
   min_frames: 30
-  num_workers: 16
+  num_workers: 8
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: false
   require_cached_text: true
   reference_verification: inventory
-  reference_inventory: ${oc.env:KIMODO_TRAINING_DATA,/home/yezitao/PublicWorkspace/yzt/kimodo-training-data}/train.cached.references.jsonl
+  reference_inventory: null
   require_paper_data_parity: false
 
 model:
   checkpoint_dir: null
   checkpoint_weights: null
   skeleton_joints: 30
-  stats_path: ${oc.env:KIMODO_TRAINING_DATA,/home/yezitao/PublicWorkspace/yzt/kimodo-training-data}/stats/repro-soma30-30fps
+  stats_path: ""
   fps: 30
   num_diffusion_steps: 1000
   motion_mask_mode: concat
@@ -81,14 +82,12 @@ ema:
   update_every: 10
 
 runtime:
-  output_dir: ${oc.env:KIMODO_LOCAL_ROOT,/home/yezitao/PublicWorkspace/yzt/kimodo-reproduction}/outputs/kimodo-soma-seed-public-two-gpu
+  output_dir: ""
   seed: 1234
   device: auto
   precision: bf16
-  # 2 ranks * 128 local * 8 accumulation = paper global batch 2048.
-  # This is only ~5% slower than local 256 but uses ~56 rather than ~105 GiB.
   batch_size: 128
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 1
   log_every: 10
   checkpoint_every: 10000
   milestone_every: 100000
@@ -96,6 +95,6 @@ runtime:
   resume: null
   initial_global_step: 0
   distributed: auto
-  enforce_paper_scale: false
+  enforce_paper_scale: true
   dry_run: false
   max_steps_override: null

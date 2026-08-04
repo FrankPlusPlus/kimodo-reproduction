@@ -15,6 +15,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="YAML training config")
     parser.add_argument(
+        "--paths",
+        help=(
+            "Optional schema-v1 YAML containing only data/model/run path fields; "
+            "merged after the base config"
+        ),
+    )
+    parser.add_argument(
+        "--overlay",
+        action="append",
+        default=[],
+        help="Strict training/hardware YAML overlay; may be repeated in merge order",
+    )
+    parser.add_argument(
         "--set",
         action="append",
         default=[],
@@ -30,7 +43,12 @@ def main() -> None:
     overrides = list(args.set)
     if args.dry_run:
         overrides.append("runtime.dry_run=true")
-    config = load_training_config(args.config, overrides)
+    config = load_training_config(
+        args.config,
+        overrides,
+        paths=args.paths,
+        overlays=args.overlay,
+    )
     if args.dry_run:
         config.validate(require_paths=False)
         print(json.dumps(config.to_dict(), indent=2, sort_keys=True))
@@ -45,4 +63,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

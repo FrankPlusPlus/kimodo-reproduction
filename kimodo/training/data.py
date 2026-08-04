@@ -113,7 +113,12 @@ def validate_paper_data_parity_manifest(path: str | Path) -> dict[str, Any]:
     output_record = metadata.get("output")
     if not isinstance(output_record, dict):
         raise RuntimeError("Paper-data parity sidecar must fingerprint its manifest output")
-    recorded_path = Path(str(output_record.get("path", ""))).expanduser().resolve()
+    recorded_path_value = Path(str(output_record.get("path", ""))).expanduser()
+    recorded_path = (
+        recorded_path_value.resolve()
+        if recorded_path_value.is_absolute()
+        else (sidecar_path.parent / recorded_path_value).resolve()
+    )
     recorded_hash = output_record.get("sha256")
     actual_hash = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     if recorded_path != manifest_path or not _is_sha256(recorded_hash) or recorded_hash != actual_hash:

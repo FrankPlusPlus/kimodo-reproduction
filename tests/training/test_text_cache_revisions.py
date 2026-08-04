@@ -183,18 +183,21 @@ def test_text_cache_identity_and_sidecar_record_all_three_artifacts(tmp_path):
         text_cache_cli.run(args)
 
     sidecar = json.loads((tmp_path / "cached.jsonl.metadata.json").read_text(encoding="utf-8"))
-    assert sidecar["schema_version"] == 3
+    assert sidecar["schema_version"] == 4
     assert sidecar["encoder_artifacts"] == {
         "foundation": {
             "model_name_or_path": "/models/foundation",
+            "repo_id": "NousResearch/Meta-Llama-3-8B-Instruct",
             "revision": "foundation-sha",
         },
         "mntp_adapter": {
             "model_name_or_path": "/models/mntp",
+            "repo_id": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
             "revision": "mntp-sha",
         },
         "supervised_adapter": {
             "model_name_or_path": "/models/supervised",
+            "repo_id": "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
             "revision": "supervised-sha",
         },
     }
@@ -230,7 +233,7 @@ def test_local_artifact_content_and_model_lock_bind_cache_key(tmp_path):
         (tmp_path / "cached.jsonl.metadata.json").read_text(encoding="utf-8")
     )
     first_row = json.loads((tmp_path / "cached.jsonl").read_text(encoding="utf-8"))
-    assert first_sidecar["schema_version"] == 3
+    assert first_sidecar["schema_version"] == 4
     assert first_sidecar["cache_provenance"]["model_lock"]["sha256"] == text_cache_cli._sha256_file(lock)
     implementation_hashes = first_sidecar["cache_provenance"]["implementation_file_sha256"]
     assert "kimodo/model/llm2vec/models/bidirectional_llama.py" in implementation_hashes
@@ -271,6 +274,6 @@ def test_text_cache_cli_accepts_new_names_and_legacy_adapter_aliases():
             "supervised-sha",
         ]
     )
-    assert args.foundation_model == "meta-llama/Meta-Llama-3-8B-Instruct"
+    assert args.foundation_model == "NousResearch/Meta-Llama-3-8B-Instruct"
     assert args.mntp_revision == "mntp-sha"
     assert args.supervised_revision == "supervised-sha"

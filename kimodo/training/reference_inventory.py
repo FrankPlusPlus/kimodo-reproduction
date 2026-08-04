@@ -13,11 +13,13 @@ import hashlib
 import json
 import os
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
+from .file_permissions import publish_file
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})
 
 
 def sha256_file(path: str | Path) -> str:
@@ -31,6 +33,15 @@ def sha256_file(path: str | Path) -> str:
 def inventory_metadata_path(path: str | Path) -> Path:
     inventory = Path(path)
     return inventory.with_suffix(inventory.suffix + ".metadata.json")
+
+
+def _resolve_relative_to(base: Path, value: str) -> Path:
+    path = Path(value).expanduser()
+    return path.resolve() if path.is_absolute() else (base / path).resolve()
+
+
+def _portable_path(path: Path, base: Path) -> str:
+    return Path(os.path.relpath(path.resolve(), base.resolve())).as_posix()
 
 
 def manifest_reference_paths(manifest_path: str | Path) -> set[Path]:
@@ -55,9 +66,14 @@ def manifest_reference_paths(manifest_path: str | Path) -> set[Path]:
         metadata_record = json.loads(metadata.read_text(encoding="utf-8"))
         source_manifest = metadata_record.get("source_manifest")
         if source_manifest:
-            source = Path(source_manifest).expanduser().resolve()
+            source = _resolve_relative_to(base, str(source_manifest))
             paths.add(source)
-            source_metadata = source.with_suffix(source.suffix + ".metadata.json")
+            recorded_source_metadata = metadata_record.get("source_manifest_metadata")
+            source_metadata = (
+                _resolve_relative_to(base, str(recorded_source_metadata))
+                if recorded_source_metadata
+                else source.with_suffix(source.suffix + ".metadata.json")
+            )
             if source_metadata.is_file():
                 paths.add(source_metadata)
     return paths
@@ -73,6 +89,7 @@ def _atomic_json(path: Path, value: dict) -> None:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, sort_keys=True)
             handle.write("\n")
+        publish_file(temporary)
         os.replace(temporary, path)
     finally:
         if temporary.exists():
@@ -97,18 +114,23 @@ def build_reference_inventory(manifest_path: str | Path, output_path: str | Path
     total_bytes = 0
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            for path in sorted(manifest_reference_paths(manifest)):
+            records = [
+                (_portable_path(path, manifest.parent), path)
+                for path in manifest_reference_paths(manifest)
+            ]
+            for serialized_path, path in sorted(records, key=lambda item: item[0]):
                 if not path.is_file():
                     raise FileNotFoundError(f"Manifest provenance reference is missing: {path}")
                 size = path.stat().st_size
                 record = {
-                    "path": str(path),
+                    "path": serialized_path,
                     "sha256": sha256_file(path),
                     "size": size,
                 }
                 handle.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
                 reference_count += 1
                 total_bytes += size
+        publish_file(temporary)
         os.replace(temporary, output)
     finally:
         if temporary.exists():
@@ -119,20 +141,20 @@ def build_reference_inventory(manifest_path: str | Path, output_path: str | Path
         "schema_version": SCHEMA_VERSION,
         "builder": "kimodo.training.reference_inventory",
         "manifest": {
-            "path": str(manifest),
+            "path": _portable_path(manifest, metadata_path.parent),
             "sha256": sha256_file(manifest),
             "size": manifest.stat().st_size,
         },
         "inventory": {
-            "path": str(output),
+            "path": _portable_path(output, metadata_path.parent),
             "sha256": inventory_sha256,
             "size": output.stat().st_size,
         },
-        # The inventory is canonical compact JSONL sorted by absolute path, so
+        # The inventory is canonical compact JSONL sorted by portable path, so
         # its file digest is also the aggregate digest of all reference
         # path/size/content-digest records.
         "aggregate": {
-            "algorithm": "sha256(canonical-jsonl-v1)",
+            "algorithm": "sha256(canonical-jsonl-portable-v2)",
             "sha256": inventory_sha256,
         },
         "reference_count": reference_count,
@@ -162,7 +184,8 @@ def load_inventory_summary(manifest_path: str | Path, inventory_path: str | Path
     if not metadata_path.is_file():
         raise FileNotFoundError(f"Reference inventory metadata is missing: {metadata_path}")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    if metadata.get("schema_version") != SCHEMA_VERSION:
+    schema_version = metadata.get("schema_version")
+    if schema_version not in SUPPORTED_SCHEMA_VERSIONS:
         raise ValueError(
             f"Unsupported reference inventory schema: {metadata.get('schema_version')}"
         )
@@ -170,17 +193,28 @@ def load_inventory_summary(manifest_path: str | Path, inventory_path: str | Path
     inventory_record = metadata.get("inventory")
     aggregate_record = metadata.get("aggregate")
     if not isinstance(manifest_record, dict) or not isinstance(inventory_record, dict):
-        raise ValueError("Inventory metadata must contain manifest and inventory records")
-    if Path(str(manifest_record.get("path", ""))).expanduser().resolve() != manifest:
+        raise TypeError("Inventory metadata must contain manifest and inventory records")
+    recorded_manifest = _resolve_relative_to(
+        metadata_path.parent, str(manifest_record.get("path", ""))
+    )
+    recorded_inventory = _resolve_relative_to(
+        metadata_path.parent, str(inventory_record.get("path", ""))
+    )
+    if recorded_manifest != manifest:
         raise ValueError("Reference inventory was built for a different manifest path")
-    if Path(str(inventory_record.get("path", ""))).expanduser().resolve() != inventory:
+    if recorded_inventory != inventory:
         raise ValueError("Reference inventory metadata points to a different inventory path")
     manifest_sha = _require_sha256(manifest_record.get("sha256"), "manifest sha256")
     inventory_sha = _require_sha256(inventory_record.get("sha256"), "inventory sha256")
     if not isinstance(aggregate_record, dict):
-        raise ValueError("Inventory metadata must contain an aggregate record")
+        raise TypeError("Inventory metadata must contain an aggregate record")
     aggregate_sha = _require_sha256(aggregate_record.get("sha256"), "aggregate sha256")
-    if aggregate_record.get("algorithm") != "sha256(canonical-jsonl-v1)":
+    expected_algorithm = (
+        "sha256(canonical-jsonl-v1)"
+        if schema_version == 1
+        else "sha256(canonical-jsonl-portable-v2)"
+    )
+    if aggregate_record.get("algorithm") != expected_algorithm:
         raise ValueError("Unsupported inventory aggregate algorithm")
     if aggregate_sha != inventory_sha:
         raise ValueError("Inventory and aggregate SHA-256 values differ")
@@ -204,6 +238,7 @@ def load_inventory_summary(manifest_path: str | Path, inventory_path: str | Path
         "reference_count": reference_count,
         "total_reference_bytes": total_bytes,
         "verification": "inventory_identity_only",
+        "schema_version": schema_version,
     }
 
 
@@ -229,7 +264,7 @@ def verify_reference_inventory_full(
     seen_paths: set[Path] = set()
     verified_bytes = 0
     for line_number, record in enumerate(_inventory_records(inventory), start=1):
-        path = Path(str(record["path"])).expanduser().resolve()
+        path = _resolve_relative_to(manifest.parent, str(record["path"]))
         if path in seen_paths:
             raise ValueError(f"Duplicate inventory path at record {line_number}: {path}")
         seen_paths.add(path)

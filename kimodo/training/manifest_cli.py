@@ -13,8 +13,8 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 from pathlib import Path
-
 
 TEXT_COLUMNS = (
     "content_natural_desc_1",
@@ -94,12 +94,23 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _source_record(path: Path | None) -> dict | None:
+def _serialized_path(path: Path, base: Path, path_mode: str) -> str:
+    resolved = path.expanduser().resolve()
+    if path_mode == "absolute":
+        return str(resolved)
+    if path_mode != "relative":
+        raise ValueError(f"Unsupported path mode: {path_mode!r}")
+    return Path(os.path.relpath(resolved, base.resolve())).as_posix()
+
+
+def _source_record(
+    path: Path | None, *, base: Path, path_mode: str
+) -> dict | None:
     if path is None:
         return None
     resolved = path.expanduser().resolve()
     return {
-        "path": str(resolved),
+        "path": _serialized_path(resolved, base, path_mode),
         "sha256": _sha256(resolved),
         "size": resolved.stat().st_size,
     }
@@ -132,6 +143,7 @@ def build_manifest(args) -> dict[str, int]:
     )
     path_column = PATH_COLUMNS[args.skeleton]
     destination = Path(args.output).expanduser().resolve()
+    path_mode = str(getattr(args, "path_mode", "relative"))
     if destination.exists():
         raise FileExistsError(f"Refusing to overwrite manifest: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -169,7 +181,9 @@ def build_manifest(args) -> dict[str, int]:
                     _emit(
                         {
                             "id": f"{filename}:full:{text_index}:{repeat}",
-                            "motion": str(motion_path.resolve()),
+                            "motion": _serialized_path(
+                                motion_path, destination.parent, path_mode
+                            ),
                             "text": text,
                             "split": args.split_name,
                             "source_fps": manifest_fps,
@@ -189,7 +203,9 @@ def build_manifest(args) -> dict[str, int]:
                     _emit(
                         {
                             "id": f"{filename}:event:{event_index}:{repeat}",
-                            "motion": str(motion_path.resolve()),
+                            "motion": _serialized_path(
+                                motion_path, destination.parent, path_mode
+                            ),
                             "text": text,
                             "split": args.split_name,
                             "source_fps": manifest_fps,
@@ -212,7 +228,9 @@ def build_manifest(args) -> dict[str, int]:
                     _emit(
                         {
                             "id": f"{filename}:combined2:{event_index}:{repeat}",
-                            "motion": str(motion_path.resolve()),
+                            "motion": _serialized_path(
+                                motion_path, destination.parent, path_mode
+                            ),
                             "text": f"{first_text} Then, {second_text}",
                             "split": args.split_name,
                             "source_fps": manifest_fps,
@@ -227,10 +245,15 @@ def build_manifest(args) -> dict[str, int]:
                     counts["combined"] += 1
     missing_from_metadata = sorted(split_keys - seen_split_keys)
     metadata_record = {
-        "schema_version": 1,
+        "schema_version": 2,
         "builder": "kimodo.training.manifest_cli",
-        "dataset_root": str(dataset_root),
-        "motion_cache_root": None if motion_cache_root is None else str(motion_cache_root),
+        "path_mode": path_mode,
+        "dataset_root": _serialized_path(dataset_root, destination.parent, path_mode),
+        "motion_cache_root": (
+            None
+            if motion_cache_root is None
+            else _serialized_path(motion_cache_root, destination.parent, path_mode)
+        ),
         "motion_storage": (
             "source_dataset_files"
             if motion_cache_root is None
@@ -304,11 +327,20 @@ def build_manifest(args) -> dict[str, int]:
             },
         },
         "sources": {
-            "metadata": _source_record(metadata),
-            "split_file": _source_record(split_file),
-            "temporal_labels": _source_record(temporal_labels),
+            "metadata": _source_record(
+                metadata, base=destination.parent, path_mode=path_mode
+            ),
+            "split_file": _source_record(
+                split_file, base=destination.parent, path_mode=path_mode
+            ),
+            "temporal_labels": _source_record(
+                temporal_labels, base=destination.parent, path_mode=path_mode
+            ),
         },
-        "output": {"path": str(destination), "sha256": _sha256(destination)},
+        "output": {
+            "path": _serialized_path(destination, destination.parent, path_mode),
+            "sha256": _sha256(destination),
+        },
         "counts": counts,
     }
     metadata_path = destination.with_suffix(destination.suffix + ".metadata.json")
@@ -343,6 +375,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--event-repeats", type=int, default=1)
     parser.add_argument("--combined-event-repeats", type=int, default=1)
     parser.add_argument("--allow-missing", action="store_true")
+    parser.add_argument(
+        "--path-mode",
+        choices=("relative", "absolute"),
+        default="relative",
+        help="Serialize portable relative references by default; absolute is legacy-only",
+    )
     return parser
 
 

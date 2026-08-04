@@ -4,7 +4,19 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 python_bin="${KIMODO_PYTHON:-${project_root}/.venv/bin/python}"
-config_path="${KIMODO_TWO_GPU_CONFIG:-${project_root}/configs/training/kimodo_soma_seed_public_two_gpu.yaml}"
+config_path="${KIMODO_TWO_GPU_CONFIG:-${project_root}/configs/training/kimodo_soma_seed_public.yaml}"
+paths_path="${KIMODO_PATHS_CONFIG:-${project_root}/configs/paths/local.yaml}"
+overlay_path="${KIMODO_TRAINING_OVERLAY:-${project_root}/configs/overlays/two_h200_gb2048.yaml}"
+
+if [[ ! -f "${paths_path}" ]]; then
+  echo "Machine paths YAML is missing: ${paths_path}" >&2
+  echo "Use pipeline.repro_paths_yaml or copy configs/paths/public_seed.example.yaml." >&2
+  exit 2
+fi
+if [[ ! -f "${overlay_path}" ]]; then
+  echo "Training overlay is missing: ${overlay_path}" >&2
+  exit 2
+fi
 
 # Make CUDA_VISIBLE_DEVICES use the physical PCI/nvidia-smi ordering on this
 # host, whose default CUDA runtime ordering is different.
@@ -39,7 +51,8 @@ if count != 2:
         f"torch sees {count}. Set CUDA_VISIBLE_DEVICES to the two devices allocated to this tenant."
     )
 devices = []
-expected = os.environ.get("KIMODO_EXPECTED_GPU_NAME", "NVIDIA H200 NVL")
+expected_exact = os.environ.get("KIMODO_EXPECTED_GPU_NAME")
+expected_pattern = os.environ.get("KIMODO_EXPECTED_GPU_PATTERN", "H200")
 for index in range(count):
     props = torch.cuda.get_device_properties(index)
     devices.append(
@@ -51,8 +64,13 @@ for index in range(count):
         }
     )
 names = [device["name"] for device in devices]
-if any(name != expected for name in names):
-    raise SystemExit(f"Expected two {expected!r} devices, but CUDA exposes: {names}")
+if expected_exact and any(name != expected_exact for name in names):
+    raise SystemExit(f"Expected two exact {expected_exact!r} devices, but CUDA exposes: {names}")
+if not expected_exact and any(expected_pattern not in name for name in names):
+    raise SystemExit(
+        f"Expected two devices containing {expected_pattern!r}, but CUDA exposes: {names}; "
+        "set KIMODO_EXPECTED_GPU_PATTERN or KIMODO_EXPECTED_GPU_NAME explicitly"
+    )
 print(
     json.dumps(
         {
@@ -72,4 +90,6 @@ exec "${python_bin}" -m torch.distributed.run \
   --nproc-per-node=2 \
   -m kimodo.training.cli \
   --config "${config_path}" \
+  --paths "${paths_path}" \
+  --overlay "${overlay_path}" \
   "$@"

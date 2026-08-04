@@ -4,7 +4,9 @@ schema_version: 1
 paper_method_strict: true
 
 data:
-  manifest: data/bones_seed/train.jsonl
+  # Supplied by --paths. This profile remains blocked until the unavailable
+  # paper augmentation assets satisfy the strict parity gate.
+  manifest: ""
   split: train
   fps: 30
   max_seconds: 10.0
@@ -15,7 +17,7 @@ data:
   persistent_workers: false
   require_cached_text: true
   reference_verification: inventory
-  reference_inventory: data/bones_seed/train.references.jsonl
+  reference_inventory: null
   # Fail-closed paper-asset schema gate. This intentionally rejects plain BONES-SEED
   # manifest until Qwen3-32B paraphrases and diffusion-transition stitched clips
   # with provenance have been supplied, but cannot certify NVIDIA's unpublished recipe.
@@ -25,7 +27,7 @@ model:
   checkpoint_dir: null
   checkpoint_weights: null
   skeleton_joints: 30
-  stats_path: data/bones_seed/stats/soma30-30fps
+  stats_path: ""
   fps: 30
   num_diffusion_steps: 1000
   motion_mask_mode: concat
@@ -84,7 +86,7 @@ ema:
   update_every: 10
 
 runtime:
-  output_dir: outputs/kimodo-soma-seed-reproduction
+  output_dir: ""
   seed: 1234
   device: auto
   precision: bf16

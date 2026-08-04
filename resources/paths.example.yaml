@@ -1,0 +1,42 @@
+schema_version: 1
+
+# Copy this file to a machine-local location and edit it. Relative paths are
+# resolved from the paths YAML itself. Set existing_path to reuse a verified
+# shared snapshot without copying it; fetch never modifies existing_path.
+resources:
+  bones_seed:
+    destination: ./managed/raw/bones-seed
+    existing_path: null
+  kimodo_benchmark:
+    destination: ./managed/metadata/kimodo-benchmark
+    existing_path: null
+  llm2vec_foundation:
+    destination: ./managed/models/llm2vec/foundation
+    existing_path: null
+  llm2vec_mntp_adapter:
+    destination: ./managed/models/llm2vec/mntp-adapter
+    existing_path: null
+  llm2vec_supervised_adapter:
+    destination: ./managed/models/llm2vec/supervised-adapter
+    existing_path: null
+
+  # Optional groups need paths only when explicitly selected.
+  official_kimodo_seed:
+    destination: ./managed/models/Kimodo-SOMA-SEED-v1.1
+    existing_path: null
+  qwen_paraphrase_tool:
+    destination: ./managed/models/Qwen3-32B
+    existing_path: null
+
+# Source extraction and all derived training artifacts. The whole
+# prepared_root is a portable bundle: manifests reference motions/text cache
+# relative to this directory.
+pipeline:
+  dataset_root: ./managed/raw/bones-seed-expanded
+  prepared_root: ./managed/prepared/public-seed-soma30-v1
+  run_root: ./managed/runs
+  repro_paths_yaml: ./managed/config/repro.paths.yaml
+  text_device: cuda:0
+  motion_workers: 8
+  threads_per_worker: 2
+  stats_workers: 16

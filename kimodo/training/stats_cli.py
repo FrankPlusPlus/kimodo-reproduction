@@ -127,8 +127,8 @@ def _compute_motion_group(task) -> dict:
     for entry in motion_entries:
         start_time = 0.0 if entry.start_time is None else entry.start_time
         end_time = source_length / fps if entry.end_time is None else entry.end_time
-        start_frame = max(0, int(round(start_time * fps)))
-        end_frame = min(source_length, int(round(end_time * fps)))
+        start_frame = max(0, round(start_time * fps))
+        end_frame = min(source_length, round(end_time * fps))
         key = (entry.sample_id,)
         if start_time < 0 or end_time <= start_time or end_frame - start_frame < 2:
             raise ValueError(
@@ -192,7 +192,7 @@ def compute_stats(args) -> None:
     max_seconds = float(getattr(args, "max_seconds", 10.0))
     if max_seconds <= 0:
         raise ValueError("max_seconds must be positive")
-    max_frames = int(round(max_seconds * args.fps))
+    max_frames = round(max_seconds * args.fps)
     if max_frames < 3:
         raise ValueError("max_seconds at the requested fps must permit at least three frames")
     entries = load_manifest(args.manifest, args.split)
@@ -280,9 +280,24 @@ def compute_stats(args) -> None:
         folder.mkdir(parents=True, exist_ok=False)
         np.save(folder / "mean.npy", mean)
         np.save(folder / "std.npy", std)
+    stats_files = {}
+    for group, expected_dimension in (("global_root", 5), ("local_root", 4), ("body", 364)):
+        for filename in ("mean.npy", "std.npy"):
+            path = output / group / filename
+            array = np.load(path, allow_pickle=False)
+            if array.dtype != np.float32 or array.shape != (expected_dimension,):
+                raise ValueError(f"unexpected saved stats array contract: {path}")
+            if not np.isfinite(array).all():
+                raise ValueError(f"saved stats array contains non-finite values: {path}")
+            stats_files[f"{group}/{filename}"] = {
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                "size": path.stat().st_size,
+                "dtype": "float32",
+                "shape": [expected_dimension],
+            }
     manifest = Path(args.manifest).expanduser().resolve()
     metadata = {
-        "schema_version": 1,
+        "schema_version": 2,
         "manifest": str(manifest),
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "split": args.split,
@@ -315,6 +330,7 @@ def compute_stats(args) -> None:
             "local_root": local_moments.count,
             "body": body_moments.count,
         },
+        "files": stats_files,
     }
     (output / "stats.metadata.json").write_text(
         json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8"

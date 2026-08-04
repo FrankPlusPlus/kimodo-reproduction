@@ -62,8 +62,9 @@ def test_strict_profile_rejects_heading_step_and_runtime_scale_deviations():
 
 def test_two_gpu_profile_only_relaxes_runtime_scale():
     config = load_training_config(
-        PROJECT_ROOT / "configs/training/kimodo_soma_seed_two_gpu.yaml",
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_reproduction.yaml",
         ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/two_h200_gb2048.yaml"],
     )
     assert config.paper_method_strict is True
     assert config.runtime.enforce_paper_scale is False
@@ -75,14 +76,16 @@ def test_two_gpu_profile_only_relaxes_runtime_scale():
     training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=2))
 
 
-def test_public_two_gpu_profile_differs_only_in_paths_and_unavailable_data_claims():
+def test_public_profile_plus_hardware_overlay_differs_only_in_unavailable_data_claims():
     strict = load_training_config(
-        PROJECT_ROOT / "configs/training/kimodo_soma_seed_two_gpu.yaml",
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_reproduction.yaml",
         ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/two_h200_gb2048.yaml"],
     )
     public = load_training_config(
-        PROJECT_ROOT / "configs/training/kimodo_soma_seed_public_two_gpu.yaml",
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_public.yaml",
         ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/two_h200_gb2048.yaml"],
     )
     assert public.paper_method_strict is False
     assert public.data.require_paper_data_parity is False
@@ -106,11 +109,7 @@ def test_public_two_gpu_profile_differs_only_in_paths_and_unavailable_data_claim
     }
     assert differences == {
         "paper_method_strict",
-        "data.manifest",
-        "data.reference_inventory",
         "data.require_paper_data_parity",
-        "model.stats_path",
-        "runtime.output_dir",
     }
 
 

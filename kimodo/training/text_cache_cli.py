@@ -23,10 +23,43 @@ import numpy as np
 
 from kimodo.sanitize import sanitize_texts
 
+from .file_permissions import publish_file
+
+TEXT_CACHE_METADATA_SCHEMA_VERSION = 4
+SUPPORTED_TEXT_CACHE_METADATA_SCHEMAS = frozenset({3, 4})
+
 
 def _cache_key(text: str, encoder_identity: str) -> str:
     payload = (encoder_identity + "\0" + text).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _serialized_path(path: Path, base: Path, path_mode: str) -> str:
+    resolved = path.expanduser().resolve()
+    if path_mode == "absolute":
+        return str(resolved)
+    if path_mode != "relative":
+        raise ValueError(f"Unsupported path mode: {path_mode!r}")
+    return Path(os.path.relpath(resolved, base.resolve())).as_posix()
+
+
+def resolve_metadata_path(value: str, metadata_path: str | Path) -> Path:
+    """Resolve both legacy absolute and v4 portable sidecar path records."""
+    candidate = Path(value).expanduser()
+    if candidate.is_absolute():
+        return candidate.resolve()
+    return (Path(metadata_path).expanduser().resolve().parent / candidate).resolve()
+
+
+def load_text_cache_metadata(path: str | Path) -> dict:
+    """Load v3 legacy or v4 portable text-cache metadata."""
+    metadata_path = Path(path).expanduser().resolve()
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if payload.get("schema_version") not in SUPPORTED_TEXT_CACHE_METADATA_SCHEMAS:
+        raise ValueError(
+            f"Unsupported text-cache metadata schema: {payload.get('schema_version')!r}"
+        )
+    return payload
 
 
 def _sha256_file(path: Path) -> str:
@@ -75,6 +108,7 @@ def _atomic_save_embedding(path: Path, array: np.ndarray) -> None:
             np.save(output, array, allow_pickle=False)
             output.flush()
             os.fsync(output.fileno())
+        publish_file(temporary_path)
         os.replace(temporary_path, path)
         temporary_path = None
     finally:
@@ -98,6 +132,7 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
             output.write("\n")
             output.flush()
             os.fsync(output.fileno())
+        publish_file(temporary_path)
         os.replace(temporary_path, path)
         temporary_path = None
     finally:
@@ -143,7 +178,7 @@ def _exclusive_output_lock(path: Path):
 
 
 def _artifact_content_manifest(model_name_or_path: str) -> dict | None:
-    """Fingerprint every local model file while excluding HF transfer metadata."""
+    """Fingerprint functional model files, independent of snapshot documentation."""
     root = Path(model_name_or_path).expanduser()
     if not root.is_dir():
         return None
@@ -153,6 +188,10 @@ def _artifact_content_manifest(model_name_or_path: str) -> dict | None:
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
         if not path.is_file() or ".cache" in relative.parts:
+            continue
+        if path.name in {"LICENSE", "LICENSE.txt", "USE_POLICY.md", ".gitattributes"}:
+            continue
+        if path.suffix.lower() in {".md", ".rst"}:
             continue
         size = path.stat().st_size
         files[str(relative)] = {"sha256": _sha256_file(path), "size": size}
@@ -223,16 +262,42 @@ def _cache_provenance(args) -> dict:
 
 
 def _bind_identity(identity: str, encoder_artifacts: dict | None, provenance: dict) -> str:
+    """Bind only functional content, never checkout/server location provenance."""
     content = {}
     for name, record in (encoder_artifacts or {}).items():
         if "content" in record:
             content[name] = record["content"]["sha256"]
     binding = {
         "artifact_content_sha256": content,
-        "provenance": provenance,
+        "implementation_file_sha256": provenance["implementation_file_sha256"],
+        "dependency_versions": provenance["dependency_versions"],
+        "sanitizer": provenance["sanitizer"],
     }
     payload = json.dumps(binding, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return f"{identity};provenance_sha256={hashlib.sha256(payload).hexdigest()}"
+    return f"{identity};functional_sha256={hashlib.sha256(payload).hexdigest()}"
+
+
+def _functional_encoder_identity(args) -> str:
+    foundation = getattr(
+        args, "foundation_repo_id", "NousResearch/Meta-Llama-3-8B-Instruct"
+    )
+    mntp = getattr(
+        args,
+        "mntp_repo_id",
+        "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
+    )
+    supervised = getattr(
+        args,
+        "supervised_repo_id",
+        "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
+    )
+    return (
+        "llm2vec:"
+        f"foundation={foundation}@{args.foundation_revision};"
+        f"mntp={mntp}@{args.mntp_revision};"
+        f"supervised={supervised}@{args.supervised_revision};"
+        "pooling=mean;dtype=float32;internal_batch_size=1"
+    )
 
 
 def _build_encoder(args):
@@ -253,14 +318,7 @@ def _build_encoder(args):
         base_revision=args.mntp_revision,
         peft_revision=args.supervised_revision,
     )
-    identity = (
-        "llm2vec:"
-        f"foundation={args.foundation_model}@{args.foundation_revision};"
-        f"mntp={args.mntp_model}@{args.mntp_revision};"
-        f"supervised={args.supervised_model}@{args.supervised_revision};"
-        "pooling=mean;dtype=float32;internal_batch_size=1"
-    )
-    return encoder, identity
+    return encoder, _functional_encoder_identity(args)
 
 
 def _encoder_artifacts(args) -> dict[str, dict] | None:
@@ -269,14 +327,27 @@ def _encoder_artifacts(args) -> dict[str, dict] | None:
     artifacts = {
         "foundation": {
             "model_name_or_path": args.foundation_model,
+            "repo_id": getattr(
+                args, "foundation_repo_id", "NousResearch/Meta-Llama-3-8B-Instruct"
+            ),
             "revision": args.foundation_revision,
         },
         "mntp_adapter": {
             "model_name_or_path": args.mntp_model,
+            "repo_id": getattr(
+                args,
+                "mntp_repo_id",
+                "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
+            ),
             "revision": args.mntp_revision,
         },
         "supervised_adapter": {
             "model_name_or_path": args.supervised_model,
+            "repo_id": getattr(
+                args,
+                "supervised_repo_id",
+                "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
+            ),
             "revision": args.supervised_revision,
         },
     }
@@ -292,6 +363,7 @@ def _run_locked(args) -> None:
     destination = Path(args.output_manifest).expanduser().resolve()
     metadata_path = destination.with_suffix(destination.suffix + ".metadata.json")
     cache_dir = Path(args.cache_dir).expanduser().resolve()
+    path_mode = str(getattr(args, "path_mode", "relative"))
     existing_outputs = [path for path in (destination, metadata_path) if path.exists()]
     if existing_outputs:
         raise FileExistsError(
@@ -305,12 +377,18 @@ def _run_locked(args) -> None:
         raise ValueError("encode_call_size must be positive")
     encoder_artifacts = _encoder_artifacts(args)
     cache_provenance = _cache_provenance(args)
-    encoder, identity = _build_encoder(args)
+    encoder, runtime_identity = _build_encoder(args)
+    identity = (
+        _functional_encoder_identity(args)
+        if args.provider == "local"
+        else runtime_identity
+    )
     identity = _bind_identity(identity, encoder_artifacts, cache_provenance)
     metadata = {
-        "schema_version": 3,
+        "schema_version": TEXT_CACHE_METADATA_SCHEMA_VERSION,
+        "path_mode": path_mode,
         "encoder": identity,
-        "source_manifest": str(source),
+        "source_manifest": _serialized_path(source, destination.parent, path_mode),
         "source_manifest_sha256": _sha256_file(source),
         "dtype": "float32",
         "internal_batch_size": 1,
@@ -321,7 +399,9 @@ def _run_locked(args) -> None:
         metadata["encoder_artifacts"] = encoder_artifacts
     source_metadata = source.with_suffix(source.suffix + ".metadata.json")
     if source_metadata.is_file():
-        metadata["source_manifest_metadata"] = str(source_metadata)
+        metadata["source_manifest_metadata"] = _serialized_path(
+            source_metadata, destination.parent, path_mode
+        )
         metadata["source_manifest_metadata_sha256"] = _sha256_file(source_metadata)
 
     temporary_path = None
@@ -358,7 +438,17 @@ def _run_locked(args) -> None:
                 embeddings_created += 1
 
         for entry, key, embedding_path in prepared:
-            entry["text_embedding"] = str(embedding_path)
+            motion_value = entry.get("motion")
+            if motion_value:
+                motion = Path(str(motion_value)).expanduser()
+                if not motion.is_absolute():
+                    motion = source.parent / motion
+                entry["motion"] = _serialized_path(
+                    motion, destination.parent, path_mode
+                )
+            entry["text_embedding"] = _serialized_path(
+                embedding_path, destination.parent, path_mode
+            )
             entry["text_cache_key"] = key
             output.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
         return len(prepared)
@@ -399,12 +489,13 @@ def _run_locked(args) -> None:
                     count += flush_records(pending_records, output)
             output.flush()
             os.fsync(output.fileno())
+        publish_file(temporary_path)
         if destination.exists() or metadata_path.exists():
             raise FileExistsError(
                 "Output manifest or sidecar appeared while caching; refusing to overwrite it"
             )
         metadata["output"] = {
-            "path": str(destination),
+            "path": _serialized_path(destination, destination.parent, path_mode),
             "sha256": _sha256_file(temporary_path),
             "entries": count,
         }
@@ -440,6 +531,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-url", default="http://127.0.0.1:9550/")
     parser.add_argument("--device", default="auto")
     parser.add_argument(
+        "--path-mode",
+        choices=("relative", "absolute"),
+        default="relative",
+        help="Serialize portable relative references by default; absolute is legacy-only",
+    )
+    parser.add_argument(
+        "--foundation-repo-id",
+        default="NousResearch/Meta-Llama-3-8B-Instruct",
+        help="Stable repository identity used in the cache key when loading a local snapshot",
+    )
+    parser.add_argument(
+        "--mntp-repo-id",
+        default="McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp",
+    )
+    parser.add_argument(
+        "--supervised-repo-id",
+        default="McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
+    )
+    parser.add_argument(
         "--encode-call-size",
         type=int,
         default=64,
@@ -457,7 +567,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--foundation-model",
-        default="meta-llama/Meta-Llama-3-8B-Instruct",
+        default="NousResearch/Meta-Llama-3-8B-Instruct",
         help="Pinned foundation model repo or local snapshot path",
     )
     parser.add_argument(

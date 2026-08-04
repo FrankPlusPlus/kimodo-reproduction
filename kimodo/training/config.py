@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from omegaconf import OmegaConf
 
@@ -172,7 +172,11 @@ class TrainingConfig:
             )
         if self.data.reference_verification not in {"full", "inventory"}:
             raise ValueError("data.reference_verification must be 'full' or 'inventory'")
-        if self.data.reference_verification == "inventory" and not self.data.reference_inventory:
+        if (
+            require_paths
+            and self.data.reference_verification == "inventory"
+            and not self.data.reference_inventory
+        ):
             raise ValueError(
                 "data.reference_inventory is required when reference_verification='inventory'"
             )
@@ -314,11 +318,70 @@ class TrainingConfig:
         return asdict(self)
 
 
-def load_training_config(path: str | Path, overrides: list[str] | None = None) -> TrainingConfig:
-    """Load a strict structured config and optional OmegaConf dot-list overrides."""
+_PATH_OVERLAY_FIELDS = frozenset(
+    {
+        "data.manifest",
+        "data.reference_inventory",
+        "model.checkpoint_dir",
+        "model.checkpoint_weights",
+        "model.stats_path",
+        "runtime.output_dir",
+        "runtime.resume",
+    }
+)
+
+
+def _load_mapping(path: str | Path, *, label: str) -> dict[str, Any]:
+    source = Path(path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(f"{label} does not exist: {source}")
+    loaded = OmegaConf.load(source)
+    plain = OmegaConf.to_container(loaded, resolve=False)
+    if not isinstance(plain, dict):
+        raise TypeError(f"{label} must contain a top-level mapping")
+    return plain
+
+
+def _leaf_paths(value: dict[str, Any], prefix: str = "") -> Iterable[str]:
+    for key, item in value.items():
+        name = f"{prefix}.{key}" if prefix else str(key)
+        if isinstance(item, dict):
+            yield from _leaf_paths(item, name)
+        else:
+            yield name
+
+
+def _load_paths_overlay(path: str | Path) -> dict[str, Any]:
+    loaded = _load_mapping(path, label="paths YAML")
+    schema_version = loaded.pop("schema_version", 1)
+    if schema_version != 1:
+        raise ValueError(f"Unsupported paths YAML schema_version={schema_version!r}")
+    supplied = set(_leaf_paths(loaded))
+    disallowed = sorted(supplied - _PATH_OVERLAY_FIELDS)
+    if disallowed:
+        raise ValueError(
+            "paths YAML may contain only training resource/output paths; disallowed fields: "
+            + ", ".join(disallowed)
+        )
+    return loaded
+
+
+def load_training_config(
+    path: str | Path,
+    overrides: list[str] | None = None,
+    *,
+    paths: str | Path | None = None,
+    overlays: Iterable[str | Path] | None = None,
+) -> TrainingConfig:
+    """Load base -> paths -> overlays -> dot-list using strict structured merging."""
     base = OmegaConf.structured(TrainingConfig)
     loaded = OmegaConf.load(path)
-    merged = OmegaConf.merge(base, loaded)
+    layers: list[Any] = [base, loaded]
+    if paths is not None:
+        layers.append(OmegaConf.create(_load_paths_overlay(paths)))
+    for overlay in overlays or ():
+        layers.append(OmegaConf.create(_load_mapping(overlay, label="training overlay")))
+    merged = OmegaConf.merge(*layers)
     if overrides:
         merged = OmegaConf.merge(merged, OmegaConf.from_dotlist(overrides))
     OmegaConf.set_struct(merged, True)

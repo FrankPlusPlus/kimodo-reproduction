@@ -17,7 +17,15 @@ This repository provides:
 
 ## Training Reconstruction
 
-This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Start with the [paper-parity audit](docs/paper_training_parity_audit.md), then follow the [training runbook](docs/training_reproduction_runbook.md). Two-H200 batch/memory/timing measurements are recorded in the [H200 benchmark](docs/h200_training_benchmark.md). The strict production profile fails closed when the paper-described Qwen3-32B paraphrases or diffusion-generated cross-motion transitions are absent; disable that gate only for an explicitly labeled engineering baseline.
+This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. A fresh clone uses a pinned resource catalog plus one machine-local paths YAML:
+
+```bash
+scripts/resources/setup_env.sh --flowmatching-repo /path/to/kimodo-flowmatching
+cp resources/paths.example.yaml resources/paths.local.yaml  # edit storage paths
+scripts/resources/resources.sh --paths resources/paths.local.yaml all
+```
+
+Existing datasets/models can be assigned with `existing_path` and are verified before zero-copy reuse. The pipeline emits the paths YAML consumed by the training launcher; method and hardware hyperparameters stay in separate YAML files. See the [portable training runbook](docs/training_reproduction_runbook.md), [paper-parity audit](docs/paper_training_parity_audit.md), and [H200 benchmark](docs/h200_training_benchmark.md). The strict profile fails closed when the unpublished Qwen paraphrases or transition data are absent; the public profile is explicitly an engineering baseline.
 
 <div align="center">
   <img src="assets/teaser.gif" width="1280">

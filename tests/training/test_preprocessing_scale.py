@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import multiprocessing
+import os
 import threading
 from pathlib import Path
 
@@ -97,7 +98,9 @@ def test_text_cache_streams_equivalent_rows_and_reuses_cache(monkeypatch, tmp_pa
         key = text_cache_cli._cache_key(record["text"], bound_identity)
         expected_record = {
             **record,
-            "text_embedding": str((cache_dir / f"{key}.npy").resolve()),
+            "text_embedding": Path(
+                os.path.relpath(cache_dir / f"{key}.npy", destination.parent)
+            ).as_posix(),
             "text_cache_key": key,
         }
         expected.append(json.dumps(expected_record, ensure_ascii=False, sort_keys=True))

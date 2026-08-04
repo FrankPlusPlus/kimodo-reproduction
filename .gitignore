@@ -163,7 +163,12 @@ nohup.out
 /runs/
 /checkpoints/
 /tmp/
+/configs/local/
+/configs/paths/*.yaml
+!/configs/paths/*.example.yaml
 /wandb/
+/resources/managed/
+/resources/paths.local.yaml
 *.ckpt
 *.pt
 *.pth

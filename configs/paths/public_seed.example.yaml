@@ -1,0 +1,17 @@
+schema_version: 1
+
+# Copy this file outside Git or into configs/local/ (gitignored by the portable
+# resource layer), then set only these deployment paths. Training method and
+# hardware values stay in their own YAML files.
+data:
+  manifest: ${oc.env:KIMODO_DATA_ROOT}/train.cached.jsonl
+  reference_inventory: ${oc.env:KIMODO_DATA_ROOT}/train.cached.references.jsonl
+
+model:
+  stats_path: ${oc.env:KIMODO_DATA_ROOT}/stats/repro-soma30-30fps
+  checkpoint_dir: null
+  checkpoint_weights: null
+
+runtime:
+  output_dir: ${oc.env:KIMODO_RUN_ROOT}/repro-soma30
+  resume: null
