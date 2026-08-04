@@ -22,20 +22,14 @@ of either YAML schema and are never printed by this tool.
 ## Fresh-clone flow
 
 ```bash
-scripts/resources/setup_env.sh \
-  --flowmatching-repo /path/to/kimodo-flowmatching
-cp resources/paths.example.yaml resources/paths.local.yaml
-# Edit resources/paths.local.yaml.
-
-scripts/resources/resources.sh \
-  --paths resources/paths.local.yaml plan
-scripts/resources/resources.sh \
-  --paths resources/paths.local.yaml fetch
-scripts/resources/resources.sh \
-  --paths resources/paths.local.yaml verify
-scripts/resources/resources.sh \
-  --paths resources/paths.local.yaml prepare
+scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 ```
+
+This creates the environment, clones the pinned FM converter into ignored
+`.deps/`, writes `/shared/kimodo/config/resources.paths.yaml`, fetches/verifies,
+prepares, and emits `/shared/kimodo/config/repro.paths.yaml`. The lower-level
+`setup_env.sh` and `resources.sh plan/fetch/verify/prepare` commands remain
+available when a cluster administrator wants to run each stage separately.
 
 The training/resource environment skips the optional MotionCorrection C++
 postprocessor, so a fresh server does not need CMake or a compiler. Add
@@ -82,3 +76,9 @@ virtual environment. The combined shorthand is:
 ```bash
 scripts/resources/resources.sh --paths resources/paths.local.yaml all
 ```
+
+To adopt a complete legacy cache without running LLM2Vec, or to bind a copied
+train-ready prepared root on a new server, use `bootstrap_training.sh
+--legacy-root ...` or `bootstrap_training.sh --prepared-root ...`. Full commands,
+storage behavior, and training/resume examples are in
+[`docs/portable_training_setup.md`](../docs/portable_training_setup.md).

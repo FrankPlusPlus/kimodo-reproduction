@@ -16,6 +16,8 @@ import json
 import os
 from pathlib import Path
 
+import numpy as np
+
 TEXT_COLUMNS = (
     "content_natural_desc_1",
     "content_natural_desc_2",
@@ -116,6 +118,43 @@ def _source_record(
     }
 
 
+def _canonical_frame_count(path: Path) -> int | None:
+    """Read the exact length of a canonical NPZ without motion conversion."""
+    if path.suffix.lower() != ".npz":
+        return None
+    with np.load(path, allow_pickle=False) as archive:
+        for key in ("local_rot_mats", "trans", "root_positions"):
+            if key in archive.files:
+                count = int(archive[key].shape[0])
+                if count < 1:
+                    raise ValueError(f"Canonical motion is empty: {path}")
+                return count
+    raise ValueError(f"Cannot determine canonical motion length: {path}")
+
+
+def _inventory_frame_counts(path: str | None) -> dict[str, int]:
+    if not path:
+        return {}
+    source = Path(path).expanduser().resolve()
+    result: dict[str, int] = {}
+    with source.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            cached = record.get("cached")
+            frames = record.get("frames")
+            if not isinstance(cached, str) or not isinstance(frames, int) or frames < 1:
+                raise ValueError(
+                    f"{source}:{line_number} must contain cached path and positive frames"
+                )
+            key = Path(cached).as_posix()
+            if key in result:
+                raise ValueError(f"{source}:{line_number} repeats cached path {key!r}")
+            result[key] = frames
+    return result
+
+
 def build_manifest(args) -> dict[str, int]:
     metadata = Path(args.metadata).expanduser().resolve()
     dataset_root = Path(args.dataset_root).expanduser().resolve()
@@ -144,6 +183,9 @@ def build_manifest(args) -> dict[str, int]:
     path_column = PATH_COLUMNS[args.skeleton]
     destination = Path(args.output).expanduser().resolve()
     path_mode = str(getattr(args, "path_mode", "relative"))
+    inventory_frames = _inventory_frame_counts(
+        getattr(args, "motion_inventory", None)
+    )
     if destination.exists():
         raise FileExistsError(f"Refusing to overwrite manifest: {destination}")
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -170,6 +212,22 @@ def build_manifest(args) -> dict[str, int]:
                     raise FileNotFoundError(f"Metadata motion path is missing: {motion_path}")
                 continue
             filename = str(row.get("filename") or motion_path.stem)
+            inventory_key = Path(key).with_suffix(".npz").as_posix()
+            if inventory_frames:
+                frame_count = inventory_frames.get(inventory_key)
+                if frame_count is None:
+                    raise ValueError(
+                        f"canonical conversion inventory has no frame count for {inventory_key}"
+                    )
+            else:
+                try:
+                    frame_count = _canonical_frame_count(motion_path)
+                except (OSError, ValueError, EOFError):
+                    # Generic/source manifests predate the portable training
+                    # contract and may reference formats that do not expose a
+                    # cheap frame count.  The production pipeline always
+                    # supplies --motion-inventory and therefore fails closed.
+                    frame_count = None
             counts["motions"] += 1
             descriptions = [
                 (column, text)
@@ -187,6 +245,7 @@ def build_manifest(args) -> dict[str, int]:
                             "text": text,
                             "split": args.split_name,
                             "source_fps": manifest_fps,
+                            **({"frame_count": frame_count} if frame_count is not None else {}),
                             "sample_kind": "full",
                             "text_source": f"bones_seed_metadata:{text_column}",
                             "augmentation_provenance": "dataset_annotation",
@@ -209,6 +268,7 @@ def build_manifest(args) -> dict[str, int]:
                             "text": text,
                             "split": args.split_name,
                             "source_fps": manifest_fps,
+                            **({"frame_count": frame_count} if frame_count is not None else {}),
                             "start_time": float(event["start_time"]),
                             "end_time": float(event["end_time"]),
                             "sample_kind": "event",
@@ -234,6 +294,7 @@ def build_manifest(args) -> dict[str, int]:
                             "text": f"{first_text} Then, {second_text}",
                             "split": args.split_name,
                             "source_fps": manifest_fps,
+                            **({"frame_count": frame_count} if frame_count is not None else {}),
                             "start_time": float(first["start_time"]),
                             "end_time": float(second["end_time"]),
                             "sample_kind": "combined_events",
@@ -369,6 +430,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--skeleton", choices=tuple(PATH_COLUMNS), default="soma_uniform")
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--motion-inventory",
+        help="Optional canonical conversion inventory containing cached paths and frame counts",
+    )
     parser.add_argument("--split-name", default="train")
     parser.add_argument("--source-fps", type=float, default=120.0)
     parser.add_argument("--full-repeats", type=int, default=1)

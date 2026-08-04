@@ -657,7 +657,7 @@ raw text 时仍需本地或 API text encoder。`checkpoints/step-*` 是可恢复
 |---|---|---|
 | 公开 BONES-SEED/SOMA30 方法工程复刻 | **有条件通过** | 核心数学、官方权重契约和小规模训练路径通过 |
 | 原论文 Sec. 6 exact reproduction | **不通过 / blocked** | 私有 Rigplay/native-27/test/TMR 与增强 recipe 不可得 |
-| clone 后 pinned prepare→train | **实现通过，真实全量重建待跑** | FM revision、缓存语义、真实 batch preflight 已闭合；schema 5 需重建旧 cache |
+| clone 后 pinned prepare/adopt→train | **真实系统验收通过** | portable adoption、全内容校验、真实 batch、双 H200 step 与 resume 已完成 |
 | clone 后 pinned train→paper eval | **不通过 / 未闭合** | benchmark/TMR/20-fps/private protocol 未进入资源链 |
 | 1M steps 最终收敛与论文数值 | **未测试** | 当前只有单元、集成、2-step smoke、dry-run 与官方 oracle |
 
@@ -668,10 +668,10 @@ SHA、encoder identity SHA、精确 `[1,4096]`、float32、文件大小和内容
 sidecar/key/content hash，reference inventory 也覆盖 sidecar。已有文件只有形状正确但语义 sidecar
 缺失或不一致时会重新编码；全命中时 encoder 延迟加载，不再无谓构造 8B 模型。
 
-这是有意的 pipeline 兼容性断点：旧 schema 3/4 prepared cache 不会被新版 pipeline 重新盖章为
-`repro_train_ready`，应另建 prepared root 重建。为避免现有长时间生成的 cache 立刻无法训练，trainer
-仍可读取旧 manifest，并依赖已有 reference inventory 的完整内容校验；但它没有 schema 5 的逐 embedding
-语义保证。不要手工伪造 schema 5 sidecar。
+旧 schema 3/4 cache 不会被普通 prepare 静默重新盖章。`adopt-legacy` 提供独立的验证迁移路径：逐项
+核对旧 sidecar 的 provider/text/key/shape/dtype/content hash，保留旧 encoder provenance，硬链接或复制
+资产，并生成相对路径 schema-5 bundle；它不会加载 8B encoder。缺少语义 sidecar 或身份不一致会
+fail closed。不要手工伪造 schema-5 sidecar。
 
 ### 15.2 论文级未知项
 
@@ -688,10 +688,11 @@ sidecar/key/content hash，reference inventory 也覆盖 sidecar。已有文件�
 ### 15.3 尚未完成的运行证据
 
 - 论文规模 1M optimizer steps 未运行；
-- 新 portable pipeline 尚需在一个完全空的 prepared root 上用全部真实资源跑到
-  `repro_train_ready`，再启动至少一个真实训练 step，作为最终系统级验收；
-- 当前服务器旧 schema-3 manifest 的真实 CPU preflight 已通过：1,407,184 rows 中按 30 帧门槛排除
-  34,790 个短 temporal rows，剩余 1,372,394 entries；这证明 legacy 输入可读，不替代 schema-5 重建；
+- 当前服务器已从空 prepared root 完成 verified legacy adoption：1,407,184 rows、128,315 unique
+  motions、132,972 unique embeddings，完整 reference hash 后写出 `repro_train_ready`；
+- schema-5 真实 CPU preflight 已通过，`min_frames=2` 与原 stats 的最短拟合窗口一致，全部
+  1,407,184 rows 可用，并实际组装 `[128,300,369]` motion / `[128,1,4096]` text batch；
+- 两张 H200 已完成 step 1，并从 4.53GB full-state checkpoint 原地恢复到 step 2；
 - 单元、集成、官方 checkpoint 和 CLI dry-run 通过，不能替代上述大规模证据。
 
 ### 15.4 已修复：strict 起始 step 绕过
@@ -729,6 +730,11 @@ embeddings；cached manifest 约 975 MB。每个 rank 的 `load_manifest` 会 JS
 `__getitem__` 每 row 都 `np.load` motion/embedding 并重算 motion representation；同一 motion/text
 平均在 manifest 中重复约 11 次。H200 synthetic benchmark 没覆盖这段真实 startup、inode/NFS、RAM
 和 CPU 成本。
+
+Python 3.14 将 POSIX multiprocessing 默认改为 `forkserver`，曾导致 1.4M-row dataset 为每个 worker
+序列化，实测单 worker RSS 约 3.4GB、GPU 保持 0%。生产配置现在显式用 Linux `fork`；workers 只做
+CPU 数据处理，不访问 CUDA，manifest 对象通过 COW 共享。真实双卡 step 已验证该路径。每 rank 仍会
+各自解析一次 manifest，启动延迟和 Python 对象常驻内存尚可继续用 compact index 优化。
 
 建议 prepare 生成 Arrow/mmap/compact binary index；把 `[1,4096]` embedding pack 成连续矩阵；
 inventory full-verify 后避免 trainer 再做重复 stat；增加真实 manifest 的 startup time、peak RSS、
@@ -770,12 +776,13 @@ test/TMR 资产或明确的公开替代协议。
 ### 15.13 其余运行边界
 
 - prepare 现在会在发布 `repro_train_ready` 前使用真实 manifest/stats 构造并 collate 一个 CPU batch；
-- BONES temporal labels 中确有少于 30 帧的 event；dataset 初始化会按 `min_frames` 排除并由 preflight
-  报告数量，避免训练中随机抽到后才崩溃；
+- frame count 已写入 schema-5 manifest；dataset 初始化会按统一的 `min_frames=2` 对 full/temporal
+  spans 做静态门禁并由 preflight 报告，不会在随机采样后才崩溃；
 - raw manifest/stats 的部分最终路径不是统一 staging + atomic publish，中断后可能留下半成品；
 - 最终 step 已按周期保存时不会再次重写同一大 checkpoint；
 - two-H200 launcher 不是通用 1/2/N GPU 入口，`--dry-run` 也会先做两张 H200 preflight；
-- prepare wrapper 不会自动把刚生成的 paths YAML 传给 trainer，仍需设置 `KIMODO_PATHS_CONFIG`；
+- `bootstrap_training.sh` 会生成 trainer paths 并打印准确启动命令；加 `--train --gpus 0,1` 可在资源
+  验收后显式开训；
 - `scripts/smoke_train.sh` 已提供 clone 后一条命令可跑的真实 2-step 工程 smoke。
 
 ## 16. 推荐运行方式
@@ -783,40 +790,18 @@ test/TMR 资产或明确的公开替代协议。
 ### 16.1 Fresh server
 
 ```bash
-git clone https://github.com/FrankPlusPlus/kimodo-flowmatching.git
 git clone https://github.com/FrankPlusPlus/kimodo-reproduction.git
-
-# 把这次拉到的 repro HEAD 解析为 commit、checkout 并记录；长期重跑应复用该 hash。
-repro_commit="$(git -C kimodo-reproduction rev-parse HEAD)"
-git -C kimodo-reproduction checkout "${repro_commit}"
-echo "repro_commit=${repro_commit}"
-
-# dependencies.lock.yaml 固定的 FM converter；setup/prepare 会再次强制核验。
-git -C kimodo-flowmatching checkout 840e31a11eed6bbe895a033097bbe7cb70a29101
-
 cd kimodo-reproduction
-# 推荐受控 Python 3.11/3.12；先确认解释器真的存在，或换成管理员提供的绝对路径。
-command -v python3.11
-export KIMODO_BOOTSTRAP_PYTHON=python3.11
-scripts/resources/setup_env.sh \
-  --flowmatching-repo ../kimodo-flowmatching
-
-.venv/bin/python -m pip check
-mkdir -p /path/to/run-metadata
-.venv/bin/python -m pip freeze > /path/to/run-metadata/pip-freeze.txt
-
 # 先在 https://huggingface.co/datasets/bones-studio/seed 接受 gated license。
 # 凭据由 Hugging Face credential store 保存；不要写进 YAML、shell 脚本或 Git。
-.venv/bin/hf auth login
+proxy_on  # 仅服务器需要代理时
 
-cp resources/paths.example.yaml resources/paths.local.yaml
-# 编辑资源 destination/existing_path 和 writable pipeline roots
-# 在 all 前检查各挂载点容量；最小下载 61.8 GB，完整准备的保守空间预算约 230–260 GB。
-df -h /path/to/raw-parent /path/to/prepared-parent /path/to/run-parent
-
-scripts/resources/resources.sh --paths resources/paths.local.yaml plan
-scripts/resources/resources.sh --paths resources/paths.local.yaml all
+# 自动创建 venv、clone/锁定 FM converter、下载、prepare、完整校验；默认不启动 1M-step 训练。
+scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 ```
+
+已有旧 cache 或已复制 train-ready bundle 的免重编码流程见
+[`portable_training_setup.md`](portable_training_setup.md)。
 
 ### 16.2 两张 H200
 
@@ -900,11 +885,13 @@ receipt/provenance 作为审计记录。
 本轮检查包括：
 
 ```text
-full repro suite:                      86 passed, 1 skipped
+full repro suite:                      88 passed, 1 skipped
 four paper parity modules:              23 passed
 official module:                        2 passed (one strict load/forward/backward, one export rewrite)
 scripts/smoke_train.sh:                 data preflight + Phase 1/2 + checkpoint/export passed
-legacy 1.4M-row real-data preflight:    passed; 34,790 short temporal rows excluded explicitly
+portable adoption full verification:   passed; 1,407,184 rows / 394,262 references
+schema-5 real-data preflight:           passed; 1,407,184 usable rows, real batch constructed
+two-H200 train + in-place resume:       step 1 -> full-state checkpoint -> step 2 passed
 schema-5 cache swap/lazy-reuse tests:   passed
 manifest overlay/inventory tests:       passed
 resource plan + training dry-run:       passed

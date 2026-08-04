@@ -20,6 +20,11 @@ class DataConfig:
     max_seconds: float = 10.0
     min_frames: int = 2
     num_workers: int = 4
+    # Python 3.14 changed the POSIX default to forkserver.  A 1.4M-row map
+    # dataset would then be pickled once per worker (multiple GB each).  Linux
+    # GPU training uses fork so read-only manifest objects are shared by COW;
+    # workers never access CUDA.
+    multiprocessing_context: str = "fork"
     pin_memory: bool = True
     prefetch_factor: int = 2
     persistent_workers: bool = False
@@ -174,6 +179,15 @@ class TrainingConfig:
         if self.data.persistent_workers:
             raise ValueError(
                 "persistent_workers is disabled: worker dataset copies would not receive set_epoch updates"
+            )
+        if self.data.multiprocessing_context not in {
+            "auto",
+            "fork",
+            "forkserver",
+            "spawn",
+        }:
+            raise ValueError(
+                "data.multiprocessing_context must be auto, fork, forkserver, or spawn"
             )
         if self.data.reference_verification not in {"full", "inventory"}:
             raise ValueError("data.reference_verification must be 'full' or 'inventory'")

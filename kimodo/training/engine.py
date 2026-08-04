@@ -10,7 +10,9 @@ import hashlib
 import json
 import os
 import random
+import socket
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -141,6 +143,51 @@ class JsonlLogger:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
         print(json.dumps(record, sort_keys=True), flush=True)
+
+
+class ExclusiveRunLock:
+    """NFS-safe single-writer lease for one training output directory."""
+
+    def __init__(self, output_dir: Path) -> None:
+        self.path = output_dir / ".kimodo-active-run.lock"
+        self.token = uuid.uuid4().hex
+        self.held = False
+
+    def acquire(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        record = {
+            "token": self.token,
+            "pid": os.getpid(),
+            "hostname": socket.gethostname(),
+            "started_at_unix": time.time(),
+        }
+        try:
+            descriptor = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o664)
+        except FileExistsError as error:
+            try:
+                owner = self.path.read_text(encoding="utf-8").strip()
+            except OSError:
+                owner = "<unreadable>"
+            raise FileExistsError(
+                f"training output_dir is already locked: {self.path}; owner={owner}"
+            ) from error
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(record, handle, sort_keys=True)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        self.held = True
+
+    def release(self) -> None:
+        if not self.held:
+            return
+        try:
+            current = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            current = None
+        if isinstance(current, dict) and current.get("token") == self.token:
+            self.path.unlink(missing_ok=True)
+        self.held = False
 
 
 def build_training_dataset(config, motion_rep):
@@ -297,7 +344,6 @@ class KimodoTrainer:
             config.runtime.keep_last_checkpoints,
             protected_steps=protected_steps,
         )
-        self.logger = JsonlLogger(self.output_dir / "train.jsonl", self.context.is_main)
         self.global_step = int(config.runtime.initial_global_step)
         self.epoch = 0
         self.batch_in_epoch = 0
@@ -346,6 +392,10 @@ class KimodoTrainer:
                 prefetch_factor=config.data.prefetch_factor,
                 persistent_workers=config.data.persistent_workers,
             )
+            if config.data.multiprocessing_context != "auto":
+                loader_kwargs["multiprocessing_context"] = (
+                    config.data.multiprocessing_context
+                )
         self.loader = DataLoader(**loader_kwargs)
         if len(self.loader) == 0:
             raise ValueError("Training DataLoader is empty; lower batch_size or add data")
@@ -367,13 +417,35 @@ class KimodoTrainer:
             self.batch_in_epoch = int(state["batch_in_epoch"])
             self.micro_index = int(state["micro_index"])
             self._last_saved_position = (self.global_step, self.micro_index)
+            if self.global_step > config.total_steps:
+                raise ValueError(
+                    f"resume checkpoint global_step={self.global_step} exceeds configured "
+                    f"total_steps={config.total_steps}"
+                )
 
+        self.run_lock = ExclusiveRunLock(self.output_dir) if self.context.is_main else None
+        lock_error = None
         if self.context.is_main:
-            self.output_dir.mkdir(parents=True, exist_ok=True)
-            from .config import save_resolved_config
+            try:
+                self.run_lock.acquire()
+            except FileExistsError as error:
+                lock_error = str(error)
+        if self.context.world_size > 1:
+            payload = [lock_error]
+            dist.broadcast_object_list(payload, src=0)
+            lock_error = payload[0]
+        if lock_error is not None:
+            raise FileExistsError(lock_error)
+        if self.context.is_main:
+            try:
+                from .config import save_resolved_config
 
-            save_resolved_config(config, self.output_dir / "config.resolved.yaml")
-            save_provenance(self.provenance, self.output_dir / "provenance.json")
+                save_resolved_config(config, self.output_dir / "config.resolved.yaml")
+                save_provenance(self.provenance, self.output_dir / "provenance.json")
+            except Exception:
+                self.run_lock.release()
+                raise
+        self.logger = JsonlLogger(self.output_dir / "train.jsonl", self.context.is_main)
 
     def _observed_section(self, name: str):
         """Return an optional benchmark-only profiling range."""
@@ -440,6 +512,13 @@ class KimodoTrainer:
         return saved
 
     def train(self) -> None:
+        try:
+            self._train_impl()
+        finally:
+            if self.run_lock is not None:
+                self.run_lock.release()
+
+    def _train_impl(self) -> None:
         accumulation = self.config.runtime.gradient_accumulation_steps
         self.optimizer.zero_grad(set_to_none=True)
         skip_batches = self.batch_in_epoch

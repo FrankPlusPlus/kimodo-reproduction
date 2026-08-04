@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from kimodo.resources.adoption import adopt_legacy_bundle, bind_prepared_bundle
 from kimodo.resources.config import ResourceConfigError, load_catalog, load_paths
 from kimodo.resources.pipeline import (
     PipelineError,
@@ -19,6 +20,7 @@ from kimodo.resources.pipeline import (
     _validate_stats_bundle,
     plan_pipeline,
 )
+from kimodo.sanitize import sanitize_texts
 
 
 def _public_catalog() -> Path:
@@ -201,3 +203,125 @@ def test_stats_bundle_hashes_shapes_and_generated_paths_are_fail_closed(
     _atomic_yaml(paths, {"schema_version": 1, "value": "generated"})
     with pytest.raises(PipelineError, match="refusing to overwrite"):
         _atomic_yaml(paths, {"schema_version": 1, "value": "edited"})
+
+
+def test_legacy_adoption_is_portable_and_never_reencodes(tmp_path):
+    legacy = tmp_path / "legacy"
+    motion = legacy / "motions/soma30-30fps/fixture/motion.npz"
+    embedding_key = "a" * 64
+    embedding = legacy / f"text-cache/{embedding_key}.npy"
+    motion.parent.mkdir(parents=True)
+    embedding.parent.mkdir(parents=True)
+    rotations = np.broadcast_to(np.eye(3, dtype=np.float32), (8, 30, 3, 3)).copy()
+    np.savez(
+        motion,
+        local_rot_mats=rotations,
+        root_positions=np.zeros((8, 3), dtype=np.float32),
+    )
+    np.save(embedding, np.zeros((1, 4096), dtype=np.float32), allow_pickle=False)
+    text = "A person walks."
+    normalized = sanitize_texts([text])[0]
+    content_sha = hashlib.sha256(embedding.read_bytes()).hexdigest()
+    provider = "llm2vec:legacy-fixture"
+    embedding.with_suffix(".metadata.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "cache_key": embedding_key,
+                "normalized_text_sha256": hashlib.sha256(
+                    normalized.encode("utf-8")
+                ).hexdigest(),
+                "provider_identity": provider,
+                "dtype": "float32",
+                "shape": [1, 4096],
+                "sha256": content_sha,
+            }
+        ),
+        encoding="utf-8",
+    )
+    row = {
+        "id": "fixture",
+        "motion": str(motion),
+        "text": text,
+        "split": "train",
+        "source_fps": 30,
+        "sample_kind": "full",
+    }
+    (legacy / "train.raw.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    cached_row = {
+        **row,
+        "text_cache_key": embedding_key,
+        "text_embedding": str(embedding),
+    }
+    (legacy / "train.cached.jsonl").write_text(
+        json.dumps(cached_row) + "\n", encoding="utf-8"
+    )
+    (legacy / "train.raw.jsonl.metadata.json").write_text(
+        json.dumps({"schema_version": 1, "paper_parity_gate": {"eligible": False}}),
+        encoding="utf-8",
+    )
+    (legacy / "train.cached.jsonl.metadata.json").write_text(
+        json.dumps({"schema_version": 3, "encoder": provider}), encoding="utf-8"
+    )
+    legacy_stats = legacy / "stats/repro-soma30-30fps"
+    for group, dimension in (("global_root", 5), ("local_root", 4), ("body", 364)):
+        folder = legacy_stats / group
+        folder.mkdir(parents=True)
+        np.save(folder / "mean.npy", np.zeros(dimension, dtype=np.float32))
+        np.save(folder / "std.npy", np.ones(dimension, dtype=np.float32))
+    (legacy_stats / "stats.metadata.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "preprocessing": {},
+                "frame_counts": {
+                    "global_root": 8,
+                    "local_root": 8,
+                    "body": 8,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    adopted = tmp_path / "adopted"
+    paths = tmp_path / "config/repro.paths.yaml"
+    receipt = adopt_legacy_bundle(
+        legacy_root=legacy,
+        output_root=adopted,
+        run_root=tmp_path / "runs",
+        repro_paths_yaml=paths,
+        asset_mode="copy",
+    )
+    assert receipt["mode"] == "verified_legacy_no_reencode"
+    assert receipt["full_manifest_entries"] == 1
+    assert receipt["data_preflight"]["motion_shape"] == [1, 8, 369]
+    adopted_row = json.loads(
+        (adopted / "train.cached.jsonl").read_text(encoding="utf-8")
+    )
+    assert not Path(adopted_row["motion"]).is_absolute()
+    assert not Path(adopted_row["text_embedding"]).is_absolute()
+    assert adopted_row["frame_count"] == 8
+    assert (adopted / adopted_row["text_embedding_metadata"]).is_file()
+    assert paths.is_file()
+
+    rebound_paths = tmp_path / "relocated/repro.paths.yaml"
+    rebound = bind_prepared_bundle(
+        prepared_root=adopted,
+        run_root=tmp_path / "new-runs",
+        repro_paths_yaml=rebound_paths,
+    )
+    assert rebound["status"] == "prepared_bundle_bound"
+    assert rebound["reference_verification"] == "full_content_verified"
+    assert rebound["data_preflight"]["text_shape"] == [1, 1, 4096]
+    assert rebound_paths.is_file()
+
+    reused = adopt_legacy_bundle(
+        legacy_root=legacy,
+        output_root=adopted,
+        run_root=tmp_path / "runs",
+        repro_paths_yaml=paths,
+        asset_mode="copy",
+    )
+    assert reused["status"] == "repro_train_ready_reused"
+    assert reused["reference_verification"] == "full_content_verified"

@@ -483,6 +483,8 @@ def prepare_pipeline(
                     str(motions),
                     "--motion-cache-fps",
                     "30",
+                    "--motion-inventory",
+                    str(conversion),
                     "--path-mode",
                     "relative",
                     "--output",
@@ -559,7 +561,7 @@ def prepare_pipeline(
                     "--fps",
                     "30",
                     "--min-frames",
-                    "30",
+                    "2",
                     "--num-workers",
                     str(pipeline.stats_workers),
                 ]
@@ -622,10 +624,9 @@ def prepare_pipeline(
             },
         }
         _atomic_yaml(pipeline.repro_paths_yaml, paths_payload)
-        # Do not call a bundle "train ready" based only on file presence and
-        # hashes.  Exercise the exact public training config against the real
-        # manifest/stats and collate one CPU batch before publishing the
-        # receipt.  This intentionally avoids allocating the 283M denoiser.
+        # Schema-5 loading scans every row and validates each motion length and
+        # embedding identity.  The preflight then collates one representative
+        # CPU batch without allocating the 283M denoiser.
         public_config = (
             Path(__file__).resolve().parents[2]
             / "configs"
@@ -650,7 +651,7 @@ def prepare_pipeline(
             "catalog_sha256": _sha256(catalog.path),
             "paths_sha256": _sha256(paths.path),
             "flowmatching_producer": flowmatching_identity,
-            "data_preflight": "passed",
+            "data_preflight": "full_manifest_contract_passed",
             "outputs": {
                 "cached_manifest_sha256": _sha256(cached),
                 "inventory_sha256": _sha256(inventory),

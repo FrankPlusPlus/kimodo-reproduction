@@ -80,6 +80,14 @@ def manifest_reference_paths(manifest_path: str | Path) -> set[Path]:
             if not isinstance(source_record, dict) or not source_record.get("path"):
                 raise ValueError("source_manifests entries must contain a path")
             source = _resolve_relative_to(base, str(source_record["path"]))
+            if not source.is_file():
+                raise FileNotFoundError(f"source manifest is missing: {source}")
+            recorded_sha = source_record.get("sha256")
+            recorded_size = source_record.get("size")
+            if recorded_sha != sha256_file(source) or recorded_size != source.stat().st_size:
+                raise ValueError(
+                    f"source manifest differs from overlay provenance: {source}"
+                )
             paths.add(source)
             recorded_metadata = source_record.get("metadata_path")
             source_metadata = (
@@ -88,6 +96,14 @@ def manifest_reference_paths(manifest_path: str | Path) -> set[Path]:
                 else source.with_suffix(source.suffix + ".metadata.json")
             )
             if source_metadata.is_file():
+                expected_metadata_sha = source_record.get("metadata_sha256")
+                if (
+                    expected_metadata_sha is not None
+                    and expected_metadata_sha != sha256_file(source_metadata)
+                ):
+                    raise ValueError(
+                        f"source manifest metadata differs from overlay provenance: {source_metadata}"
+                    )
                 paths.add(source_metadata)
     return paths
 

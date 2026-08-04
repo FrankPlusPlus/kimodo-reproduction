@@ -17,19 +17,14 @@ This repository provides:
 
 ## Training Reconstruction
 
-This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Before downloading, accept the gated BONES-SEED license, authenticate with `hf auth login`, pin a compatible flowmatching commit, and place the machine-local paths on storage with roughly 230–260 GB free **plus checkpoint capacity**:
+This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Before downloading, accept the gated BONES-SEED license, authenticate with `hf auth login`, and place machine-local resources on storage with roughly 230–260 GB free **plus checkpoint capacity**. The bootstrap script clones and verifies the pinned Flow Matching preprocessing dependency automatically:
 
 ```bash
-git -C /path/to/kimodo-flowmatching checkout 840e31a11eed6bbe895a033097bbe7cb70a29101
-scripts/resources/setup_env.sh --flowmatching-repo /path/to/kimodo-flowmatching
-.venv/bin/hf auth login  # after accepting https://huggingface.co/datasets/bones-studio/seed
-cp resources/paths.example.yaml resources/paths.local.yaml  # edit storage paths
-scripts/resources/resources.sh --paths resources/paths.local.yaml plan
-df -h /path/to/raw-parent /path/to/prepared-parent /path/to/run-parent
-scripts/resources/resources.sh --paths resources/paths.local.yaml all
+proxy_on  # optional, only when this server requires it
+scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 ```
 
-Never put the Hugging Face token in YAML or Git. Existing datasets/models can be assigned with `existing_path` and are verified before zero-copy reuse. The pipeline emits the paths YAML consumed by the training launcher; method and hardware hyperparameters stay in separate YAML files. Read the [full reproduction/data-flow guide](docs/reproduction_end_to_end_guide.md), [portable training runbook](docs/training_reproduction_runbook.md), [paper-parity audit](docs/paper_training_parity_audit.md), [small dancing augmentation guide](docs/dancing_augmentation.md), and [H200 benchmark](docs/h200_training_benchmark.md). Run `scripts/smoke_train.sh` for a clone-local two-step check. The strict profile fails closed when the unpublished Qwen paraphrases or transition data are absent; the public profile is explicitly an engineering baseline.
+Never put the Hugging Face token in YAML or Git. Existing datasets/models can be assigned with `existing_path`; an old text cache can be adopted without loading the 8B encoder, and a relocated train-ready bundle can be fully verified and rebound. The pipeline emits the paths YAML consumed by the training launcher; method and hardware hyperparameters stay in separate YAML files. Start with the [clone-to-training deployment guide](docs/portable_training_setup.md), then read the [full reproduction/data-flow guide](docs/reproduction_end_to_end_guide.md), [paper-parity audit](docs/paper_training_parity_audit.md), [small dancing augmentation guide](docs/dancing_augmentation.md), and [H200 benchmark](docs/h200_training_benchmark.md). Run `scripts/smoke_train.sh` for a clone-local two-step check. The strict profile fails closed when the unpublished Qwen paraphrases or transition data are absent; the public profile is explicitly an engineering baseline.
 
 <div align="center">
   <img src="assets/teaser.gif" width="1280">

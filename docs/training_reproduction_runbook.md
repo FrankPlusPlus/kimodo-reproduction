@@ -11,8 +11,8 @@ transition 数据和若干 optimizer/loss 细节不能被脚本补齐。
 | 文件 | 职责 | 是否包含机器路径 |
 |---|---|---:|
 | `resources/catalog.public.yaml` | 远端 repo、完整 revision、文件大小/SHA-256、资源分组 | 否 |
-| `resources/paths.local.yaml` | 下载目标、已有资源、预处理输出位置 | 是；gitignored |
-| `configs/paths/local.yaml` | 训练实际读取的 manifest/inventory/stats 和 run 目录 | 是；由预处理生成或手工填写 |
+| `<storage-root>/config/resources.paths.yaml` | 下载目标、已有资源、预处理输出位置 | 是；仓库外 |
+| `<storage-root>/config/repro.paths.yaml` | 训练实际读取的 manifest/inventory/stats 和 run 目录 | 是；脚本生成 |
 | `configs/training/*.yaml` | 方法、模型、loss、课程与 optimizer | 否 |
 | `configs/overlays/*.yaml` | 卡数、local batch、gradient accumulation、workers | 否 |
 
@@ -22,38 +22,35 @@ paths YAML 采用白名单，放入 batch size、学习率等字段会直接报�
 ## 新服务器最短流程
 
 先在 Hugging Face 接受 `bones-studio/seed` 的 license，并用正常的 HF credential store
-或 `HF_TOKEN` 登录。token 不写入任何 YAML、receipt 或日志。两个 Git 仓库可以放在任意
-目录，不要求相邻：
+或 `HF_TOKEN` 登录。token 不写入任何 YAML、receipt 或日志。FM converter 会按仓库内 lock
+自动 clone 到 ignored `.deps/`，无需手工维护第二个 checkout：
 
 ```bash
 git clone https://github.com/FrankPlusPlus/kimodo-reproduction.git /work/repro
-git clone https://github.com/FrankPlusPlus/kimodo-flowmatching.git /work/fm
-
 cd /work/repro
-scripts/resources/setup_env.sh --flowmatching-repo /work/fm
-cp resources/paths.example.yaml resources/paths.local.yaml
+proxy_on  # 仅服务器需要代理时
+scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 ```
 
-编辑 `resources/paths.local.yaml`。默认相对路径会把资源放在
-`resources/managed/`，正式服务器通常应改到容量更大的共享盘/本地 SSD：
+脚本把机器配置写入 `/shared/kimodo/config/`，数据和 run 均放在指定 storage root：
 
 - raw archives 和固定模型可以放共享/NFS；
 - `pipeline.prepared_root` 应放训练节点低延迟存储；
 - `pipeline.run_root` 放 checkpoint/run；重要 milestone 再归档共享盘；
 - 建议为最小训练流水线预留 230–260 GB；Qwen 另需约 65.5 GB。
 
-先查看动作，再下载和处理：
+需要逐阶段控制时，仍可先用 `resources ... init` 生成 YAML，再运行：
 
 ```bash
-scripts/resources/resources.sh --paths resources/paths.local.yaml plan
-scripts/resources/resources.sh --paths resources/paths.local.yaml fetch
-scripts/resources/resources.sh --paths resources/paths.local.yaml prepare
+scripts/resources/resources.sh --paths /shared/kimodo/config/resources.paths.yaml plan
+scripts/resources/resources.sh --paths /shared/kimodo/config/resources.paths.yaml fetch
+scripts/resources/resources.sh --paths /shared/kimodo/config/resources.paths.yaml prepare
 ```
 
 也可以执行一条命令：
 
 ```bash
-scripts/resources/resources.sh --paths resources/paths.local.yaml all
+scripts/resources/resources.sh --paths /shared/kimodo/config/resources.paths.yaml all
 ```
 
 默认 `train-minimal` 只包含：
@@ -67,6 +64,12 @@ scripts/resources/resources.sh --paths resources/paths.local.yaml all
 `paper-exploration` 或 `official-oracle` 分组。
 
 ## 已有资源直接复用
+
+完整的旧 cache 可用 `bootstrap_training.sh --legacy-root ...` 做一次 verified adoption；已经
+train-ready 的 portable bundle 搬到新服务器后可用 `--prepared-root ...` 完整校验并绑定，均无需
+重新运行 8B encoder。可直接复制的三种部署流程见
+[`portable_training_setup.md`](portable_training_setup.md)。单个 pinned source 也可继续用下面的
+`existing_path` 方式复用。
 
 在 `resources/paths.local.yaml` 中将对应项设置为：
 

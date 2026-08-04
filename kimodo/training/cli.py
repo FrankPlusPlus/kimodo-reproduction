@@ -38,7 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--preflight",
         action="store_true",
-        help="Validate real paths and construct/collate one CPU dataset batch without allocating the denoiser",
+        help=(
+            "Validate the complete manifest/inventory contract, then construct one representative "
+            "CPU batch without allocating the denoiser"
+        ),
     )
     return parser
 
@@ -80,9 +83,12 @@ def _run_data_preflight(config) -> dict:
     if int(batch["text_features"].shape[-1]) != config.model.llm_dim:
         raise ValueError("preflight text embedding width does not match model.llm_dim")
     return {
-        "event": "kimodo_data_preflight_passed",
+        "event": "kimodo_full_data_preflight_passed",
+        "manifest_entries_validated": dataset.manifest_entries,
         "dataset_entries": len(dataset),
+        "excluded_short_entries": dataset.excluded_short_entries,
         "excluded_short_temporal_entries": dataset.excluded_short_temporal_entries,
+        "excluded_short_full_entries": dataset.excluded_short_full_entries,
         "sampled_entries": sample_count,
         "motion_shape": list(batch["clean_motion"].shape),
         "text_shape": list(batch["text_features"].shape),
@@ -114,8 +120,17 @@ def main() -> None:
     from .engine import KimodoTrainer
 
     project_root = Path(__file__).resolve().parents[2]
-    trainer = KimodoTrainer(config, project_root)
-    trainer.train()
+    try:
+        trainer = KimodoTrainer(config, project_root)
+        trainer.train()
+    finally:
+        # torchrun expects the application to tear down NCCL explicitly.  The
+        # trainer itself does not do this because library callers may run
+        # several trainers inside one process group (the exact-resume tests do).
+        import torch.distributed as dist
+
+        if dist.is_available() and dist.is_initialized():
+            dist.destroy_process_group()
 
 
 if __name__ == "__main__":

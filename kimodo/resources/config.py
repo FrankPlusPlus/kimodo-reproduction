@@ -149,6 +149,9 @@ class PipelinePaths:
     motion_workers: int = 8
     threads_per_worker: int = 2
     stats_workers: int = 16
+    legacy_bundle_root: Path | None = None
+    legacy_conversion_inventory: Path | None = None
+    adoption_asset_mode: str = "hardlink"
 
 
 def _parse_file(path: str, raw: Any, label: str) -> ResourceFile:
@@ -313,6 +316,9 @@ def load_paths(path: str | Path, catalog: ResourceCatalog) -> ResourcePaths:
                 "motion_workers",
                 "threads_per_worker",
                 "stats_workers",
+                "legacy_bundle_root",
+                "legacy_conversion_inventory",
+                "adoption_asset_mode",
             },
             "paths.pipeline",
         )
@@ -327,6 +333,11 @@ def load_paths(path: str | Path, catalog: ResourceCatalog) -> ResourcePaths:
         text_device = record.get("text_device", "cuda:0")
         if not isinstance(text_device, str) or not text_device.strip():
             raise ResourceConfigError("paths.pipeline.text_device must be a non-empty string")
+        adoption_asset_mode = record.get("adoption_asset_mode", "hardlink")
+        if adoption_asset_mode not in {"hardlink", "copy"}:
+            raise ResourceConfigError(
+                "paths.pipeline.adoption_asset_mode must be hardlink or copy"
+            )
 
         def positive_int(name: str, default: int) -> int:
             value = record.get(name, default)
@@ -343,5 +354,16 @@ def load_paths(path: str | Path, catalog: ResourceCatalog) -> ResourcePaths:
             motion_workers=positive_int("motion_workers", 8),
             threads_per_worker=positive_int("threads_per_worker", 2),
             stats_workers=positive_int("stats_workers", 16),
+            legacy_bundle_root=_resolve_local_path(
+                record.get("legacy_bundle_root"),
+                source.parent,
+                "paths.pipeline.legacy_bundle_root",
+            ),
+            legacy_conversion_inventory=_resolve_local_path(
+                record.get("legacy_conversion_inventory"),
+                source.parent,
+                "paths.pipeline.legacy_conversion_inventory",
+            ),
+            adoption_asset_mode=adoption_asset_mode,
         )
     return ResourcePaths(path=source, resources=bindings, pipeline=pipeline)

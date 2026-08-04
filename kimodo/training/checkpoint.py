@@ -73,6 +73,27 @@ def atomic_torch_save(value, path: str | Path) -> None:
             temporary.unlink()
 
 
+def exclusive_torch_save(value, path: str | Path) -> None:
+    """Atomically publish a torch file while refusing concurrent overwrite."""
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=destination.name + ".", suffix=".tmp", dir=destination.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        torch.save(value, temporary)
+        try:
+            os.link(temporary, destination)
+        except FileExistsError as error:
+            raise FileExistsError(
+                f"Refusing to overwrite existing checkpoint: {destination}"
+            ) from error
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def atomic_text_write(value: str, path: str | Path) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -198,9 +219,7 @@ class CheckpointManager:
 
     def save(self, state: dict) -> Path:
         path = self.directory / f"step-{state['global_step']:09d}.pt"
-        if path.exists():
-            raise FileExistsError(f"Refusing to overwrite existing checkpoint: {path}")
-        atomic_torch_save(state, path)
+        exclusive_torch_save(state, path)
         pointer = self.directory / "latest.txt"
         atomic_text_write(path.name + "\n", pointer)
         if self.keep_last > 0:

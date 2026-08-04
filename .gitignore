@@ -169,6 +169,7 @@ nohup.out
 /wandb/
 /resources/managed/
 /resources/paths.local.yaml
+/.deps/
 *.ckpt
 *.pt
 *.pth

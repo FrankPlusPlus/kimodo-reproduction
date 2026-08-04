@@ -10,8 +10,13 @@ data:
   split: train
   fps: 30
   max_seconds: 10.0
-  min_frames: 30
+  # PAPER-UNKNOWN: use the representation's technical minimum.  Current
+  # BONES-SEED spans are at least 8 frames; no arbitrary 1-second cutoff.
+  min_frames: 2
   num_workers: 8
+  # Avoid Python 3.14 forkserver serializing the 1.4M-row dataset per worker.
+  # Workers are CPU-only; Linux fork shares the read-only manifest by COW.
+  multiprocessing_context: fork
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: false

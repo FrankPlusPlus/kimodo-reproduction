@@ -33,6 +33,10 @@ class ManifestEntry:
     end_time: float | None = None
     sample_kind: str = "full"
     mixture_source: str = "base"
+    # Portable schema-5 manifests bind the source length so dataset filtering
+    # and the train-ready gate never have to discover a too-short full clip in
+    # a DataLoader worker.  Legacy manifests may omit it.
+    frame_count: int | None = None
 
 
 def _resolve_path(base: Path, value: str | None) -> Path | None:
@@ -322,6 +326,23 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                 raise ValueError(
                     f"{manifest_path}:{line_number} has invalid mixture_source={mixture_source!r}"
                 )
+            frame_count = raw.get("frame_count")
+            if requires_semantic_identity and (
+                isinstance(frame_count, bool)
+                or not isinstance(frame_count, int)
+                or frame_count < 1
+            ):
+                raise ValueError(
+                    f"{manifest_path}:{line_number} schema-5 row requires positive frame_count"
+                )
+            if frame_count is not None and (
+                isinstance(frame_count, bool)
+                or not isinstance(frame_count, int)
+                or frame_count < 1
+            ):
+                raise ValueError(
+                    f"{manifest_path}:{line_number} has invalid frame_count={frame_count!r}"
+                )
             entries.append(
                 ManifestEntry(
                     sample_id=sample_id,
@@ -334,6 +355,7 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                     end_time=float(raw["end_time"]) if raw.get("end_time") is not None else None,
                     sample_kind=str(raw.get("sample_kind", "full")),
                     mixture_source=mixture_source,
+                    frame_count=frame_count,
                 )
             )
     if not entries:
@@ -383,16 +405,36 @@ class MotionManifestDataset(Dataset):
         loaded_entries = load_manifest(manifest, split)
 
         def known_temporal_length(entry: ManifestEntry) -> int | None:
+            if entry.frame_count is not None and entry.frame_count < 1:
+                raise ValueError(
+                    f"Manifest entry {entry.sample_id!r} has invalid frame_count={entry.frame_count}"
+                )
+            if entry.start_time is None and entry.end_time is None:
+                return entry.frame_count
             if entry.start_time is None or entry.end_time is None:
                 return None
-            return round(entry.end_time * self.fps) - round(entry.start_time * self.fps)
+            start = max(0, round(entry.start_time * self.fps))
+            end = round(entry.end_time * self.fps)
+            if entry.frame_count is not None:
+                end = min(entry.frame_count, end)
+            return end - start
 
-        self.entries = [
-            entry
-            for entry in loaded_entries
-            if (length := known_temporal_length(entry)) is None or length >= min_frames
-        ]
-        self.excluded_short_temporal_entries = len(loaded_entries) - len(self.entries)
+        self.entries = []
+        excluded_short_temporal = 0
+        excluded_short_full = 0
+        for entry in loaded_entries:
+            length = known_temporal_length(entry)
+            if length is not None and length < min_frames:
+                if entry.start_time is None and entry.end_time is None:
+                    excluded_short_full += 1
+                else:
+                    excluded_short_temporal += 1
+                continue
+            self.entries.append(entry)
+        self.manifest_entries = len(loaded_entries)
+        self.excluded_short_temporal_entries = excluded_short_temporal
+        self.excluded_short_full_entries = excluded_short_full
+        self.excluded_short_entries = excluded_short_temporal + excluded_short_full
         if not self.entries:
             raise ValueError(
                 f"Manifest has no split={split!r} entries meeting min_frames={min_frames}"

@@ -142,3 +142,16 @@ def test_resume_lineage_rejects_foreign_output_and_allows_explicit_fork(
     ]
     assert lineage["mode"] == "fork"
     assert len(lineage["parent_checkpoint_sha256"]) == 64
+
+
+def test_resume_rejects_total_steps_behind_checkpoint(training_fixture, tmp_path):
+    project_root = Path(__file__).resolve().parents[2]
+    parent = tmp_path / "parent-behind"
+    KimodoTrainer(_config(training_fixture, parent, 2), project_root).train()
+    checkpoint = parent / "checkpoints/step-000000002.pt"
+    child = tmp_path / "child-behind"
+    config = _config(training_fixture, child, 1)
+    config.runtime.resume = str(checkpoint)
+    config.runtime.resume_mode = "fork"
+    with pytest.raises(ValueError, match="exceeds configured total_steps"):
+        KimodoTrainer(config, project_root)

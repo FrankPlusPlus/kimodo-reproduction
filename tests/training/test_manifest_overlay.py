@@ -103,6 +103,27 @@ def test_overlay_rejects_invalid_fraction_and_overwrite(training_fixture, tmp_pa
         raise AssertionError("invalid overlay fraction was accepted")
 
 
+def test_inventory_rejects_stale_overlay_source_hash(training_fixture, tmp_path):
+    base = _write_manifest(tmp_path / "base.jsonl", training_fixture, "base", 2)
+    dance = _write_manifest(tmp_path / "dance.jsonl", training_fixture, "dance", 1)
+    output = tmp_path / "mixed.jsonl"
+    build_overlay_manifest(
+        argparse.Namespace(
+            base_manifest=str(base),
+            overlay_manifest=str(dance),
+            output=str(output),
+            overlay_fraction=0.2,
+            base_name="base",
+            overlay_name="dance",
+            split="train",
+            seed=1,
+        )
+    )
+    base.write_text(base.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="differs from overlay provenance"):
+        build_reference_inventory(output, tmp_path / "references.jsonl")
+
+
 def test_legacy_key_only_manifest_remains_trainable_but_schema5_fails_closed(
     training_fixture, tmp_path
 ):

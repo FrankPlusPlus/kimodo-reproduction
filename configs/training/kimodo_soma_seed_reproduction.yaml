@@ -10,8 +10,10 @@ data:
   split: train
   fps: 30
   max_seconds: 10.0
-  min_frames: 30
+  # The paper discloses only the 10 s maximum, not a training minimum.
+  min_frames: 2
   num_workers: 8
+  multiprocessing_context: fork
   pin_memory: true
   prefetch_factor: 2
   persistent_workers: false
