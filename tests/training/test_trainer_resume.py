@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -116,3 +117,28 @@ def test_resume_rejects_recipe_or_referenced_data_changes(training_fixture, tmp_
     changed_data.runtime.resume = str(checkpoint)
     with pytest.raises(ValueError, match="provenance mismatch"):
         KimodoTrainer(changed_data, project_root)
+
+
+def test_resume_lineage_rejects_foreign_output_and_allows_explicit_fork(
+    training_fixture, tmp_path
+):
+    project_root = Path(__file__).resolve().parents[2]
+    parent = tmp_path / "parent"
+    KimodoTrainer(_config(training_fixture, parent, 1), project_root).train()
+    checkpoint = parent / "checkpoints" / "step-000000001.pt"
+
+    child = tmp_path / "child"
+    accidental = _config(training_fixture, child, 2)
+    accidental.runtime.resume = str(checkpoint)
+    with pytest.raises(ValueError, match="in-place resume checkpoint must belong"):
+        KimodoTrainer(accidental, project_root)
+
+    forked = _config(training_fixture, child, 2)
+    forked.runtime.resume = str(checkpoint)
+    forked.runtime.resume_mode = "fork"
+    KimodoTrainer(forked, project_root).train()
+    lineage = json.loads((child / "provenance.json").read_text(encoding="utf-8"))[
+        "resume_lineage"
+    ]
+    assert lineage["mode"] == "fork"
+    assert len(lineage["parent_checkpoint_sha256"]) == 64

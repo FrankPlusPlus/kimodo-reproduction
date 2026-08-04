@@ -25,8 +25,9 @@ from kimodo.sanitize import sanitize_texts
 
 from .file_permissions import publish_file
 
-TEXT_CACHE_METADATA_SCHEMA_VERSION = 4
-SUPPORTED_TEXT_CACHE_METADATA_SCHEMAS = frozenset({3, 4})
+TEXT_CACHE_METADATA_SCHEMA_VERSION = 5
+SUPPORTED_TEXT_CACHE_METADATA_SCHEMAS = frozenset({3, 4, 5})
+EMBEDDING_METADATA_SCHEMA_VERSION = 1
 
 
 def _cache_key(text: str, encoder_identity: str) -> str:
@@ -70,26 +71,59 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _embedding_is_valid(path: Path) -> bool:
+def embedding_metadata_path(path: str | Path) -> Path:
+    embedding = Path(path)
+    return embedding.with_suffix(embedding.suffix + ".metadata.json")
+
+
+def _embedding_is_valid(
+    path: Path,
+    *,
+    expected_dim: int = 4096,
+    cache_key: str | None = None,
+    sanitized_text: str | None = None,
+    encoder_identity: str | None = None,
+) -> bool:
     try:
         array = np.load(path, mmap_mode="r", allow_pickle=False)
-        return bool(
+        structurally_valid = bool(
             array.dtype == np.float32
             and array.ndim == 2
-            and array.shape[0] >= 1
-            and array.shape[1] == 4096
+            and array.shape == (1, expected_dim)
             and np.isfinite(array).all()
+        )
+        if not structurally_valid:
+            return False
+        semantic_values = (cache_key, sanitized_text, encoder_identity)
+        if all(value is None for value in semantic_values):
+            return True
+        if any(value is None for value in semantic_values):
+            raise ValueError("semantic embedding validation requires key, text, and encoder identity")
+        metadata_path = embedding_metadata_path(path)
+        if not metadata_path.is_file():
+            return False
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        return bool(
+            metadata.get("schema_version") == EMBEDDING_METADATA_SCHEMA_VERSION
+            and metadata.get("cache_key") == cache_key
+            and metadata.get("sanitized_text_sha256")
+            == hashlib.sha256(str(sanitized_text).encode("utf-8")).hexdigest()
+            and metadata.get("encoder_identity_sha256")
+            == hashlib.sha256(str(encoder_identity).encode("utf-8")).hexdigest()
+            and metadata.get("dtype") == "float32"
+            and metadata.get("shape") == [1, expected_dim]
+            and metadata.get("size") == path.stat().st_size
+            and metadata.get("sha256") == _sha256_file(path)
         )
     except (OSError, ValueError, EOFError):
         return False
 
 
-def _atomic_save_embedding(path: Path, array: np.ndarray) -> None:
+def _atomic_save_embedding(path: Path, array: np.ndarray, *, expected_dim: int = 4096) -> None:
     if not (
         array.dtype == np.float32
         and array.ndim == 2
-        and array.shape[0] >= 1
-        and array.shape[1] == 4096
+        and array.shape == (1, expected_dim)
         and np.isfinite(array).all()
     ):
         raise ValueError(
@@ -114,6 +148,41 @@ def _atomic_save_embedding(path: Path, array: np.ndarray) -> None:
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def _atomic_save_embedding_pair(
+    path: Path,
+    array: np.ndarray,
+    *,
+    cache_key: str,
+    sanitized_text: str,
+    encoder_identity: str,
+    expected_dim: int,
+) -> dict:
+    """Publish an embedding plus a semantic identity sidecar.
+
+    A crash between the two atomic replacements leaves an embedding without a
+    valid sidecar. The next run rejects and regenerates that orphan instead of
+    trusting shape alone.
+    """
+
+    _atomic_save_embedding(path, array, expected_dim=expected_dim)
+    metadata = {
+        "schema_version": EMBEDDING_METADATA_SCHEMA_VERSION,
+        "cache_key": cache_key,
+        "sanitized_text_sha256": hashlib.sha256(
+            sanitized_text.encode("utf-8")
+        ).hexdigest(),
+        "encoder_identity_sha256": hashlib.sha256(
+            encoder_identity.encode("utf-8")
+        ).hexdigest(),
+        "dtype": "float32",
+        "shape": [1, expected_dim],
+        "size": path.stat().st_size,
+        "sha256": _sha256_file(path),
+    }
+    _atomic_write_json(embedding_metadata_path(path), metadata)
+    return metadata
 
 
 def _atomic_write_json(path: Path, payload: dict) -> None:
@@ -291,12 +360,23 @@ def _functional_encoder_identity(args) -> str:
         "supervised_repo_id",
         "McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised",
     )
+    configured_device = os.environ.get(
+        "TEXT_ENCODER_DEVICE", str(getattr(args, "device", "auto"))
+    )
+    if configured_device == "auto":
+        try:
+            import torch
+
+            configured_device = "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            configured_device = "unresolved-auto"
     return (
         "llm2vec:"
         f"foundation={foundation}@{args.foundation_revision};"
         f"mntp={mntp}@{args.mntp_revision};"
         f"supervised={supervised}@{args.supervised_revision};"
-        "pooling=mean;dtype=float32;internal_batch_size=1"
+        "pooling=mean;dtype=float32;internal_batch_size=1;"
+        f"device_backend={configured_device}"
     )
 
 
@@ -373,16 +453,27 @@ def _run_locked(args) -> None:
     cache_dir.mkdir(parents=True, exist_ok=True)
     destination.parent.mkdir(parents=True, exist_ok=True)
     encode_call_size = int(getattr(args, "encode_call_size", 64))
+    expected_dim = int(getattr(args, "embedding_dim", 4096))
     if encode_call_size < 1:
         raise ValueError("encode_call_size must be positive")
+    if expected_dim < 1:
+        raise ValueError("embedding_dim must be positive")
     encoder_artifacts = _encoder_artifacts(args)
     cache_provenance = _cache_provenance(args)
-    encoder, runtime_identity = _build_encoder(args)
-    identity = (
+    base_identity = (
         _functional_encoder_identity(args)
         if args.provider == "local"
-        else runtime_identity
+        else f"api:{getattr(args, 'api_url', 'http://127.0.0.1:9550/')}"
     )
+    encoder = None
+
+    def get_encoder():
+        nonlocal encoder
+        if encoder is None:
+            encoder, _runtime_identity = _build_encoder(args)
+        return encoder
+
+    identity = base_identity
     identity = _bind_identity(identity, encoder_artifacts, cache_provenance)
     metadata = {
         "schema_version": TEXT_CACHE_METADATA_SCHEMA_VERSION,
@@ -391,6 +482,7 @@ def _run_locked(args) -> None:
         "source_manifest": _serialized_path(source, destination.parent, path_mode),
         "source_manifest_sha256": _sha256_file(source),
         "dtype": "float32",
+        "embedding_shape": [1, expected_dim],
         "internal_batch_size": 1,
         "outer_encode_call_size": encode_call_size,
         "cache_provenance": cache_provenance,
@@ -418,7 +510,13 @@ def _run_locked(args) -> None:
             key = _cache_key(sanitized, identity)
             embedding_path = cache_dir / f"{key}.npy"
             if key not in validated_embeddings and key not in missing:
-                if _embedding_is_valid(embedding_path):
+                if _embedding_is_valid(
+                    embedding_path,
+                    expected_dim=expected_dim,
+                    cache_key=key,
+                    sanitized_text=sanitized,
+                    encoder_identity=identity,
+                ):
                     validated_embeddings.add(key)
                 else:
                     missing[key] = (sanitized, embedding_path)
@@ -427,13 +525,20 @@ def _run_locked(args) -> None:
         if missing:
             keys = list(missing)
             texts = [missing[key][0] for key in keys]
-            features, lengths = encoder(texts)
+            features, lengths = get_encoder()(texts)
             if len(features) != len(keys) or len(lengths) != len(keys):
                 raise ValueError("Encoder batch cardinality does not match requested texts")
             for index, key in enumerate(keys):
                 length = int(lengths[index])
                 array = features[index, :length].detach().float().cpu().numpy()
-                _atomic_save_embedding(missing[key][1], array)
+                _atomic_save_embedding_pair(
+                    missing[key][1],
+                    array,
+                    cache_key=key,
+                    sanitized_text=missing[key][0],
+                    encoder_identity=identity,
+                    expected_dim=expected_dim,
+                )
                 validated_embeddings.add(key)
                 embeddings_created += 1
 
@@ -449,6 +554,13 @@ def _run_locked(args) -> None:
             entry["text_embedding"] = _serialized_path(
                 embedding_path, destination.parent, path_mode
             )
+            entry["text_embedding_metadata"] = _serialized_path(
+                embedding_metadata_path(embedding_path), destination.parent, path_mode
+            )
+            embedding_record = json.loads(
+                embedding_metadata_path(embedding_path).read_text(encoding="utf-8")
+            )
+            entry["text_embedding_sha256"] = embedding_record["sha256"]
             entry["text_cache_key"] = key
             output.write(json.dumps(entry, ensure_ascii=False, sort_keys=True) + "\n")
         return len(prepared)

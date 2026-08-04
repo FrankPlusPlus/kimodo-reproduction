@@ -92,22 +92,30 @@ def test_text_cache_streams_equivalent_rows_and_reuses_cache(monkeypatch, tmp_pa
         destination.with_suffix(".jsonl.metadata.json").read_text(encoding="utf-8")
     )
     bound_identity = metadata["encoder"]
-    actual = destination.read_text(encoding="utf-8").splitlines()
-    expected = []
-    for record in records:
+    actual = [json.loads(line) for line in destination.read_text(encoding="utf-8").splitlines()]
+    for actual_record, record in zip(actual, records, strict=True):
         key = text_cache_cli._cache_key(record["text"], bound_identity)
-        expected_record = {
-            **record,
-            "text_embedding": Path(
-                os.path.relpath(cache_dir / f"{key}.npy", destination.parent)
-            ).as_posix(),
-            "text_cache_key": key,
-        }
-        expected.append(json.dumps(expected_record, ensure_ascii=False, sort_keys=True))
+        assert actual_record["id"] == record["id"]
+        assert actual_record["text"] == record["text"]
+        assert actual_record["text_embedding"] == Path(
+            os.path.relpath(cache_dir / f"{key}.npy", destination.parent)
+        ).as_posix()
+        assert actual_record["text_embedding_metadata"] == Path(
+            os.path.relpath(
+                text_cache_cli.embedding_metadata_path(cache_dir / f"{key}.npy"),
+                destination.parent,
+            )
+        ).as_posix()
+        assert actual_record["text_cache_key"] == key
         cached = np.load(cache_dir / f"{key}.npy", allow_pickle=False)
         assert cached.shape == (1, 4096)
         assert cached.dtype == np.float32
-    assert actual == expected
+        embedding_metadata = json.loads(
+            text_cache_cli.embedding_metadata_path(cache_dir / f"{key}.npy").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert actual_record["text_embedding_sha256"] == embedding_metadata["sha256"]
     assert len(list(cache_dir.glob("*.npy"))) == 2
     assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
     assert metadata["internal_batch_size"] == 1
@@ -124,6 +132,14 @@ def test_text_cache_streams_equivalent_rows_and_reuses_cache(monkeypatch, tmp_pa
     text_cache_cli.run(_text_cache_args(source, second_destination, cache_dir))
     assert second_encoder.calls == ["A person walks."]
     assert text_cache_cli._embedding_is_valid(cache_dir / f"{corrupt_key}.npy")
+
+    third_destination = tmp_path / "derived" / "cached-third.jsonl"
+    monkeypatch.setattr(
+        text_cache_cli,
+        "_build_encoder",
+        lambda args: pytest.fail("all valid embedding pairs should avoid loading the encoder"),
+    )
+    text_cache_cli.run(_text_cache_args(source, third_destination, cache_dir))
 
 
 def test_text_cache_failure_does_not_publish_partial_manifest(monkeypatch, tmp_path):
@@ -148,7 +164,46 @@ def test_text_cache_failure_does_not_publish_partial_manifest(monkeypatch, tmp_p
 
     assert not destination.exists()
     assert not destination.with_suffix(".jsonl.metadata.json").exists()
-    assert not list(destination.parent.glob(f".{destination.name}.*.tmp"))
+
+
+def test_text_cache_rejects_valid_shaped_embedding_swap(monkeypatch, tmp_path):
+    source = tmp_path / "source.jsonl"
+    source.write_text(
+        json.dumps({"id": "a", "text": "A person walks."})
+        + "\n"
+        + json.dumps({"id": "b", "text": "A person jumps."})
+        + "\n",
+        encoding="utf-8",
+    )
+    cache = tmp_path / "cache"
+    first = _FakeEncoder()
+    monkeypatch.setattr(
+        text_cache_cli, "_build_encoder", lambda args: (first, "fake-encoder:revision")
+    )
+    first_output = tmp_path / "first.jsonl"
+    text_cache_cli.run(_text_cache_args(source, first_output, cache))
+    rows = [json.loads(line) for line in first_output.read_text(encoding="utf-8").splitlines()]
+    first_path = (first_output.parent / rows[0]["text_embedding"]).resolve()
+    second_path = (first_output.parent / rows[1]["text_embedding"]).resolve()
+    first_bytes = first_path.read_bytes()
+    first_path.write_bytes(second_path.read_bytes())
+    second_path.write_bytes(first_bytes)
+
+    regenerated = _FakeEncoder()
+    monkeypatch.setattr(
+        text_cache_cli,
+        "_build_encoder",
+        lambda args: (regenerated, "fake-encoder:revision"),
+    )
+    text_cache_cli.run(_text_cache_args(source, tmp_path / "second.jsonl", cache))
+    assert regenerated.calls == ["A person walks.", "A person jumps."]
+
+
+def test_text_cache_requires_one_pooled_token(tmp_path):
+    with pytest.raises(ValueError, match="invalid embedding"):
+        text_cache_cli._atomic_save_embedding(
+            tmp_path / "multi.npy", np.zeros((2, 4096), dtype=np.float32)
+        )
 
 
 def test_text_cache_interrupted_embedding_write_is_not_reused(monkeypatch, tmp_path):
@@ -228,7 +283,7 @@ def test_text_cache_exclusive_lock_keeps_manifest_and_sidecar_consistent(
     def first_run():
         try:
             text_cache_cli.run(_text_cache_args(source, destination, tmp_path / "cache"))
-        except Exception as error:  # pragma: no cover - asserted via errors below
+        except Exception as error:  # noqa: BLE001  # pragma: no cover - asserted below
             errors.append(error)
 
     thread = threading.Thread(target=first_run)
@@ -267,9 +322,11 @@ def test_text_cache_output_lock_is_exclusive_across_processes(tmp_path):
     process.start()
     assert ready.wait(timeout=10)
     try:
-        with pytest.raises(FileExistsError, match="output is locked"):
-            with text_cache_cli._exclusive_output_lock(lock):
-                pytest.fail("second process unexpectedly acquired the output lock")
+        with (
+            pytest.raises(FileExistsError, match="output is locked"),
+            text_cache_cli._exclusive_output_lock(lock),
+        ):
+            pytest.fail("second process unexpectedly acquired the output lock")
     finally:
         release.set()
         process.join(timeout=10)

@@ -54,7 +54,7 @@ def manifest_reference_paths(manifest_path: str | Path) -> set[Path]:
             if not line.strip():
                 continue
             entry = json.loads(line)
-            for key in ("motion", "text_embedding"):
+            for key in ("motion", "text_embedding", "text_embedding_metadata"):
                 value = entry.get(key)
                 if value:
                     path = Path(value).expanduser()
@@ -72,6 +72,19 @@ def manifest_reference_paths(manifest_path: str | Path) -> set[Path]:
             source_metadata = (
                 _resolve_relative_to(base, str(recorded_source_metadata))
                 if recorded_source_metadata
+                else source.with_suffix(source.suffix + ".metadata.json")
+            )
+            if source_metadata.is_file():
+                paths.add(source_metadata)
+        for source_record in metadata_record.get("source_manifests", []):
+            if not isinstance(source_record, dict) or not source_record.get("path"):
+                raise ValueError("source_manifests entries must contain a path")
+            source = _resolve_relative_to(base, str(source_record["path"]))
+            paths.add(source)
+            recorded_metadata = source_record.get("metadata_path")
+            source_metadata = (
+                _resolve_relative_to(base, str(recorded_metadata))
+                if recorded_metadata
                 else source.with_suffix(source.suffix + ".metadata.json")
             )
             if source_metadata.is_file():

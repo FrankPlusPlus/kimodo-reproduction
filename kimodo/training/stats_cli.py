@@ -81,7 +81,9 @@ def _window_seed(base_seed: int, key: tuple, window_index: int) -> int:
 _STATS_WORKER_STATE = None
 
 
-def _initialize_stats_worker(skeleton_joints: int, fps: int, max_frames: int, seed: int) -> None:
+def _initialize_stats_worker(
+    skeleton_joints: int, fps: int, max_frames: int, min_frames: int, seed: int
+) -> None:
     global _STATS_WORKER_STATE
     # Each process handles independent motions.  Prevent PyTorch's intra-op
     # pool from multiplying the requested process count on a shared server.
@@ -92,6 +94,7 @@ def _initialize_stats_worker(skeleton_joints: int, fps: int, max_frames: int, se
         "motion_rep": KimodoMotionRep(skeleton=skeleton, fps=fps, stats_path=None),
         "fps": fps,
         "max_frames": max_frames,
+        "min_frames": min_frames,
         "seed": seed,
     }
 
@@ -104,6 +107,7 @@ def _compute_motion_group(task) -> dict:
     motion_rep = _STATS_WORKER_STATE["motion_rep"]
     fps = _STATS_WORKER_STATE["fps"]
     max_frames = _STATS_WORKER_STATE["max_frames"]
+    min_frames = _STATS_WORKER_STATE["min_frames"]
     seed = _STATS_WORKER_STATE["seed"]
 
     first_entry = motion_entries[0]
@@ -124,17 +128,21 @@ def _compute_motion_group(task) -> dict:
     window_min = None
     window_max = 0
     span_count = 0
+    excluded_short_spans = 0
     for entry in motion_entries:
         start_time = 0.0 if entry.start_time is None else entry.start_time
         end_time = source_length / fps if entry.end_time is None else entry.end_time
         start_frame = max(0, round(start_time * fps))
         end_frame = min(source_length, round(end_time * fps))
         key = (entry.sample_id,)
-        if start_time < 0 or end_time <= start_time or end_frame - start_frame < 2:
+        if start_time < 0 or end_time <= start_time:
             raise ValueError(
-                f"Invalid or too-short temporal span for stats: {entry.sample_id!r} "
+                f"Invalid temporal span for stats: {entry.sample_id!r} "
                 f"({start_time}..{end_time})"
             )
+        if end_frame - start_frame < min_frames:
+            excluded_short_spans += 1
+            continue
         span_count += 1
         span_local_rotations = local_rotations[start_frame:end_frame]
         span_root_positions = root_positions[start_frame:end_frame]
@@ -170,6 +178,7 @@ def _compute_motion_group(task) -> dict:
 
     return {
         "span_count": span_count,
+        "excluded_short_spans": excluded_short_spans,
         "window_count": window_count,
         "window_min": window_min,
         "window_max": window_max,
@@ -195,6 +204,9 @@ def compute_stats(args) -> None:
     max_frames = round(max_seconds * args.fps)
     if max_frames < 3:
         raise ValueError("max_seconds at the requested fps must permit at least three frames")
+    min_frames = int(getattr(args, "min_frames", 2))
+    if min_frames < 2:
+        raise ValueError("min_frames must be at least two")
     entries = load_manifest(args.manifest, args.split)
     # Caption/paraphrase variants can duplicate one motion span.  Fit each
     # distinct (motion,start,end) span once, retaining both full clips and
@@ -225,24 +237,28 @@ def compute_stats(args) -> None:
     window_min = None
     window_max = 0
     span_count = 0
+    excluded_short_spans = 0
     tasks = list(grouped_entries.items())
     num_workers = int(getattr(args, "num_workers", 1))
     if num_workers < 1:
         raise ValueError("num_workers must be positive")
     started = time.perf_counter()
     if num_workers == 1:
-        _initialize_stats_worker(args.skeleton_joints, args.fps, max_frames, args.seed)
+        _initialize_stats_worker(
+            args.skeleton_joints, args.fps, max_frames, min_frames, args.seed
+        )
         results = map(_compute_motion_group, tasks)
     else:
         executor = concurrent.futures.ProcessPoolExecutor(
             max_workers=num_workers,
             initializer=_initialize_stats_worker,
-            initargs=(args.skeleton_joints, args.fps, max_frames, args.seed),
+            initargs=(args.skeleton_joints, args.fps, max_frames, min_frames, args.seed),
         )
         results = executor.map(_compute_motion_group, tasks, chunksize=4)
     try:
         for motion_index, result in enumerate(results, start=1):
             span_count += result["span_count"]
+            excluded_short_spans += result["excluded_short_spans"]
             window_count += result["window_count"]
             if result["window_min"] is not None:
                 window_min = (
@@ -297,7 +313,7 @@ def compute_stats(args) -> None:
             }
     manifest = Path(args.manifest).expanduser().resolve()
     metadata = {
-        "schema_version": 2,
+        "schema_version": 3,
         "manifest": str(manifest),
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "split": args.split,
@@ -308,6 +324,7 @@ def compute_stats(args) -> None:
         "preprocessing": {
             "target_fps": args.fps,
             "maximum_seconds": max_seconds,
+            "minimum_frames": min_frames,
             "root_origin": "first_frame_smoothed_root_xz_to_zero",
             "heading": "one_stable_seeded_uniform_target_heading_per_window",
             "caption_deduplication": "each_unique_motion_start_end_span_once",
@@ -325,6 +342,7 @@ def compute_stats(args) -> None:
         },
         "unique_clips": len(unique),
         "processed_spans": span_count,
+        "excluded_short_spans": excluded_short_spans,
         "frame_counts": {
             "global_root": global_moments.count,
             "local_root": local_moments.count,
@@ -346,6 +364,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--skeleton-joints", type=int, default=30, choices=(22, 30, 34, 77))
     parser.add_argument("--fps", type=int, default=30)
     parser.add_argument("--max-seconds", type=float, default=10.0)
+    parser.add_argument("--min-frames", type=int, default=30)
     parser.add_argument("--seed", type=int, default=1234)
     parser.add_argument("--num-workers", type=int, default=1)
     return parser

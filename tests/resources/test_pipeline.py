@@ -86,7 +86,7 @@ def test_pipeline_refuses_to_report_legacy_cached_tree_as_portable(tmp_path):
         json.dumps({"schema_version": 3, "output": {"sha256": "legacy"}}),
         encoding="utf-8",
     )
-    with pytest.raises(PipelineError, match="portable rebuild requires schema 4"):
+    with pytest.raises(PipelineError, match="portable rebuild requires schema 5"):
         plan_pipeline(paths)
 
 
@@ -187,7 +187,7 @@ def test_stats_bundle_hashes_shapes_and_generated_paths_are_fail_closed(
                 "shape": [dimension],
             }
     (stats / "stats.metadata.json").write_text(
-        json.dumps({"schema_version": 2, "files": files}), encoding="utf-8"
+        json.dumps({"schema_version": 3, "files": files}), encoding="utf-8"
     )
     _validate_stats_bundle(stats)
     (stats / "global_root/mean.npy").write_bytes(b"corrupt")

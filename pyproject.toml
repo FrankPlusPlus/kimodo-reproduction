@@ -60,6 +60,7 @@ kimodo_train = "kimodo.training.cli:main"
 kimodo_compute_stats = "kimodo.training.stats_cli:main"
 kimodo_cache_text = "kimodo.training.text_cache_cli:main"
 kimodo_build_manifest = "kimodo.training.manifest_cli:main"
+kimodo_mix_manifest = "kimodo.training.manifest_overlay_cli:main"
 kimodo_create_smoke_fixture = "kimodo.training.smoke_fixture_cli:main"
 kimodo_reference_inventory = "kimodo.training.reference_inventory_cli:main"
 kimodo_benchmark_train = "kimodo.training.benchmark_cli:main"
@@ -76,8 +77,10 @@ kimodo = ["assets/**/*"]
 max-line-length = 120
 
 [tool.ruff]
-extend-select = ["I001"]  # Enable import sorting
 line-length = 120
+
+[tool.ruff.lint]
+extend-select = ["I001"]  # Enable import sorting
 
 [tool.ruff.lint.isort]
 known-first-party = ["kimodo"]

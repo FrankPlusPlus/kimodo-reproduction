@@ -1,0 +1,4 @@
+schema_version: 1
+flowmatching:
+  remote: https://github.com/FrankPlusPlus/kimodo-flowmatching.git
+  revision: 840e31a11eed6bbe895a033097bbe7cb70a29101

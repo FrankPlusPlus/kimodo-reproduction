@@ -84,6 +84,28 @@ def test_data_representation_and_all_constraint_families(training_fixture):
     assert mask[[1, 5], foot_slice].all()
 
 
+def test_dataset_filters_known_temporal_rows_shorter_than_minimum(training_fixture):
+    rows = [
+        json.loads(line)
+        for line in training_fixture["manifest"].read_text(encoding="utf-8").splitlines()
+    ]
+    short = dict(rows[0])
+    short.update(id="too-short", start_time=0.0, end_time=0.9)
+    training_fixture["manifest"].write_text(
+        "".join(json.dumps(row) + "\n" for row in [short, *rows]), encoding="utf-8"
+    )
+    dataset = MotionManifestDataset(
+        training_fixture["manifest"],
+        "train",
+        _motion_rep(training_fixture),
+        max_seconds=1.0,
+        min_frames=30,
+        seed=7,
+    )
+    assert dataset.excluded_short_temporal_entries == 1
+    assert all(entry.sample_id != "too-short" for entry in dataset.entries)
+
+
 def test_canonical_training_npz_fast_path_preserves_raw_inputs(training_fixture, monkeypatch):
     expected = np.load(training_fixture["motion"], allow_pickle=False)
 
@@ -374,7 +396,7 @@ def test_stats_metadata_and_training_code_snapshot(training_fixture, tmp_path):
     assert metadata["unique_clips"] == 1
     assert metadata["frame_counts"] == {"global_root": 8, "local_root": 8, "body": 8}
     assert metadata["heading_augmentation"] == "deterministic_uniform"
-    assert metadata["schema_version"] == 2
+    assert metadata["schema_version"] == 3
     assert len(metadata["files"]) == 6
 
     project_root = Path(__file__).resolve().parents[2]
@@ -390,6 +412,34 @@ def test_stats_metadata_and_training_code_snapshot(training_fixture, tmp_path):
         "docker_requirements.txt",
     ):
         assert expected in snapshot
+
+
+def test_stats_excludes_the_same_known_short_temporal_spans(training_fixture, tmp_path):
+    rows = [
+        json.loads(line)
+        for line in training_fixture["manifest"].read_text(encoding="utf-8").splitlines()
+    ]
+    short = dict(rows[0])
+    short.update(id="stats-too-short", start_time=0.0, end_time=0.1)
+    training_fixture["manifest"].write_text(
+        "".join(json.dumps(row) + "\n" for row in [short, *rows]), encoding="utf-8"
+    )
+    output = tmp_path / "stats-filtered"
+    compute_stats(
+        argparse.Namespace(
+            manifest=str(training_fixture["manifest"]),
+            output=str(output),
+            split="train",
+            skeleton_joints=30,
+            fps=30,
+            seed=1234,
+            min_frames=5,
+        )
+    )
+    metadata = json.loads((output / "stats.metadata.json").read_text(encoding="utf-8"))
+    assert metadata["excluded_short_spans"] == 1
+    assert metadata["processed_spans"] == 1
+    assert metadata["preprocessing"]["minimum_frames"] == 5
 
 
 def test_tiny_smoke_fixture_is_self_generated(tmp_path):

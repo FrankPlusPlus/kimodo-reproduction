@@ -10,6 +10,7 @@ Read the full Chinese guide on GitHub:
 - [Paper alignment, engineering implementation, data flow, operations, and audit findings](https://github.com/FrankPlusPlus/kimodo-reproduction/blob/main/docs/reproduction_end_to_end_guide.md)
 - [Portable training runbook](https://github.com/FrankPlusPlus/kimodo-reproduction/blob/main/docs/training_reproduction_runbook.md)
 - [Clause-by-clause paper parity audit](https://github.com/FrankPlusPlus/kimodo-reproduction/blob/main/docs/paper_training_parity_audit.md)
+- [Small BONES-SEED dancing augmentation](https://github.com/FrankPlusPlus/kimodo-reproduction/blob/main/docs/dancing_augmentation.md)
 
 The strict profile intentionally remains blocked when the unpublished Qwen paraphrases,
 cross-motion stitching, and diffusion-transition assets are unavailable. Use the public

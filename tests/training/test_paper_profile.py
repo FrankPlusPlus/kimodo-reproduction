@@ -11,7 +11,6 @@ import kimodo.training.engine as training_engine
 from kimodo.training.config import TrainingConfig, load_training_config
 from kimodo.training.data import validate_paper_data_parity_manifest
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -47,6 +46,10 @@ def test_strict_profile_rejects_heading_step_and_runtime_scale_deviations():
         config.validate(require_paths=False)
 
     config.runtime.max_steps_override = None
+    config.runtime.initial_global_step = 999_999
+    with pytest.raises(ValueError, match="initial_global_step"):
+        config.validate(require_paths=False)
+    config.runtime.initial_global_step = 0
     with pytest.raises(RuntimeError, match="world_size=1"):
         training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=1))
     training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=16))

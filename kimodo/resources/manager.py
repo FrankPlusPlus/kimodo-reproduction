@@ -22,6 +22,20 @@ class ResourceVerificationError(RuntimeError):
     """Raised when an existing or downloaded asset violates the catalog."""
 
 
+_LLM2VEC_FUNCTIONAL_EXTRAS = frozenset({"llm2vec_config.json"})
+
+
+def _unexpected_functional_files(spec: ResourceSpec, root: Path) -> list[str]:
+    if not spec.name.startswith("llm2vec_"):
+        return []
+    cataloged = {item.path for item in spec.files}
+    return sorted(
+        name
+        for name in _LLM2VEC_FUNCTIONAL_EXTRAS
+        if name not in cataloged and (root / name).is_file()
+    )
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -127,7 +141,8 @@ class ResourceManager:
         root = binding.target
         files = [_check_file(root, item, full_hash=full_hash) for item in spec.files]
         ok_status = "verified" if full_hash else "present_size_ok"
-        ok = all(item["status"] == ok_status for item in files)
+        unexpected_functional_files = _unexpected_functional_files(spec, root)
+        ok = all(item["status"] == ok_status for item in files) and not unexpected_functional_files
         return {
             "name": spec.name,
             "repo_id": spec.repo_id,
@@ -140,6 +155,7 @@ class ResourceManager:
             "files": files,
             "purpose": spec.purpose,
             "post_fetch": spec.post_fetch,
+            "unexpected_functional_files": unexpected_functional_files,
         }
 
     def plan(self, groups: list[str] | tuple[str, ...]) -> dict:
@@ -233,6 +249,12 @@ class ResourceManager:
                     )
                 downloaded.append(expected.path)
                 verified_files.append(checked)
+            unexpected_functional_files = _unexpected_functional_files(spec, root)
+            if unexpected_functional_files:
+                raise ResourceVerificationError(
+                    f"resource {spec.name} has unpinned functional files: "
+                    + ", ".join(unexpected_functional_files)
+                )
             receipt = {
                 "schema_version": 1,
                 "resource": spec.name,
@@ -260,6 +282,7 @@ class ResourceManager:
             "reused": reused,
             "purpose": spec.purpose,
             "post_fetch": spec.post_fetch,
+            "unexpected_functional_files": [],
         }
 
     def fetch(

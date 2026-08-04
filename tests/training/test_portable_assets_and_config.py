@@ -198,7 +198,7 @@ def test_text_cache_functional_identity_ignores_server_paths_and_git_commit(tmp_
 
 def test_text_cache_metadata_reads_legacy_and_portable_schemas(tmp_path):
     metadata = tmp_path / "cached.jsonl.metadata.json"
-    for schema in (3, 4):
+    for schema in (3, 4, 5):
         metadata.write_text(json.dumps({"schema_version": schema}), encoding="utf-8")
         assert text_cache_cli.load_text_cache_metadata(metadata)["schema_version"] == schema
     metadata.write_text(json.dumps({"schema_version": 2}), encoding="utf-8")

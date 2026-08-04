@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import shutil
 import tempfile
 from pathlib import Path
@@ -16,7 +17,6 @@ from omegaconf import OmegaConf
 
 from .modeling import unwrap_model
 
-
 SCHEMA_VERSION = 3
 
 
@@ -26,6 +26,7 @@ def _resume_critical_config(config: dict) -> dict:
     for key in (
         "output_dir",
         "resume",
+        "resume_mode",
         "log_every",
         "checkpoint_every",
         "milestone_every",
@@ -72,6 +73,24 @@ def atomic_torch_save(value, path: str | Path) -> None:
             temporary.unlink()
 
 
+def atomic_text_write(value: str, path: str | Path) -> None:
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=destination.name + ".", suffix=".tmp", dir=destination.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, destination)
+    finally:
+        if temporary.exists():
+            temporary.unlink()
+
+
 def build_training_state(
     *,
     model,
@@ -85,8 +104,10 @@ def build_training_state(
     config: dict,
     provenance: dict,
     rng_by_rank: list[dict] | None = None,
+    resume_exact: bool = True,
+    diagnostic_reason: str | None = None,
 ) -> dict:
-    return {
+    state = {
         "schema_version": SCHEMA_VERSION,
         "model": unwrap_model(model).state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -99,7 +120,11 @@ def build_training_state(
         "config": config,
         "provenance": provenance,
         "rng_by_rank": rng_by_rank if rng_by_rank is not None else [capture_rng_state()],
+        "resume_exact": bool(resume_exact),
     }
+    if diagnostic_reason is not None:
+        state["diagnostic_reason"] = str(diagnostic_reason)
+    return state
 
 
 def load_training_state(
@@ -117,6 +142,8 @@ def load_training_state(
     state = torch.load(path, map_location="cpu", weights_only=False)
     if state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError(f"Unsupported trainer checkpoint schema: {state.get('schema_version')}")
+    if state.get("resume_exact", True) is not True:
+        raise ValueError("Diagnostic checkpoint is not an exact optimizer-boundary resume point")
     if expected_provenance is not None:
         saved = state.get("provenance", {})
         for key in (
@@ -171,9 +198,11 @@ class CheckpointManager:
 
     def save(self, state: dict) -> Path:
         path = self.directory / f"step-{state['global_step']:09d}.pt"
+        if path.exists():
+            raise FileExistsError(f"Refusing to overwrite existing checkpoint: {path}")
         atomic_torch_save(state, path)
         pointer = self.directory / "latest.txt"
-        pointer.write_text(path.name + "\n", encoding="utf-8")
+        atomic_text_write(path.name + "\n", pointer)
         if self.keep_last > 0:
             checkpoints = sorted(self.directory.glob("step-*.pt"))
             removable = [
@@ -183,6 +212,17 @@ class CheckpointManager:
             ]
             for old in removable[: -self.keep_last]:
                 old.unlink()
+        return path
+
+    def save_diagnostic(self, state: dict, reason: str) -> Path:
+        safe_reason = re.sub(r"[^a-zA-Z0-9_.-]+", "-", reason).strip("-") or "diagnostic"
+        directory = self.directory.parent / "diagnostics"
+        path = directory / (
+            f"{safe_reason}-step-{state['global_step']:09d}-micro-{state['micro_index']:012d}.pt"
+        )
+        if path.exists():
+            raise FileExistsError(f"Refusing to overwrite existing diagnostic checkpoint: {path}")
+        atomic_torch_save(state, path)
         return path
 
     def latest(self) -> Path | None:

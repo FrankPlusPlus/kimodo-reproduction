@@ -4,8 +4,9 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,8 @@ from torch.utils.data import Dataset
 
 from kimodo.exports.motion_io import load_motion_file
 from kimodo.skeleton import SOMASkeleton30, SOMASkeleton77
+
+_MIXTURE_SOURCE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,7 @@ class ManifestEntry:
     start_time: float | None = None
     end_time: float | None = None
     sample_kind: str = "full"
+    mixture_source: str = "base"
 
 
 def _resolve_path(base: Path, value: str | None) -> Path | None:
@@ -104,7 +108,7 @@ def validate_paper_data_parity_manifest(path: str | Path) -> dict[str, Any]:
     metadata = json.loads(sidecar_path.read_text(encoding="utf-8"))
     gate = metadata.get("paper_parity_gate")
     if not isinstance(gate, dict):
-        raise RuntimeError("Paper-data parity was requested, but paper_parity_gate is absent")
+        raise TypeError("Paper-data parity was requested, but paper_parity_gate is absent")
     blockers = list(gate.get("blockers") or [])
     if gate.get("eligible") is not True or blockers:
         details = ", ".join(blockers) if blockers else str(gate.get("status", "not eligible"))
@@ -112,7 +116,7 @@ def validate_paper_data_parity_manifest(path: str | Path) -> dict[str, Any]:
 
     output_record = metadata.get("output")
     if not isinstance(output_record, dict):
-        raise RuntimeError("Paper-data parity sidecar must fingerprint its manifest output")
+        raise TypeError("Paper-data parity sidecar must fingerprint its manifest output")
     recorded_path_value = Path(str(output_record.get("path", ""))).expanduser()
     recorded_path = (
         recorded_path_value.resolve()
@@ -220,6 +224,11 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
     """Load JSONL entries and reject ambiguous IDs or missing source files."""
     manifest_path = Path(path).expanduser().resolve()
     base = manifest_path.parent
+    manifest_schema = None
+    manifest_metadata_path = _manifest_sidecar_path(manifest_path)
+    if manifest_metadata_path.is_file():
+        manifest_metadata = json.loads(manifest_metadata_path.read_text(encoding="utf-8"))
+        manifest_schema = manifest_metadata.get("schema_version")
     entries: list[ManifestEntry] = []
     seen_ids: set[str] = set()
     seen_motion_split: dict[Path, str] = {}
@@ -227,6 +236,7 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
     # embedding across duplicate descriptions. Avoid millions of redundant NFS
     # metadata operations while retaining fail-closed path validation.
     file_exists: dict[Path, bool] = {}
+    validated_embedding_metadata: dict[Path, tuple[str, str]] = {}
 
     def is_file_cached(path: Path) -> bool:
         if path not in file_exists:
@@ -262,6 +272,56 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                 raise FileNotFoundError(f"Motion file does not exist: {motion_path}")
             if embedding_path is not None and not is_file_cached(embedding_path):
                 raise FileNotFoundError(f"Text embedding does not exist: {embedding_path}")
+            integrity_values = (
+                raw.get("text_cache_key"),
+                raw.get("text_embedding_sha256"),
+                raw.get("text_embedding_metadata"),
+            )
+            has_semantic_identity = any(
+                value is not None for value in integrity_values[1:]
+            )
+            requires_semantic_identity = (
+                isinstance(manifest_schema, int) and manifest_schema >= 5
+            )
+            if has_semantic_identity or requires_semantic_identity:
+                if embedding_path is None or any(value is None for value in integrity_values):
+                    raise ValueError(
+                        f"{manifest_path}:{line_number} has an incomplete text-embedding identity"
+                    )
+                embedding_metadata = _resolve_path(base, str(raw["text_embedding_metadata"]))
+                assert embedding_metadata is not None
+                if not is_file_cached(embedding_metadata):
+                    raise FileNotFoundError(
+                        f"Text embedding metadata does not exist: {embedding_metadata}"
+                    )
+                expected_identity = (
+                    str(raw["text_cache_key"]),
+                    str(raw["text_embedding_sha256"]),
+                )
+                if embedding_metadata not in validated_embedding_metadata:
+                    metadata_record = json.loads(
+                        embedding_metadata.read_text(encoding="utf-8")
+                    )
+                    if (
+                        metadata_record.get("schema_version") != 1
+                        or metadata_record.get("cache_key") != raw["text_cache_key"]
+                        or metadata_record.get("sha256") != raw["text_embedding_sha256"]
+                        or metadata_record.get("dtype") != "float32"
+                        or metadata_record.get("shape", [None])[0] != 1
+                    ):
+                        raise ValueError(
+                            f"Text embedding identity mismatch: {embedding_metadata}"
+                        )
+                    validated_embedding_metadata[embedding_metadata] = expected_identity
+                elif validated_embedding_metadata[embedding_metadata] != expected_identity:
+                    raise ValueError(
+                        f"Manifest rows disagree about embedding identity: {embedding_metadata}"
+                    )
+            mixture_source = str(raw.get("mixture_source", "base"))
+            if not _MIXTURE_SOURCE.fullmatch(mixture_source):
+                raise ValueError(
+                    f"{manifest_path}:{line_number} has invalid mixture_source={mixture_source!r}"
+                )
             entries.append(
                 ManifestEntry(
                     sample_id=sample_id,
@@ -273,6 +333,7 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                     start_time=float(raw["start_time"]) if raw.get("start_time") is not None else None,
                     end_time=float(raw["end_time"]) if raw.get("end_time") is not None else None,
                     sample_kind=str(raw.get("sample_kind", "full")),
+                    mixture_source=mixture_source,
                 )
             )
     if not entries:
@@ -310,17 +371,34 @@ class MotionManifestDataset(Dataset):
         augment: bool = True,
         require_paper_data_parity: bool = False,
     ) -> None:
-        if require_paper_data_parity:
-            validate_paper_data_parity_manifest(manifest)
-        self.entries = load_manifest(manifest, split)
-        self.motion_rep = motion_rep
-        self.skeleton = motion_rep.skeleton
-        self.fps = motion_rep.fps
         if max_seconds is not None and max_seconds <= 0:
             raise ValueError("max_seconds must be positive or None")
         if min_frames < 1:
             raise ValueError("min_frames must be positive")
-        self.max_frames = None if max_seconds is None else int(round(max_seconds * self.fps))
+        if require_paper_data_parity:
+            validate_paper_data_parity_manifest(manifest)
+        self.motion_rep = motion_rep
+        self.skeleton = motion_rep.skeleton
+        self.fps = motion_rep.fps
+        loaded_entries = load_manifest(manifest, split)
+
+        def known_temporal_length(entry: ManifestEntry) -> int | None:
+            if entry.start_time is None or entry.end_time is None:
+                return None
+            return round(entry.end_time * self.fps) - round(entry.start_time * self.fps)
+
+        self.entries = [
+            entry
+            for entry in loaded_entries
+            if (length := known_temporal_length(entry)) is None or length >= min_frames
+        ]
+        self.excluded_short_temporal_entries = len(loaded_entries) - len(self.entries)
+        if not self.entries:
+            raise ValueError(
+                f"Manifest has no split={split!r} entries meeting min_frames={min_frames}"
+            )
+        self.mixture_sources = tuple(sorted({entry.mixture_source for entry in self.entries}))
+        self.max_frames = None if max_seconds is None else round(max_seconds * self.fps)
         if self.max_frames is not None and self.max_frames < min_frames:
             raise ValueError(
                 f"max_seconds={max_seconds} at {self.fps} fps permits only "
@@ -367,8 +445,8 @@ class MotionManifestDataset(Dataset):
                 raise ValueError(
                     f"Invalid temporal crop for {entry.sample_id!r}: {start_time}..{end_time}"
                 )
-            start_frame = max(0, int(round(start_time * self.fps)))
-            end_frame = min(length, int(round(end_time * self.fps)))
+            start_frame = max(0, round(start_time * self.fps))
+            end_frame = min(length, round(end_time * self.fps))
             if end_frame - start_frame < self.min_frames:
                 raise ValueError(
                     f"Temporal crop for {entry.sample_id!r} has only {end_frame-start_frame} frames"
@@ -421,6 +499,7 @@ class MotionManifestDataset(Dataset):
             "text": entry.text,
             "text_features": text_features,
             "text_length": text_length,
+            "mixture_source": entry.mixture_source,
         }
 
 
@@ -463,4 +542,5 @@ def collate_motion_batch(samples: list[dict[str, Any]]) -> dict[str, Any]:
         "texts": [sample["text"] for sample in samples],
         "text_features": text_features,
         "text_pad_mask": text_pad_mask,
+        "mixture_sources": [sample["mixture_source"] for sample in samples],
     }

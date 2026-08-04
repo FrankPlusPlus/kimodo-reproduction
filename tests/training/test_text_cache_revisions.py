@@ -174,16 +174,18 @@ def test_text_cache_identity_and_sidecar_record_all_three_artifacts(tmp_path):
         "_build_encoder",
         return_value=(
             fake_encoder,
-            "llm2vec:foundation=/models/foundation@foundation-sha;"
-            "mntp=/models/mntp@mntp-sha;"
-            "supervised=/models/supervised@supervised-sha;"
-            "pooling=mean;dtype=float32;internal_batch_size=1",
+            (
+                "llm2vec:foundation=/models/foundation@foundation-sha;"
+                "mntp=/models/mntp@mntp-sha;"
+                "supervised=/models/supervised@supervised-sha;"
+                "pooling=mean;dtype=float32;internal_batch_size=1"
+            ),
         ),
     ):
         text_cache_cli.run(args)
 
     sidecar = json.loads((tmp_path / "cached.jsonl.metadata.json").read_text(encoding="utf-8"))
-    assert sidecar["schema_version"] == 4
+    assert sidecar["schema_version"] == 5
     assert sidecar["encoder_artifacts"] == {
         "foundation": {
             "model_name_or_path": "/models/foundation",
@@ -205,6 +207,7 @@ def test_text_cache_identity_and_sidecar_record_all_three_artifacts(tmp_path):
     expected_key = text_cache_cli._cache_key("A person walks.", sidecar["encoder"])
     assert cached["text_cache_key"] == expected_key
     assert (tmp_path / "cache" / f"{expected_key}.npy").is_file()
+    assert (tmp_path / "cache" / f"{expected_key}.npy.metadata.json").is_file()
 
 
 def test_local_artifact_content_and_model_lock_bind_cache_key(tmp_path):
@@ -233,7 +236,7 @@ def test_local_artifact_content_and_model_lock_bind_cache_key(tmp_path):
         (tmp_path / "cached.jsonl.metadata.json").read_text(encoding="utf-8")
     )
     first_row = json.loads((tmp_path / "cached.jsonl").read_text(encoding="utf-8"))
-    assert first_sidecar["schema_version"] == 4
+    assert first_sidecar["schema_version"] == 5
     assert first_sidecar["cache_provenance"]["model_lock"]["sha256"] == text_cache_cli._sha256_file(lock)
     implementation_hashes = first_sidecar["cache_provenance"]["implementation_file_sha256"]
     assert "kimodo/model/llm2vec/models/bidirectional_llama.py" in implementation_hashes

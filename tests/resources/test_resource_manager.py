@@ -7,8 +7,18 @@ from pathlib import Path
 import pytest
 
 from kimodo.resources.cli import run
-from kimodo.resources.config import ResourceConfigError, load_catalog, load_paths
-from kimodo.resources.manager import ResourceManager, ResourceVerificationError
+from kimodo.resources.config import (
+    ResourceConfigError,
+    ResourceFile,
+    ResourceSpec,
+    load_catalog,
+    load_paths,
+)
+from kimodo.resources.manager import (
+    ResourceManager,
+    ResourceVerificationError,
+    _unexpected_functional_files,
+)
 
 
 def _sha(value: bytes) -> str:
@@ -90,6 +100,20 @@ def test_public_catalog_has_pinned_minimal_and_opt_in_resources():
     )
     assert catalog.resources["qwen_paraphrase_tool"].opt_in is True
     assert catalog.resources["official_kimodo_seed"].opt_in is True
+
+
+def test_llm2vec_snapshot_rejects_unpinned_functional_config(tmp_path):
+    spec = ResourceSpec(
+        name="llm2vec_supervised_adapter",
+        repo_id="example/adapter",
+        repo_type="model",
+        revision="0" * 40,
+        files=(ResourceFile("adapter.bin", "0" * 64, 1),),
+    )
+    (tmp_path / "llm2vec_config.json").write_text(
+        '{"pooling_mode":"last"}\n', encoding="utf-8"
+    )
+    assert _unexpected_functional_files(spec, tmp_path) == ["llm2vec_config.json"]
 
 
 def test_catalog_rejects_unpinned_revision_and_unsafe_file(tmp_path):

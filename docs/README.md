@@ -15,6 +15,8 @@ Kimodo inference code. Read these documents in this order:
    `PAPER`/`CODE`/`RECONSTRUCTION` decisions.
 5. [`h200_training_benchmark.md`](h200_training_benchmark.md): measured performance,
    memory and effective-batch analysis.
+6. [`dancing_augmentation.md`](dancing_augmentation.md): zero-copy small dancing
+   oversampling without adding another trainer data path.
 
 ## Local build
 

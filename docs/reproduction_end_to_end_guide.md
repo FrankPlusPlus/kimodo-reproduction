@@ -60,6 +60,7 @@ kimodo-reproduction/
 ├── kimodo/resources/             # pinned 资源下载、校验和一键预处理编排
 ├── resources/
 │   ├── catalog.public.yaml       # 远端身份：repo、revision、文件大小、SHA-256
+│   ├── dependencies.lock.yaml    # 跨仓 FM converter 的精确 Git revision
 │   └── paths.example.yaml        # 本机部署：资源放哪、已有资源在哪、派生数据放哪
 ├── configs/
 │   ├── training/                 # 方法级 base config
@@ -72,7 +73,8 @@ kimodo-reproduction/
 ```
 
 `kimodo-flowmatching` 只在 BONES BVH → canonical SOMA30 NPZ 的离线转换阶段提供 adapter。
-转换完成后，repro 训练进程不 import FM，也不借用 FM 的 venv。
+`setup_env.sh` 和 prepare 都会核验它正好位于 `dependencies.lock.yaml` 指定的 commit，默认也拒绝 dirty
+checkout。转换完成后，repro 训练进程不 import FM，也不借用 FM 的 venv。
 
 ## 4. 配置为什么分成三层
 
@@ -127,7 +129,7 @@ strict data gate 证明的是 schema/self-consistency，不是 NVIDIA 私有 rec
 
 - Hugging Face `repo_id`；
 - 40 位 commit revision；
-- catalog 要求的文件清单（当前不会拒绝目录中的额外功能文件，见 15.10）；
+- catalog 要求的文件清单；已知会改变 LLM2Vec 语义的额外配置文件也会拒绝；
 - 每个文件的字节数和 SHA-256；
 - 下载后的用途。
 
@@ -288,8 +290,8 @@ supervised: McGill-NLP/LLM2Vec-Meta-Llama-3-8B-Instruct-mntp-supervised
 由于 Meta 原仓库 gated，本资源 catalog 使用固定 revision 的
 `NousResearch/Meta-Llama-3-8B-Instruct` foundation，并对 catalog 列出的必需文件逐字节 SHA-256；
 MNTP 和 supervised adapters 仍是公开 loader 的两层 adapter。加载顺序是 foundation → MNTP
-adapter merge → supervised PEFT adapter 挂载；后者不 merge，但保持 eval/frozen。目录中的额外功能
-文件目前没有闭包校验，风险见 15.10。
+adapter merge → supervised PEFT adapter 挂载；后者不 merge，但保持 eval/frozen。已知的额外
+`llm2vec_config.json` 会被资源层拒绝，所有本地功能文件内容也进入 cache identity。
 
 文本会先走官方 `kimodo.sanitize.sanitize_texts`，再生成 float32 `[1,4096]` sentence embedding。
 LLM2Vec 内部 batch 固定为 1，避免 batch size/低精度导致 embedding 漂移。cache key 绑定：
@@ -299,7 +301,7 @@ LLM2Vec 内部 batch 固定为 1，避免 batch size/低精度导致 embedding �
 - 功能模型文件内容 hash；
 - encoder/sanitizer 实现 hash；
 - Python/torch/transformers/peft/llm2vec 等版本；
-- pooling、float32 和 internal batch size。
+- pooling、float32、internal batch size 和实际 device backend。
 
 训练时只读取 `.npy`，不会加载 8B Llama、MNTP、supervised adapter 或 Qwen。因此文本模型显存
 不应计入训练 step 的显存。
@@ -311,12 +313,13 @@ Cached manifest 保留原 row，并增加：
 ```text
 text_embedding: 相对路径
 text_cache_key: encoder identity + sanitized text 的内容地址
+text_embedding_metadata: 单 embedding 语义 sidecar 的相对路径
+text_embedding_sha256: embedding 内容 hash
 ```
 
-reference inventory 对每个唯一 motion、embedding，以及 cached-manifest sidecar、raw manifest 与其
-sidecar 做 SHA-256，记录总文件数和总字节数；stats 走独立的 metadata/hash 校验，inventory 自身的
-metadata 也不是 inventory 内的一条 reference。当前没有每个 embedding 的语义 sidecar，这正是
-第 15.1 节记录的缺口。
+每个 embedding sidecar 绑定 key、文本/encoder identity hash、shape/dtype/size/content hash。
+reference inventory 对每个唯一 motion、embedding、embedding sidecar，以及 cached-manifest sidecar、
+raw manifest 与其 sidecar 做 SHA-256，记录总文件数和总字节数；stats 走独立的 metadata/hash 校验。
 
 完整 prepare/reuse 会 hash 所有引用。trainer 启动不重扫几十 GB 的 motion/embedding，但会校验约
 975 MB cached manifest、inventory 及 metadata，随后每个 rank 还会解析完整 manifest；因此它不是
@@ -324,7 +327,8 @@ metadata 也不是 inventory 内的一条 reference。当前没有每个 embeddi
 
 ### 6.8 Normalization stats
 
-stats 只从 train manifest 的唯一 `(motion,start,end)` span 拟合，caption 重复不会重复计数。
+stats 只从 train manifest 中满足同一 `min_frames` 门槛的唯一 `(motion,start,end)` span 拟合，caption
+重复不会重复计数，短 temporal row 的排除数写入 metadata。
 最长 10 秒 window 覆盖所有帧，随机 heading 使用稳定 seed，float64 累积后保存 float32：
 
 ```text
@@ -353,9 +357,9 @@ resume。若文件已存在但内容与预期不同，pipeline 拒绝覆盖，�
 | canonical NPZ | float32 rotations/root + fps/semantic/provenance JSON | prepare-owned；生成后不可手改 |
 | conversion inventory | source/cache path、hash、frames、fps、status | prepare-owned |
 | raw manifest | `id,motion,text,split` 等；sidecar schema 2 | prepare-owned |
-| text embedding | float32 `[P,4096]`；本 pipeline 实际产出 `[1,4096]` | content-addressed cache；校验缺口见 15.1 |
-| cached manifest | raw row + embedding path/key；sidecar schema 4 | prepare-owned |
-| stats | 5/4/364 三组 mean/std；metadata schema 2 | prepare-owned |
+| text embedding | float32 `[1,4096]` + schema 1 semantic sidecar | content-addressed cache；形状与语义 fail-closed |
+| cached manifest | raw row + embedding path/key/hash/sidecar；sidecar schema 5 | prepare-owned |
+| stats | 5/4/364 三组 mean/std；metadata schema 3，绑定 `min_frames` | prepare-owned |
 | reference inventory | `path,sha256,size`；metadata schema 2 | prepare-owned |
 | training paths YAML | 训练字段白名单，schema 1 | pipeline-generated 或 machine-local |
 | provenance | config/code/data/stats/hardware hashes，schema 3 | trainer-owned |
@@ -388,12 +392,13 @@ generated YAML。旧 receipt/provenance 应作为历史审计记录保留。
 
 每个样本在进入模型前：
 
-1. canonical NPZ 做 FK，得到 global rotations/positions；
-2. 计算 smooth root、heading、joint velocities、contacts 和 6D rotations；
-3. 将第一帧 smooth-root XZ 平移到原点；
-4. 把第一帧 heading 随机旋转到 `[0,2π)`；
-5. 用 split stats normalize；
-6. 变长 batch 右侧 padding，并用 `valid_frames=True` 表示有效帧。
+1. 已知 start/end 的 temporal row 若短于 `data.min_frames`，在 dataset 初始化时确定性排除；
+2. canonical NPZ 做 FK，得到 global rotations/positions；
+3. 计算 smooth root、heading、joint velocities、contacts 和 6D rotations；
+4. 将第一帧 smooth-root XZ 平移到原点；
+5. 把第一帧 heading 随机旋转到 `[0,2π)`；
+6. 用 split stats normalize；
+7. 变长 batch 右侧 padding，并用 `valid_frames=True` 表示有效帧。
 
 ## 8. 两阶段 denoiser 数据流
 
@@ -639,8 +644,8 @@ raw text 时仍需本地或 API text encoder。`checkpoints/step-*` 是可恢复
 - canonical conversion、manifest、stats、inventory 的 source/content hash；
 - fresh run 禁止复用非空 output directory；
 - non-finite loss 时保存 diagnostic 状态再失败；若发生在 accumulation 中间，它不是 exact-resume 点；
-- 正常 optimizer boundary resume 校验 config、data、stats、code、skeleton 和每-rank RNG；但 output
-  lineage 仍有第 15.5 节的跨目录污染缺口；
+- 正常 optimizer boundary resume 校验 config、data、stats、code、skeleton 和每-rank RNG；in-place
+  resume 只能使用本 run 的 checkpoint，显式 fork 只能写入新空目录并记录 parent hash；
 - local paths、模型、数据、venv、outputs 全部不进 Git。
 
 ## 15. 本轮专家审计发现与剩余风险
@@ -652,27 +657,21 @@ raw text 时仍需本地或 API text encoder。`checkpoints/step-*` 是可恢复
 |---|---|---|
 | 公开 BONES-SEED/SOMA30 方法工程复刻 | **有条件通过** | 核心数学、官方权重契约和小规模训练路径通过 |
 | 原论文 Sec. 6 exact reproduction | **不通过 / blocked** | 私有 Rigplay/native-27/test/TMR 与增强 recipe 不可得 |
-| clone 后 pinned prepare→train | **changes required** | FM/environment/producer identity 尚未闭合 |
+| clone 后 pinned prepare→train | **实现通过，真实全量重建待跑** | FM revision、缓存语义、真实 batch preflight 已闭合；schema 5 需重建旧 cache |
 | clone 后 pinned train→paper eval | **不通过 / 未闭合** | benchmark/TMR/20-fps/private protocol 未进入资源链 |
 | 1M steps 最终收敛与论文数值 | **未测试** | 当前只有单元、集成、2-step smoke、dry-run 与官方 oracle |
 
-### 15.1 高优先级：单个 text-cache 文件缺少语义 sidecar
+### 15.1 已修复：单个 text-cache 文件的语义身份
 
-当前 cache key 很强，但重跑时对已存在 `.npy` 的复用检查只验证 float32、二维、4096D、finite；
-没有逐文件验证“cache key / sanitized text hash / encoder identity / embedding content hash”。因此如果某个
-`.npy` 被替换成另一份形状合法的 embedding，并在 reference inventory 首次建立前发生，错误内容可能被
-重新盖章。干净的一次性生成只是不受“已有合法形状 `.npy` 被错误复用”这一特定漏洞影响；额外
-功能文件、producer identity 和跨 backend identity 仍是独立风险。已有 inventory 建立后的篡改会被
-full verify 检出。
+text-cache schema 已升级到 5。每个 `.npy` 都有独立 metadata sidecar，绑定 cache key、清洗后文本
+SHA、encoder identity SHA、精确 `[1,4096]`、float32、文件大小和内容 SHA；cached manifest 记录
+sidecar/key/content hash，reference inventory 也覆盖 sidecar。已有文件只有形状正确但语义 sidecar
+缺失或不一致时会重新编码；全命中时 encoder 延迟加载，不再无谓构造 8B 模型。
 
-建议后续修复：
-
-1. 每个 embedding 原子生成 metadata sidecar；
-2. sidecar 绑定 cache key、sanitized text SHA、encoder identity SHA、exact `[1,4096]`、dtype、文件
-   size 和 content SHA；
-3. cached manifest 显式记录 embedding/content/sidecar hash；
-4. reference inventory 包含 sidecar，复用时全验；
-5. 升级 text-cache schema，旧 cache fail closed 重建。
+这是有意的 pipeline 兼容性断点：旧 schema 3/4 prepared cache 不会被新版 pipeline 重新盖章为
+`repro_train_ready`，应另建 prepared root 重建。为避免现有长时间生成的 cache 立刻无法训练，trainer
+仍可读取旧 manifest，并依赖已有 reference inventory 的完整内容校验；但它没有 schema 5 的逐 embedding
+语义保证。不要手工伪造 schema 5 sidecar。
 
 ### 15.2 论文级未知项
 
@@ -691,54 +690,34 @@ full verify 检出。
 - 论文规模 1M optimizer steps 未运行；
 - 新 portable pipeline 尚需在一个完全空的 prepared root 上用全部真实资源跑到
   `repro_train_ready`，再启动至少一个真实训练 step，作为最终系统级验收；
+- 当前服务器旧 schema-3 manifest 的真实 CPU preflight 已通过：1,407,184 rows 中按 30 帧门槛排除
+  34,790 个短 temporal rows，剩余 1,372,394 entries；这证明 legacy 输入可读，不替代 schema-5 重建；
 - 单元、集成、官方 checkpoint 和 CLI dry-run 通过，不能替代上述大规模证据。
 
-### 15.4 High：strict profile 可被 `initial_global_step` 绕过
+### 15.4 已修复：strict 起始 step 绕过
 
-`paper_method_strict` 固定 500k + 500k 和禁止 `max_steps_override`，但当前没有强制
-`runtime.initial_global_step=0`。fresh run 若设置 `initial_global_step=999999`，会从随机初始化直接
-进入最后一个 Phase-2 step，同时通过 strict config gate。这不会由默认 YAML 触发，但破坏了 strict
-声明的 fail-closed 含义。
+strict profile 现在强制 `runtime.initial_global_step=0`，并有拒绝测试。恢复位置只能来自通过
+config/provenance/RNG 校验的 checkpoint，不能用 YAML 把随机初始化伪装成 Phase 2。
 
-建议：strict fresh run 必须从 0 开始；非零 step 只能来自通过 config/provenance/RNG 校验的 resume
-checkpoint，并补一条拒绝绕过的测试。
+### 15.5 已修复：resume output lineage 与 diagnostic checkpoint
 
-### 15.5 High：resume output lineage 不够严格
+`runtime.resume_mode` 现在显式区分 `in_place` 和 `fork`。前者要求 checkpoint 位于当前
+`output_dir/checkpoints` 且已有 config/provenance 完整；后者要求新空目录，并在 provenance 记录 parent
+checkpoint 路径和 SHA。已有同 step checkpoint 一律拒绝覆盖。non-finite 的中间状态写到
+`diagnostics/`，标记 `resume_exact=false`，loader 会拒绝把它当精确恢复点。
 
-fresh run 会拒绝非空 output directory；只要设置 `runtime.resume`，当前实现就允许任意非空目录，
-随后覆盖其中的 `config.resolved.yaml`、`provenance.json` 和同 step checkpoint。若用户把 A run 的
-checkpoint 与 B run 的 output directory 误配，可能污染 B 的实验目录。
+### 15.6 部分修复：派生资产 producer identity
 
-建议把语义拆成：
+FM 跨仓依赖已锁到精确 commit；setup 与 prepare 都核验 commit 和 clean tree，receipt 写入 revision 与
+lock hash。text cache identity 已绑定模型文件内容、实现文件、依赖版本、清洗器和实际 device backend。
+raw manifest/stats/conversion 的现有 sidecar 仍不是完全统一的 producer schema，因此“任意实现变化都自动
+使所有下游失效”尚未彻底完成；目前靠 repo code snapshot、输入/output hash 和 FM lock 组合审计。
 
-- in-place resume：checkpoint 必须位于该 output 的 `checkpoints/`，并匹配已有 config/provenance；
-- fork resume：必须显式开启，目标是新的空目录，并记录 parent run/checkpoint hash；
-- 目的 step checkpoint 已存在时拒绝覆盖。
+### 15.7 已修复：clone 后真实两步 smoke
 
-non-finite loss 在 accumulation 中间保存的 checkpoint 也不包含已累积 gradient，应标为 diagnostic
-snapshot，而不是可精确恢复 checkpoint，或直接回退到上一个 optimizer boundary。
-
-### 15.6 High：派生资产的 producer identity 绑定不足
-
-canonical conversion 可安装任意 FM editable checkout，inventory 只记录手写
-`CONVERSION_REVISION`，没有绑定 FM Git commit/producer code hash。cached manifest 复用时主要检查
-source manifest hash，没有重新计算“当前 catalog/model/encoder code 应得到的 identity”；raw manifest
-和 stats 也没有统一的 producer identity invalidation。
-
-因此 source bytes 没变但转换/编码/统计代码发生变化时，旧派生资产可能继续被复用。建议每个 stage
-统一绑定：producer repo commit、相关源文件 hash、dependency versions、完整参数、input hashes 和
-output hashes；prepare 在复用前重算 expected producer identity。跨仓依赖应固定兼容 commit，而不是
-接受任意 checkout。
-
-### 15.7 Medium：仓库内 tiny smoke config 不能独立运行
-
-`configs/training/kimodo_tiny_smoke.yaml` 指向未提交的
-`tests/fixtures/training/{manifest,stats}`。`--dry-run` 因跳过路径检查会成功，但真实 CLI 立即报
-manifest missing。测试套件内部用 pytest temporary fixture 覆盖了训练路径，所以测试能通过，不能说明
-这个公开 smoke YAML 可用。
-
-建议提供一个脚本：生成临时 motion/text/stats/manifest → 写临时 paths YAML → 跑两步 Phase 1/2 →
-验证 checkpoint/export；CI 直接调用同一个入口。
+`scripts/smoke_train.sh` 会在临时目录生成 motion/text/stats/manifest，先跑数据 preflight，再走与生产相同
+trainer 完成 Phase 1/2 两步，并验证 checkpoint 与 inference export。它不依赖未提交 fixture，也不下载
+大模型；这是工程连通性测试，不是质量或收敛测试。
 
 ### 15.8 性能风险：真实 manifest 启动与 worker 内存
 
@@ -755,25 +734,25 @@ embeddings；cached manifest 约 975 MB。每个 rank 的 `load_manifest` 会 JS
 inventory full-verify 后避免 trainer 再做重复 stat；增加真实 manifest 的 startup time、peak RSS、
 items/s benchmark。任何 locality-aware sampler 或 decode cache 都必须验证不改变采样分布和随机 crop。
 
-### 15.9 环境可复现性
+### 15.9 部分修复：环境可复现性
 
-资源内容已固定，但 Python dependency 目前由 `pip install -e .[train]` 解析，不是完整 lockfile；
-setup 也未执行 `pip check`。长期复现实验应归档 `pip freeze`、CUDA driver、PyTorch build 和 container
-image digest。
+本服务器验证过的训练栈已写入 `requirements-training-server.txt`，setup 默认用它作为 constraints，执行
+`pip check`，并在 venv 写入 Python/platform/repo commit/关键包/CUDA receipt。其他 CUDA/Python 栈必须
+用 `KIMODO_PIP_CONSTRAINTS` 提供自己的精确 constraints。container image digest、driver 和系统库仍应由
+作业系统归档，pip 文件不能替代容器级锁定。
 
-### 15.10 High：资源目录额外文件可改变 encoder 语义
+### 15.10 已修复：已知 LLM2Vec 额外功能文件
 
-catalog verifier 校验列出的文件，但不会拒绝所有额外文件。LLM2Vec loader 会主动读取模型目录中额外的
-`llm2vec_config.json`，它可以改变 pooling、max length 或 instruction 行为；旧目录残留该文件时，catalog
-中的文件仍会全部 PASS。managed snapshot 应按 revision 使用空目录原子发布，并对 loader 会消费的功能
-文件做 exact allowlist；只放行明确无功能的 cache、license、README。
+resource verifier 现在拒绝 catalog 未列出的 `llm2vec_config.json`；encoder identity 同时 fingerprint 本地
+功能文件，因此内容不同不会共用缓存。未来 loader 若新增其他隐式配置文件，仍需同步扩展 allowlist/拒绝
+列表，这是依赖升级审计项。
 
 ### 15.11 Medium：prepare 的 I/O、空间和共享权限风险
 
 一次 prepare 中有相邻重复 full-hash：约 61.8 GB source、16 GB foundation、conversion raw/cache、
-reference inventory 可能被重复读取；即使 text cache 全命中，当前入口仍可能先构造 8B encoder。共享 NFS
-上这会形成上百 GB 顺序读和几十万 inode 操作。应在同一 prepare run 中传递不可变 verified receipt，
-text encoder 延迟到确有 missing key 时再加载，同时在最终发布边界保留一次完整校验。
+reference inventory 可能被重复读取。text cache 全命中时已改为不构造 8B encoder，但共享 NFS 上完整
+校验仍会形成上百 GB 顺序读和几十万 inode 操作。后续可在同一 prepare run 中传递不可变 verified
+receipt，同时在最终发布边界保留一次完整校验。
 
 `plan` 目前只报下载约 61.8 GB，不估算 archive 解压、canonical cache、约 2 GB 级 embedding 总量、
 约 1 GB manifest、临时双份文件和数 GB checkpoint/export 的峰值；也只有 tar extraction 做 free-space
@@ -788,14 +767,16 @@ umask、目录 execute bit 和 archive mode 影响；当前并未形成完整的
 为 20 fps 时，foot-skate 等时间尺度指标会被错误缩放。报告 Sec. 6 数值前必须提供 20 fps 配置、私有
 test/TMR 资产或明确的公开替代协议。
 
-### 15.13 Medium：其余运行边界
+### 15.13 其余运行边界
 
-- `repro_train_ready` 产生前没有真实构造 dataset sample/collate，名字强于当前检查范围；
+- prepare 现在会在发布 `repro_train_ready` 前使用真实 manifest/stats 构造并 collate 一个 CPU batch；
+- BONES temporal labels 中确有少于 30 帧的 event；dataset 初始化会按 `min_frames` 排除并由 preflight
+  报告数量，避免训练中随机抽到后才崩溃；
 - raw manifest/stats 的部分最终路径不是统一 staging + atomic publish，中断后可能留下半成品；
-- 正式 step 1,000,000 已按 checkpoint 周期保存后，loop 外还会重写一次同 step 大 checkpoint；
+- 最终 step 已按周期保存时不会再次重写同一大 checkpoint；
 - two-H200 launcher 不是通用 1/2/N GPU 入口，`--dry-run` 也会先做两张 H200 preflight；
 - prepare wrapper 不会自动把刚生成的 paths YAML 传给 trainer，仍需设置 `KIMODO_PATHS_CONFIG`；
-- tiny smoke 的 fixture 缺失问题意味着没有 clone 后一条命令可跑的真实 2-step smoke test。
+- `scripts/smoke_train.sh` 已提供 clone 后一条命令可跑的真实 2-step 工程 smoke。
 
 ## 16. 推荐运行方式
 
@@ -810,7 +791,7 @@ repro_commit="$(git -C kimodo-reproduction rev-parse HEAD)"
 git -C kimodo-reproduction checkout "${repro_commit}"
 echo "repro_commit=${repro_commit}"
 
-# 本轮审计使用的 FM converter 基线；当前工程尚未自动强制这个依赖锁。
+# dependencies.lock.yaml 固定的 FM converter；setup/prepare 会再次强制核验。
 git -C kimodo-flowmatching checkout 840e31a11eed6bbe895a033097bbe7cb70a29101
 
 cd kimodo-reproduction
@@ -848,7 +829,7 @@ scripts/train_two_gpu_seed.sh
 launcher 会检查恰好两张可见 GPU，默认名称包含 `H200`。如果集群设备命名不同，可设置
 `KIMODO_EXPECTED_GPU_PATTERN` 或 `KIMODO_EXPECTED_GPU_NAME`。
 
-### 16.3 只做配置结构 dry-run
+### 16.3 配置 dry-run 与真实数据 preflight
 
 ```bash
 .venv/bin/python -m kimodo.training.cli \
@@ -859,14 +840,32 @@ launcher 会检查恰好两张可见 GPU，默认名称包含 `H200`。如果集
 ```
 
 这一步解析 config、overlay 和方法门禁，但**跳过实际路径/资产存在性检查**，不能作为 train-ready
-preflight。资源必须另跑 `resources.sh ... verify/prepare`，真实启动前还应至少构造一个 dataset sample。
+preflight。真实数据检查使用：
+
+```bash
+.venv/bin/python -m kimodo.training.cli \
+  --config configs/training/kimodo_soma_seed_public.yaml \
+  --paths /path/generated/repro.paths.yaml \
+  --overlay configs/overlays/two_h200_gb2048.yaml \
+  --preflight
+```
+
+它在 CPU 上读取真实 manifest/stats、构造 dataset 并 collate 一个 batch，不分配 283M denoiser；资源
+pipeline 在签发 `repro_train_ready` 前也会自动执行同一检查。
+
+### 16.4 小比例 dancing 增强
+
+无需复制 motion 或 embedding，也无需在 trainer 增加第二套 dataset。把 dancing 子集做成一个 cached
+manifest 后，用 `kimodo_mix_manifest` 生成确定性的零拷贝混合 manifest，再为混合结果建立 inventory。
+完整命令、比例语义、YAML 接法和防止测试集泄漏的检查见
+[dancing_augmentation.md](dancing_augmentation.md)。
 
 ## 17. 如何判断一次 run 是否可信
 
 按发生时序检查，不要把训练后的证据误当成启动前 preflight：
 
 - **启动前**：resource command 返回 `repro_train_ready`；generated paths 指向当前 prepared bundle；
-  manifest/inventory/stats hashes 与 receipt 一致；再实际构造一个 dataset sample/collate。
+  manifest/inventory/stats hashes 与 receipt 一致，receipt 的 `data_preflight` 为 `passed`。
 - **trainer 初始化后**：`provenance.json` 的 effective global batch 为 2048，resolved config/代码/数据
   hash 与本次实验一致。
 - **Phase 1 前几步**：日志中的 constraint fraction 为 0；text-drop 统计长期接近 0.10。实际
@@ -885,7 +884,7 @@ preflight。资源必须另跑 `resources.sh ... verify/prepare`，真实启动�
 | SHA/size mismatch | 资源不是 catalog 固定的 revision；隔离坏文件后重新 fetch，禁止手改 receipt 绕过 |
 | resource lock held | 另一 prepare 可能正在写同一目标；通用 FileLock 不记录 PID/host，不能仅凭锁文件判断 owner；先查进程/作业/mtime，再协调处理 |
 | orphan sidecar/partial stats | 上次中断留下不成对产物；先保留日志，按错误指出的 stage 清理并重建，勿删共享 raw source |
-| text-cache CUDA OOM | 只影响离线编码；可换空闲 GPU/CPU，但 cache identity 尚未绑定实际 backend，跨 backend 应使用独立 cache 或先验证等价性 |
+| text-cache CUDA OOM | 只影响离线编码；可换空闲 GPU/CPU；实际 device backend 已进入 cache identity，因此不同 backend 默认产生独立 key |
 | DataLoader 启动慢/RAM 高 | 约 140 万行 JSON、NFS inode 与 worker COW 问题；减少 workers 只能缓解，根治见 15.8 |
 | exactly-two-H200 preflight fail | launcher 只支持该拓扑；配置 dry-run 应直接调用 Python CLI，其他拓扑需显式 `torchrun` |
 | non-empty output rejected | fresh run 目录必须为空；不要通过伪造 resume 绕过，另建 run ID |
@@ -901,18 +900,24 @@ receipt/provenance 作为审计记录。
 本轮检查包括：
 
 ```text
-full repro suite:                      78 passed, 1 skipped
+full repro suite:                      86 passed, 1 skipped
 four paper parity modules:              23 passed
 official module:                        2 passed (one strict load/forward/backward, one export rewrite)
-generated-fixture CPU smoke:            2 steps passed (audit-only; public smoke script is still missing)
-resource plan + training dry-run:      passed
-shell syntax / compileall / diff check: passed
+scripts/smoke_train.sh:                 data preflight + Phase 1/2 + checkpoint/export passed
+legacy 1.4M-row real-data preflight:    passed; 34,790 short temporal rows excluded explicitly
+schema-5 cache swap/lazy-reuse tests:   passed
+manifest overlay/inventory tests:       passed
+resource plan + training dry-run:       passed
+ruff/shell syntax/compileall/diff check: passed
+Sphinx HTML:                            built (optional inference/demo imports emitted 10 warnings)
 ```
 
 可复制的核心命令：
 
 ```bash
 .venv/bin/python -m pytest -q
+
+scripts/smoke_train.sh
 
 .venv/bin/python -m pytest -q \
   tests/training/test_paper_core_parity.py \
@@ -937,4 +942,5 @@ KIMODO_OFFICIAL_BUNDLE=/path/to/Kimodo-SOMA-SEED-v1.1 \
 - [training_reproduction_spec.md](training_reproduction_spec.md)：更细的设计决定与 unknown/default；
 - [code_training_contract.md](code_training_contract.md)：公开 inference code 对 trainer 的兼容边界；
 - [h200_training_benchmark.md](h200_training_benchmark.md)：两张 H200 的性能、显存和 batch 分析；
+- [dancing_augmentation.md](dancing_augmentation.md)：小比例 dancing 零拷贝混合、inventory 与训练接法；
 - 本文：把上述内容串成一条可理解的数据/训练链路。

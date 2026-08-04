@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import shutil
@@ -192,6 +193,48 @@ def _resource_root(paths: ResourcePaths, name: str) -> Path:
     return paths.binding(name).target
 
 
+def _flowmatching_identity(catalog: ResourceCatalog) -> dict[str, str]:
+    lock_path = catalog.path.parent / "dependencies.lock.yaml"
+    if not lock_path.is_file():
+        raise PipelineError(f"flowmatching dependency lock is missing: {lock_path}")
+    lock = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
+    expected = str((lock.get("flowmatching") or {}).get("revision", ""))
+    if len(expected) != 40 or any(character not in "0123456789abcdef" for character in expected):
+        raise PipelineError(f"invalid flowmatching revision in {lock_path}")
+    try:
+        package = importlib.import_module("kimodo_flow")
+    except ImportError as error:
+        raise PipelineError(
+            "canonical conversion requires the locked kimodo-flowmatching checkout; "
+            "rerun setup_env.sh --flowmatching-repo /path/to/checkout"
+        ) from error
+    package_path = Path(package.__file__).resolve()
+    repository = next((parent for parent in package_path.parents if (parent / ".git").exists()), None)
+    if repository is None:
+        raise PipelineError(
+            f"installed kimodo_flow is not traceable to a Git checkout: {package_path}"
+        )
+    actual = subprocess.check_output(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True
+    ).strip()
+    if actual != expected:
+        raise PipelineError(
+            f"flowmatching revision mismatch: expected={expected}, actual={actual}"
+        )
+    dirty = subprocess.check_output(
+        ["git", "-C", str(repository), "status", "--porcelain", "--untracked-files=all"],
+        text=True,
+    ).strip()
+    if dirty and os.environ.get("KIMODO_ALLOW_DIRTY_FLOWMATCHING") != "1":
+        raise PipelineError("flowmatching checkout is dirty; converter producer identity is not pinned")
+    return {
+        "remote": str((lock.get("flowmatching") or {}).get("remote", "")),
+        "revision": actual,
+        "lock_sha256": _sha256(lock_path),
+        "dirty_override": str(bool(dirty)).lower(),
+    }
+
+
 def _validate_manifest_pair(manifest: Path, *, source: Path | None = None) -> None:
     sidecar = manifest.with_suffix(manifest.suffix + ".metadata.json")
     metadata = json.loads(sidecar.read_text(encoding="utf-8"))
@@ -255,8 +298,8 @@ def _validate_conversion_inventory(
 def _validate_stats_bundle(root: Path) -> dict[str, str]:
     metadata_path = root / "stats.metadata.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    if metadata.get("schema_version") != 2:
-        raise PipelineError("stats require portable integrity schema_version=2")
+    if metadata.get("schema_version") != 3:
+        raise PipelineError("stats require integrity/minimum-span schema_version=3")
     records = metadata.get("files")
     expected = {
         f"{group}/{filename}": dimension
@@ -319,10 +362,10 @@ def plan_pipeline(paths: ResourcePaths) -> dict[str, Any]:
             cached,
             cached.with_suffix(cached.suffix + ".metadata.json"),
             label="cached manifest",
-            schema_version=4,
+            schema_version=5,
             path_mode="relative",
         ),
-        "stats": "reuse" if stats.is_dir() else "build",
+        "stats": "reuse" if stats.is_dir() and _validate_stats_bundle(stats) else "build",
         "reference_inventory": _pair_state(
             inventory,
             inventory.with_suffix(inventory.suffix + ".metadata.json"),
@@ -360,6 +403,7 @@ def prepare_pipeline(
         for required in (archive, metadata, temporal, split):
             if not required.is_file():
                 raise FileNotFoundError(required)
+        flowmatching_identity = _flowmatching_identity(catalog)
         _safe_extract(archive, pipeline.dataset_root)
 
         prepared.mkdir(parents=True, exist_ok=True)
@@ -514,6 +558,8 @@ def prepare_pipeline(
                     "30",
                     "--fps",
                     "30",
+                    "--min-frames",
+                    "30",
                     "--num-workers",
                     str(pipeline.stats_workers),
                 ]
@@ -576,11 +622,35 @@ def prepare_pipeline(
             },
         }
         _atomic_yaml(pipeline.repro_paths_yaml, paths_payload)
+        # Do not call a bundle "train ready" based only on file presence and
+        # hashes.  Exercise the exact public training config against the real
+        # manifest/stats and collate one CPU batch before publishing the
+        # receipt.  This intentionally avoids allocating the 283M denoiser.
+        public_config = (
+            Path(__file__).resolve().parents[2]
+            / "configs"
+            / "training"
+            / "kimodo_soma_seed_public.yaml"
+        )
+        _run(
+            [
+                sys.executable,
+                "-m",
+                "kimodo.training.cli",
+                "--config",
+                str(public_config),
+                "--paths",
+                str(pipeline.repro_paths_yaml),
+                "--preflight",
+            ]
+        )
         receipt = {
             "schema_version": 1,
             "status": "repro_train_ready",
             "catalog_sha256": _sha256(catalog.path),
             "paths_sha256": _sha256(paths.path),
+            "flowmatching_producer": flowmatching_identity,
+            "data_preflight": "passed",
             "outputs": {
                 "cached_manifest_sha256": _sha256(cached),
                 "inventory_sha256": _sha256(inventory),

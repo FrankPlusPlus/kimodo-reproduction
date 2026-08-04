@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from omegaconf import OmegaConf
 
@@ -128,6 +129,10 @@ class RuntimeConfig:
     milestone_every: int = 100_000
     keep_last_checkpoints: int = 3
     resume: str | None = None
+    # ``in_place`` requires the checkpoint to belong to this output directory.
+    # ``fork`` explicitly resumes into a new empty output directory and records
+    # the parent checkpoint lineage.
+    resume_mode: str = "in_place"
     initial_global_step: int = 0
     distributed: str = "auto"
     # Keep method parity independent from the disclosed 16-GPU/global-batch
@@ -225,6 +230,10 @@ class TrainingConfig:
             raise ValueError("log/checkpoint intervals must be positive and milestone_every non-negative")
         if self.runtime.precision not in {"fp32", "bf16", "fp16"}:
             raise ValueError("runtime.precision must be fp32, bf16, or fp16")
+        if self.runtime.resume_mode not in {"in_place", "fork"}:
+            raise ValueError("runtime.resume_mode must be 'in_place' or 'fork'")
+        if self.runtime.resume is None and self.runtime.resume_mode != "in_place":
+            raise ValueError("runtime.resume_mode='fork' requires runtime.resume")
         if not 0 <= self.runtime.initial_global_step < self.total_steps:
             raise ValueError("initial_global_step must be in [0, total_steps)")
         if self.optimizer.name not in {"adam_atan2", "adamw"}:
@@ -276,6 +285,7 @@ class TrainingConfig:
                 "ema.decay": (self.ema.decay, 0.995),
                 "ema.update_every": (self.ema.update_every, 10),
                 "runtime.max_steps_override": (self.runtime.max_steps_override, None),
+                "runtime.initial_global_step": (self.runtime.initial_global_step, 0),
             }
             mismatches = [
                 f"{name}={actual!r} (paper requires {expected!r})"

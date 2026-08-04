@@ -1,6 +1,7 @@
-# Verified shared training environment on this server (Python 3.14.6 / CUDA 13).
-# PyTorch is inherited from the managed system environment to avoid duplicating
-# several GB of CUDA wheels inside the project venv.
+# Verified H200 training constraints from this server (Python 3.14.6 / CUDA 13).
+# setup_env.sh consumes these pins by default. Sites with a different supported
+# CUDA/PyTorch stack must provide an equally pinned file through
+# KIMODO_PIP_CONSTRAINTS instead of falling back to unconstrained resolution.
 torch==2.13.0
 numpy==2.5.1
 scipy==1.17.0

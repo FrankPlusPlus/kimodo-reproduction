@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import contextlib
 import copy
+import hashlib
 import json
 import os
 import random
@@ -180,6 +181,49 @@ def validate_paper_runtime_scale(config, context: DistributedContext) -> None:
         )
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_output_lineage(config, output_dir: Path) -> tuple[str, str] | None:
+    resume_value = config.runtime.resume
+    nonempty = output_dir.exists() and (
+        not output_dir.is_dir() or next(output_dir.iterdir(), None) is not None
+    )
+    if not resume_value:
+        if nonempty:
+            return (
+                "file",
+                f"fresh training output_dir is not empty: {output_dir}; choose a new directory",
+            )
+        return None
+
+    resume = Path(resume_value).expanduser().resolve()
+    if not resume.is_file():
+        return ("value", f"resume checkpoint does not exist: {resume}")
+    if config.runtime.resume_mode == "in_place":
+        expected_parent = (output_dir / "checkpoints").resolve()
+        if resume.parent != expected_parent:
+            return (
+                "value",
+                (
+                    "in-place resume checkpoint must belong to output_dir/checkpoints; "
+                    "use runtime.resume_mode=fork with a new empty output_dir for an explicit fork"
+                ),
+            )
+        required = (output_dir / "config.resolved.yaml", output_dir / "provenance.json")
+        missing = [str(path) for path in required if not path.is_file()]
+        if missing:
+            return ("value", f"in-place resume run metadata is incomplete: {missing}")
+    elif nonempty:
+        return ("file", f"fork resume requires a new empty output_dir: {output_dir}")
+    return None
+
+
 class KimodoTrainer:
     def __init__(self, config, project_root: str | Path, step_observer=None) -> None:
         self.config = config
@@ -192,21 +236,20 @@ class KimodoTrainer:
         validate_paper_runtime_scale(config, self.context)
         seed_everything(config.runtime.seed, self.context.rank)
         self.output_dir = Path(config.runtime.output_dir).expanduser().resolve()
-        output_error = None
-        if self.context.is_main and not config.runtime.resume:
-            if self.output_dir.exists() and (
-                not self.output_dir.is_dir() or next(self.output_dir.iterdir(), None) is not None
-            ):
-                output_error = (
-                    f"fresh training output_dir is not empty: {self.output_dir}; "
-                    "choose a new directory or set runtime.resume to an exact checkpoint"
-                )
+        output_error = (
+            _validate_output_lineage(config, self.output_dir)
+            if self.context.is_main
+            else None
+        )
         if self.context.world_size > 1:
             payload = [output_error]
             dist.broadcast_object_list(payload, src=0)
             output_error = payload[0]
         if output_error is not None:
-            raise FileExistsError(output_error)
+            error_type, message = output_error
+            if error_type == "file":
+                raise FileExistsError(message)
+            raise ValueError(message)
         # Validate provenance before allocating the 283M-parameter model and
         # optimizer. Rank zero performs the filesystem work once; peers wait
         # for the compact result.
@@ -218,6 +261,14 @@ class KimodoTrainer:
             payload = [provenance]
             dist.broadcast_object_list(payload, src=0)
             provenance = payload[0]
+        if config.runtime.resume and config.runtime.resume_mode == "fork":
+            provenance = copy.deepcopy(provenance)
+            resume_path = Path(config.runtime.resume).expanduser().resolve()
+            provenance["resume_lineage"] = {
+                "mode": "fork",
+                "parent_checkpoint": str(resume_path),
+                "parent_checkpoint_sha256": _sha256_file(resume_path),
+            }
         self.provenance = provenance
         self.model = build_trainable_denoiser(config.model, config.curriculum, self.context.device)
         validate_model_contract(self.model, config.model)
@@ -252,6 +303,7 @@ class KimodoTrainer:
         self.batch_in_epoch = 0
         self.micro_index = self.global_step * config.runtime.gradient_accumulation_steps
         self._last_dropout = None
+        self._last_saved_position: tuple[int, int] | None = None
 
         # The denoiser and loss use the device-resident representation above,
         # while DataLoader workers construct motion features on CPU. Sharing
@@ -274,21 +326,21 @@ class KimodoTrainer:
             seed=config.runtime.seed,
             drop_last=True,
         )
-        loader_kwargs = dict(
-            dataset=dataset,
-            batch_size=config.runtime.batch_size,
-            shuffle=False,
-            sampler=self.distributed_sampler,
-            num_workers=config.data.num_workers,
-            pin_memory=config.data.pin_memory,
-            drop_last=True,
-            collate_fn=collate_motion_batch,
+        loader_kwargs = {
+            "dataset": dataset,
+            "batch_size": config.runtime.batch_size,
+            "shuffle": False,
+            "sampler": self.distributed_sampler,
+            "num_workers": config.data.num_workers,
+            "pin_memory": config.data.pin_memory,
+            "drop_last": True,
+            "collate_fn": collate_motion_batch,
             # Keep DataLoader worker/base-seed draws isolated from the global
             # model RNG restored by checkpoints.
-            generator=torch.Generator(device="cpu").manual_seed(
+            "generator": torch.Generator(device="cpu").manual_seed(
                 config.runtime.seed + self.context.rank
             ),
-        )
+        }
         if config.data.num_workers > 0:
             loader_kwargs.update(
                 prefetch_factor=config.data.prefetch_factor,
@@ -314,6 +366,7 @@ class KimodoTrainer:
             self.epoch = int(state["epoch"])
             self.batch_in_epoch = int(state["batch_in_epoch"])
             self.micro_index = int(state["micro_index"])
+            self._last_saved_position = (self.global_step, self.micro_index)
 
         if self.context.is_main:
             self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -351,7 +404,10 @@ class KimodoTrainer:
         noise = torch.Generator(device=noise_device).manual_seed(unique + 17)
         return cpu, noise
 
-    def _save(self) -> Path | None:
+    def _save(self, *, diagnostic_reason: str | None = None) -> Path | None:
+        position = (self.global_step, self.micro_index)
+        if diagnostic_reason is None and self._last_saved_position == position:
+            return self.checkpoints.directory / f"step-{self.global_step:09d}.pt"
         local_rng = capture_rng_state()
         if self.context.world_size > 1:
             rng_by_rank = [None] * self.context.world_size if self.context.is_main else None
@@ -359,6 +415,8 @@ class KimodoTrainer:
         else:
             rng_by_rank = [local_rng]
         if not self.context.is_main:
+            if diagnostic_reason is None:
+                self._last_saved_position = position
             return None
         state = build_training_state(
             model=self.model,
@@ -372,8 +430,14 @@ class KimodoTrainer:
             config=self.config.to_dict(),
             provenance=self.provenance,
             rng_by_rank=rng_by_rank,
+            resume_exact=diagnostic_reason is None,
+            diagnostic_reason=diagnostic_reason,
         )
-        return self.checkpoints.save(state)
+        if diagnostic_reason is not None:
+            return self.checkpoints.save_diagnostic(state, diagnostic_reason)
+        saved = self.checkpoints.save(state)
+        self._last_saved_position = position
+        return saved
 
     def train(self) -> None:
         accumulation = self.config.runtime.gradient_accumulation_steps
@@ -396,6 +460,7 @@ class KimodoTrainer:
             "text_only": 0.0,
             "unconditional": 0.0,
             **{f"pattern/{name}": 0.0 for name in self.constraint_sampler.PATTERNS},
+            **{f"data_source/{name}": 0.0 for name in self.dataset.mixture_sources},
         }
 
         while self.global_step < self.config.total_steps:
@@ -449,6 +514,8 @@ class KimodoTrainer:
                         curriculum_counts[branch] += 1
                         for pattern in patterns:
                             curriculum_counts[f"pattern/{pattern}"] += 1
+                    for source in batch["mixture_sources"]:
+                        curriculum_counts[f"data_source/{source}"] += 1
                 with self._observed_section("noise_and_diffusion"):
                     noise = torch.randn(
                         batch["clean_motion"].shape,
@@ -487,7 +554,7 @@ class KimodoTrainer:
                     if self.context.world_size > 1:
                         dist.all_reduce(finite_flag, op=dist.ReduceOp.MIN)
                     if not bool(finite_flag.item()):
-                        self._save()
+                        self._save(diagnostic_reason="nonfinite")
                         raise FloatingPointError(f"Non-finite loss at global_step={self.global_step}")
                 # Backpropagate valid-frame numerators. At the optimizer
                 # boundary gradients are normalized once by the global count,
@@ -577,6 +644,10 @@ class KimodoTrainer:
                         record[f"conditioning/{pattern}_per_sample"] = (
                             global_counts[f"pattern/{pattern}"] / sample_count
                         )
+                    for source in self.dataset.mixture_sources:
+                        record[f"data/{source}_fraction"] = (
+                            global_counts[f"data_source/{source}"] / sample_count
+                        )
                     denominator = float(global_valid_frames.item())
                     record.update(
                         {f"loss/{name}": float(value.item() / denominator) for name, value in logged_sums.items()}
@@ -588,14 +659,10 @@ class KimodoTrainer:
                 for name in curriculum_counts:
                     curriculum_counts[name] = 0.0
 
-                if self.global_step % self.config.runtime.checkpoint_every == 0:
-                    self._save()
-                elif (
+                if self.global_step % self.config.runtime.checkpoint_every == 0 or (
                     self.config.runtime.milestone_every
                     and self.global_step % self.config.runtime.milestone_every == 0
-                ):
-                    self._save()
-                elif self.global_step == self.config.curriculum.phase1_steps:
+                ) or self.global_step == self.config.curriculum.phase1_steps:
                     self._save()
                 if self.global_step >= self.config.total_steps:
                     break
