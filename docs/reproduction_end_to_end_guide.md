@@ -60,7 +60,6 @@ kimodo-reproduction/
 ├── kimodo/resources/             # pinned 资源下载、校验和一键预处理编排
 ├── resources/
 │   ├── catalog.public.yaml       # 远端身份：repo、revision、文件大小、SHA-256
-│   ├── dependencies.lock.yaml    # 跨仓 FM converter 的精确 Git revision
 │   └── paths.example.yaml        # 本机部署：资源放哪、已有资源在哪、派生数据放哪
 ├── configs/
 │   ├── training/                 # 方法级 base config
@@ -72,9 +71,9 @@ kimodo-reproduction/
 └── docs/                         # 审计、运行手册和本文
 ```
 
-`kimodo-flowmatching` 只在 BONES BVH → canonical SOMA30 NPZ 的离线转换阶段提供 adapter。
-`setup_env.sh` 和 prepare 都会核验它正好位于 `dependencies.lock.yaml` 指定的 commit，默认也拒绝 dirty
-checkout。转换完成后，repro 训练进程不 import FM，也不借用 FM 的 venv。
+BONES BVH → canonical SOMA30 NPZ 的转换器位于本仓库 `kimodo.resources.bones`。环境、prepare 和训练
+不克隆、不安装也不导入任何外部运动生成项目；转换身份由本地 revision、转换器源码 hash 和
+逐文件 hash 记录。
 
 ## 4. 配置为什么分成三层
 
@@ -177,7 +176,7 @@ inode 和 quota；长训练的 checkpoint 盘另留余量。
 
 ```mermaid
 flowchart TD
-    A[git clone repro + FM] --> B[setup_env.sh]
+    A[git clone repro] --> B[setup_env.sh]
     B --> C[resources/paths.local.yaml]
     C --> D[plan / fetch / SHA-256 verify]
     D --> E[安全解包 BONES-SEED]
@@ -196,11 +195,10 @@ flowchart TD
 ### 6.1 环境初始化
 
 ```bash
-scripts/resources/setup_env.sh \
-  --flowmatching-repo /path/to/kimodo-flowmatching
+scripts/resources/setup_env.sh
 ```
 
-脚本创建本仓库自己的 `.venv`，安装 `[train]` 依赖，并可选安装 FM checkout。默认不编译
+脚本创建本仓库自己的 `.venv` 并安装 `[train]` 依赖，不读取其他项目 checkout。默认不编译
 MotionCorrection C++ 扩展；只有显式给出 `--with-motion-correction` 才预检 CMake/compiler。
 
 ### 6.2 资源规划与获取
@@ -228,16 +226,20 @@ scripts/resources/resources.sh --paths resources/paths.local.yaml all
 
 ### 6.4 Canonical motion cache
 
-FM adapter 将 BONES source motion 转成训练友好的 30 Hz SOMA30 NPZ：
+本仓库的 `kimodo.resources.bones` converter 使用公开 Kimodo BVH loader 和 SOMA skeleton，
+将 BONES source motion 转成训练使用的 30 Hz SOMA30 NPZ：
 
 ```text
 motions/soma30-30fps/<date>/<clip>.npz
 ├── local_rot_mats  [T, 30, 3, 3], float32
 ├── root_positions  [T, 3], float32
 ├── fps
-├── semantic_contract_json
 └── source_provenance_json
 ```
+
+`source_provenance_json` 记录 source hash、120→30 Hz 和本地 converter revision。关节顺序、
+坐标系和表示语义由本仓库的 SOMA30 骨架与训练代码共同定义；NPZ 不再存储来自
+外部项目的 semantic contract 字段。
 
 conversion inventory 同时绑定 source/cached 文件的相对路径与 SHA-256。官方 split 有 128,351 个
 key；固定 metadata revision 实际可解析 128,315 个，缺少 36 个。工程固定检查：
@@ -615,7 +617,7 @@ raw text 时仍需本地或 API text encoder。`checkpoints/step-*` 是可恢复
 | max 10 sec | `PAPER-EXACT` | 随机 crop 已实现 |
 | 随机 first heading | `PAPER-ALIGNED / DISTRIBUTION-UNKNOWN` | 当前 uniform `[0,2π)`；论文未披露分布 |
 | 30 fps | `PAPER-BEST + RELEASED-CONFIG-ALIGNED` | Sec. 6 default/Table 1 用 20 fps |
-| min 30 frames | `RECONSTRUCTION / PAPER-UNKNOWN` | 会过滤不足 1 秒的 atomic clip |
+| min 2 frames | `RECONSTRUCTION / PAPER-UNKNOWN` | 只过滤无法形成有效时间序列的片段；论文未披露最短长度 |
 | variable-length masking | `PAPER-ALIGNED` | global valid-frame reduction；官方 reduction 未公开 |
 | 500k text + 500k constraints | `PAPER-EXACT` | optimizer steps，不是 micro-steps |
 | dropout 0.1 → 0 | `VALUES-EXACT / SCOPE-UNKNOWN` | 论文未逐一说明 attention/FFN/PE 的作用 site；text drop 10% 另保留 |
@@ -657,9 +659,10 @@ raw text 时仍需本地或 API text encoder。`checkpoints/step-*` 是可恢复
 |---|---|---|
 | 公开 BONES-SEED/SOMA30 方法工程复刻 | **有条件通过** | 核心数学、官方权重契约和小规模训练路径通过 |
 | 原论文 Sec. 6 exact reproduction | **不通过 / blocked** | 私有 Rigplay/native-27/test/TMR 与增强 recipe 不可得 |
-| clone 后 pinned prepare/adopt→train | **真实系统验收通过** | portable adoption、全内容校验、真实 batch、双 H200 step 与 resume 已完成 |
+| clone 后 pinned legacy adoption→train | **真实系统验收通过** | portable adoption、全内容校验、真实 batch、双 H200 step 已完成 |
+| clone 后 fresh local converter→全量 prepare→train | **部分验证** | orchestrator fixture、stage contract 与采样 converter 数值等价已通过；未全量重转 128,315 个 BVH |
 | clone 后 pinned train→paper eval | **不通过 / 未闭合** | benchmark/TMR/20-fps/private protocol 未进入资源链 |
-| 1M steps 最终收敛与论文数值 | **未测试** | 当前只有单元、集成、2-step smoke、dry-run 与官方 oracle |
+| 1M steps 最终收敛与论文数值 | **未测试** | 当前只有单元、集成、3-step 真实短训、dry-run 与官方 oracle |
 
 ### 15.1 已修复：单个 text-cache 文件的语义身份
 
@@ -692,7 +695,9 @@ fail closed。不要手工伪造 schema-5 sidecar。
   motions、132,972 unique embeddings，完整 reference hash 后写出 `repro_train_ready`；
 - schema-5 真实 CPU preflight 已通过，`min_frames=2` 与原 stats 的最短拟合窗口一致，全部
   1,407,184 rows 可用，并实际组装 `[128,300,369]` motion / `[128,1,4096]` text batch；
-- 两张 H200 已完成 step 1，并从 4.53GB full-state checkpoint 原地恢复到 step 2；
+- 两张 H200 已用 adopted legacy bundle 连续完成 3 个 optimizer steps，并写出 4.53GB
+  full-state 格式 checkpoint；本次真实数据短训没有执行 resume，精确恢复证据来自 unit/tiny 与
+  2-rank DDP 回归测试；
 - 单元、集成、官方 checkpoint 和 CLI dry-run 通过，不能替代上述大规模证据。
 
 ### 15.4 已修复：strict 起始 step 绕过
@@ -707,12 +712,14 @@ config/provenance/RNG 校验的 checkpoint，不能用 YAML 把随机初始化�
 checkpoint 路径和 SHA。已有同 step checkpoint 一律拒绝覆盖。non-finite 的中间状态写到
 `diagnostics/`，标记 `resume_exact=false`，loader 会拒绝把它当精确恢复点。
 
-### 15.6 部分修复：派生资产 producer identity
+### 15.6 已修复：派生资产 producer identity
 
-FM 跨仓依赖已锁到精确 commit；setup 与 prepare 都核验 commit 和 clean tree，receipt 写入 revision 与
-lock hash。text cache identity 已绑定模型文件内容、实现文件、依赖版本、清洗器和实际 device backend。
-raw manifest/stats/conversion 的现有 sidecar 仍不是完全统一的 producer schema，因此“任意实现变化都自动
-使所有下游失效”尚未彻底完成；目前靠 repo code snapshot、输入/output hash 和 FM lock 组合审计。
+conversion 由本仓 `kimodo.resources.bones` 生产，functional fingerprint 绑定实际数值源码、SOMA30/77
+骨架资产和 NumPy/SciPy/Torch 等数值依赖；NPZ、inventory 行、batch metadata 和最终 receipt 使用同一
+identity。raw manifest 绑定 metadata/split/temporal/conversion 与 builder；text cache 绑定 raw/sidecar、
+模型 revision/实际内容、encoder 实现和数值依赖；stats 绑定 manifest、全部拟合参数、motion-rep/skeleton
+实现与资产。任一 functional binding 变化都会拒绝复用并要求新的 `prepared_root`。catalog 的说明文字、
+绝对路径和 OS/machine 不属于 functional identity，避免无意义地破坏 bundle 可移植性。
 
 ### 15.7 已修复：clone 后真实两步 smoke
 
@@ -796,7 +803,7 @@ cd kimodo-reproduction
 # 凭据由 Hugging Face credential store 保存；不要写进 YAML、shell 脚本或 Git。
 proxy_on  # 仅服务器需要代理时
 
-# 自动创建 venv、clone/锁定 FM converter、下载、prepare、完整校验；默认不启动 1M-step 训练。
+# 自动创建 venv、安装本仓库、下载、prepare、完整校验；默认不启动 1M-step 训练。
 scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 ```
 
@@ -885,17 +892,17 @@ receipt/provenance 作为审计记录。
 本轮检查包括：
 
 ```text
-full repro suite:                      88 passed, 1 skipped
-four paper parity modules:              23 passed
+full repro suite:                      92 passed, 1 skipped
 official module:                        2 passed (one strict load/forward/backward, one export rewrite)
 scripts/smoke_train.sh:                 data preflight + Phase 1/2 + checkpoint/export passed
 portable adoption full verification:   passed; 1,407,184 rows / 394,262 references
 schema-5 real-data preflight:           passed; 1,407,184 usable rows, real batch constructed
-two-H200 train + in-place resume:       step 1 -> full-state checkpoint -> step 2 passed
+two-H200 real-data short train:         3 optimizer steps passed; local 256 / accum 4 / global 2048
+exact resume:                           unit/tiny + 2-rank DDP tests passed; not a full-scale convergence claim
 schema-5 cache swap/lazy-reuse tests:   passed
 manifest overlay/inventory tests:       passed
 resource plan + training dry-run:       passed
-ruff/shell syntax/compileall/diff check: passed
+changed-file Ruff/shell syntax/diff:     passed
 Sphinx HTML:                            built (optional inference/demo imports emitted 10 warnings)
 ```
 

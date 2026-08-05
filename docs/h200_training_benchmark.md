@@ -1,6 +1,33 @@
 # Kimodo H200 training benchmark
 
-测量日期：2026-08-03。结论先行：论文最佳模型的 batch 是 2048，不是
+## 2026-08-04 修复后短测
+
+在第一轮 provenance/cache/run-lock 修复后的工作树上，用物理 GPU `0,2` 再次执行
+`local micro-batch=256`、`gradient accumulation=4`、两 ranks，因此 effective global batch
+为 2048。BF16、完整两阶段 283M denoiser、七项 loss、Adam-atan2 和 DDP 训练数学均保持不变。
+
+- 真实 adopted BONES-SEED manifest（1,407,184 rows）完成 3 个 Phase-1 optimizer steps；loss
+  全部有限。第 1 步含 worker 启动与首次 I/O，为 22.387 s；第 2、3 步增量分别为 3.702 s、
+  3.768 s，即约 553.2、543.5 samples/s。这里只能证明短训可运行并给出现场速度，不能推断收敛。
+- 固定 300-frame benchmark 用 1 warmup + 2 measured steps 测得 3.712 s/optimizer-step、
+  551.7 samples/s；每卡 peak allocated 104.4 GiB、peak reserved 104.9 GiB。
+- 物理 0 号卡当时另有其他用户约 4.5 GiB 常驻、采样时 SM 利用率为 0；所以这是共享卡现场短测，
+  不是独占节点正式 benchmark。原始机器可读结果为
+  `outputs/benchmarks/results/audit-20260804-phase1-b256-a4-3step.json`，真实训练输出为
+  `outputs/runs/audit-20260804-b256-a4-real-3step/`。
+
+短窗口没有覆盖 EMA 的第 10-step 更新，也刻意不把 checkpoint/export I/O 算入 benchmark
+计时；真实 3-step run 在结束后写出了 full-state 格式 checkpoint 和 inference export，
+但本次没有从该 checkpoint 续训，且 `ema.num_updates=0`，因此 export 只证明结构可加载，
+不能代表已吸收这 3 步更新的 EMA 模型质量。
+
+短训结束后又修正了 stats producer 的传递依赖闭包和 run-lock 清理竞态；这些修改不改变
+模型、loss、optimizer 或训练 engine，且已通过完整回归，但没有用最终工作树重新跑这次
+真实 3-step。因此该结果是训练数学链路证据，不是最终工作树逐文件 provenance 全等证明。
+
+## 2026-08-03 较早的正式测量
+
+下节测量日期为 2026-08-03。结论先行：论文最佳模型的 batch 是 2048，不是
 4096；4096 是 LLM2Vec embedding 的宽度。两张 H200 上推荐
 `local batch=128, accumulation=8`。最终 detached-bridge 配置的正式 Phase 1 测量约
 3.92 秒/optimizer-step；

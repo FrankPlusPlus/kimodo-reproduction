@@ -17,7 +17,7 @@ This repository provides:
 
 ## Training Reconstruction
 
-This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Before downloading, accept the gated BONES-SEED license, authenticate with `hf auth login`, and place machine-local resources on storage with roughly 230–260 GB free **plus checkpoint capacity**. The bootstrap script clones and verifies the pinned Flow Matching preprocessing dependency automatically:
+This copy also contains a clean-room training reconstruction; it is not NVIDIA's original training source. Before downloading, accept the gated BONES-SEED license, authenticate with `hf auth login`, and place machine-local resources on storage with roughly 230–260 GB free **plus checkpoint capacity**. The repository owns its BONES conversion and training pipeline; it does not clone, install, or import the separate Flow Matching project:
 
 ```bash
 proxy_on  # optional, only when this server requires it

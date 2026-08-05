@@ -194,10 +194,12 @@ def compute_stats(args) -> None:
         raise FileExistsError(f"Refusing to overwrite existing stats directory: {output}")
     skeleton = build_skeleton(args.skeleton_joints)
     motion_rep = KimodoMotionRep(skeleton=skeleton, fps=args.fps, stats_path=None)
-    # The paper does not disclose how normalization statistics were fit.  The
-    # reconstruction policy below covers every valid source frame exactly once
-    # using <=10 s windows, while applying the same per-window transforms as
-    # training.  This is a documented industry default, not a paper-exact fact.
+    # The paper does not disclose how normalization statistics were fit.  For
+    # each distinct manifest span, the reconstruction policy below partitions
+    # that span into <=10 s windows and applies the training transforms once per
+    # window.  Full/event/combined spans can overlap and therefore can weight a
+    # source frame more than once.  This is a documented reconstruction choice,
+    # not a paper-exact or official-statistics fact.
     max_seconds = float(getattr(args, "max_seconds", 10.0))
     if max_seconds <= 0:
         raise ValueError("max_seconds must be positive")

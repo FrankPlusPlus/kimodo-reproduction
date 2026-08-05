@@ -211,7 +211,11 @@ def _atomic_write_json(path: Path, payload: dict) -> None:
 
 @contextlib.contextmanager
 def _exclusive_output_lock(path: Path):
-    """Hold an NFS-safe exclusive lock for one manifest/sidecar output pair."""
+    """Hold an ``O_EXCL`` lock for one manifest/sidecar output pair.
+
+    Cross-host guarantees depend on the shared filesystem's exclusive-create
+    semantics; the implementation does not claim to certify arbitrary NFS setups.
+    """
     token = uuid.uuid4().hex
     record = {
         "token": token,
@@ -673,8 +677,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model-lock",
         help=(
-            "Optional model lock whose SHA-256 is bound into cache identity; local model bytes "
-            "are fingerprinted independently, but lock contents are not interpreted by this command"
+            "Optional model lock recorded for audit provenance. Functional cache identity is "
+            "bound independently to repository revisions and local model contents, so unrelated "
+            "lock documentation changes do not alter embeddings."
         ),
     )
     parser.add_argument(

@@ -439,7 +439,11 @@ Do not alter the four existing entry points. The training CLI should require exp
 4. **Stats mismatch:** wrong feature order, unsplit stats, variance saved as std, non-fp32 stats, or test data included invalidates every input and output.
 5. **Checkpoint prefix/config mismatch:** wrapper keys or a non-Hydra config cannot be loaded by existing inference APIs.
 6. **Text incompatibility:** fine-tuning LLM2Vec, treating dropped text as one valid empty token, or using the wrong v1.1 embedding precision changes conditioning.
-7. **Root/body gradient-policy confusion:** paper profile must remain end-to-end (`detach=false`), while `detach=true` is only an explicitly labeled upstream-compatibility ablation. Silently switching either policy changes the trained model.
+7. **Root/body gradient-policy confusion:** the released denoiser's training-mode branch uses
+   `no_grad`/detach at the root-to-body conversion, while the paper's “end-to-end” wording does
+   not disclose the private trainer's bridge-autograd policy. Production keeps `detach=true` for
+   public-code compatibility; `detach=false` is an explicitly labeled gradient-coupled ablation.
+   Silently switching either policy changes the trained model.
 
 ### P1 — likely silent degradation or runtime failure
 

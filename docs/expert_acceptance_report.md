@@ -1,16 +1,12 @@
 # Kimodo 训练复现：历史工程验收报告
 
-> 本文是早期、较窄的“工程链路可运行”验收，下面的测试数和结论保留为历史快照，不能作为当前结论。当前状态是：论文明确训练方法的代码与门禁 `PASS`，完整论文实验 `BLOCKED/NOT-TESTED`；最终集成自检 `42 passed, 1 skipped`，官方 checkpoint gate 单独 `2 passed`。严格条款见 `paper_training_parity_audit.md`。
+> 本文是早期、较窄的“工程链路可运行”验收快照，下面的测试数不能作为当前测试总数或完整论文复现结论。它能支持的最强结论是：相关实现合约和合成闭环在当时的测试中通过；真实 BONES-SEED 训练、论文规模训练、私有 Rigplay 数据和论文指标均未由这份报告验证。严格边界见 `paper_training_parity_audit.md`。
 
 ## 1. 结论与边界
 
-当时的历史结论是：**仅工程实现 PASS**，论文严格标准为 **CONDITIONAL / BLOCKED**。后续修复和独立复验已经把“论文明确训练方法的代码与门禁”升级为 **PASS**；数据增强资产、私有数据、论文规模训练和私有评测仍为 **BLOCKED / NOT-TESTED**。
+当时的历史结论是：**工程实现测试通过**，论文严格复现为 **CONDITIONAL / BLOCKED / NOT-TESTED**。不对 P0/P1/P2 数量作零问题声明：论文和公开仓库未披露的选择仍然是有效复现嫌疑，不能因为单元测试通过而排除。
 
-- 论文对齐专家：PASS，P0/P1/P2 = 0。
-- 训练代码专家：PASS，P0/P1/P2 = 0。
-- 独立结果验证专家：G1–G10 全部 PASS，P0/P1/P2 = 0。
-
-这里的 PASS 表示：基于 Kimodo 论文、公开推理代码、官方配置和发布 checkpoint，已经形成可训练、可恢复、可导出、可接公开 benchmark 的工程复现；所有论文未披露选择均被标成 `UNKNOWN/DEFAULT`。它不表示获得了 NVIDIA 官方训练源码，也不表示已经复现私有 RP 数据上的论文数值。
+本报告中的 `PASS` 只表示所列工程合约在记录的测试环境中通过。基于 Kimodo 论文、公开 denoiser/推理代码、官方配置和发布 checkpoint，项目形成了可训练、可恢复、可导出、可接公开 benchmark 的工程实现。这不表示获得 NVIDIA 官方 trainer，不表示未披露选择已对齐，也不表示已复现私有 Rigplay 数据上的论文数值。
 
 原始 clone 保持不变：`/Users/frank/Documents/kimodo`，基线 commit 为 `1aece8c124d73d255ceff5086d983b844c9f4e94`。所有实现位于本 reproduction 目录。
 
@@ -29,17 +25,17 @@
 
 ## 3. 最终 gate 证据
 
-| Gate | 结果 | 验收证据 |
+| Gate | 历史测试结果 | 验收证据与边界 |
 |---|---|---|
-| G1 官方权重兼容 | PASS | 408 tensors strict load；283,281,777 参数；前向/反向有限 |
-| G2 数据与表示 | PASS | full/event/combined 实际读取；369D；padding；stats metadata |
-| G3 训练数学 | PASS | DDPM `x0`、七项 loss、Adam-atan2 数值 oracle |
-| G4/G5 两阶段 | PASS | 实际 tiny 日志完成 Phase 1 step 1 与 Phase 2 step 2 |
-| G6 conditioning | PASS | text drop、五类 pattern、四类 CFG branch 跨 rank 日志 |
-| G7 恢复 | PASS | 单进程、accumulation epoch-boundary、2-rank exact resume |
-| G8 CLI/config | PASS | production dry-run、非法配置/变更硬失败、tiny 从空目录可运行 |
-| G9 benchmark | PASS | 2 motions、2 cases、12 summary rows；评测前后模型 hash 不变 |
-| G10 provenance/docs | PASS | schema 3；完整训练输入/代码 hash；假设与边界显式记录 |
+| G1 官方权重兼容 | CONTRACT TEST PASS | 408 tensors strict load；283,281,777 参数；证明发布架构/checkpoint 兼容，不证明训练 recipe 相同 |
+| G2 数据与表示 | FIXTURE TEST PASS | full/event/combined fixture 读取；369D；padding；stats metadata；未验证官方 stats 或完整真实数据分布 |
+| G3 训练数学 | UNIT TEST PASS | DDPM `x0`、七项 loss、Adam-atan2 数值 oracle；reduction/loss domain/优化器其余参数未公开 |
+| G4/G5 两阶段 | TINY TEST PASS | tiny 日志完成 Phase 1 step 1 与 Phase 2 step 2；不是 500k+500k 结果 |
+| G6 conditioning | CONTRACT TEST PASS | text drop、五类 pattern、四类 CFG branch 跨 rank 日志；family 内部分布仍是 reconstruction |
+| G7 恢复 | ENGINEERING TEST PASS | 单进程、accumulation epoch-boundary、2-rank resume；只验证恢复机制 |
+| G8 CLI/config | ENGINEERING TEST PASS | production dry-run、非法配置/变更硬失败、tiny 从空目录可运行 |
+| G9 benchmark | SYNTHETIC INTERFACE PASS | 2 motions、2 cases、12 summary rows；评测前后模型 hash 不变；不是公开完整 benchmark 或论文私有指标 |
+| G10 provenance/docs | SNAPSHOT PASS | schema 3；当时的训练输入/代码 hash 和假设记录；不代表后续修改自动受此快照覆盖 |
 
 当时的历史测试快照（不是当前测试总数）：
 
@@ -76,7 +72,7 @@ model sha256 before/after:
 - direct loss 的 physical/normalized 域、SmoothL1 β、精确 reduction 与 FK 坐标/root 约定；
 - Kimodo 实际 Adam-atan2 λ/betas/weight decay/warmup/scheduler；
 - 训练精度、gradient clipping、seed；
-- dropout 覆盖范围、Phase 边界 optimizer/EMA 行为；root→body 生产 profile 按公开训练代码设为 detach，论文 “end-to-end” 不足以确定私有 trainer 是否允许跨 bridge 梯度；
+- dropout 覆盖范围、Phase 边界 optimizer/EMA 行为；root→body 生产 profile 按公开 denoiser 的 training-mode branch 设为 detach，论文 “end-to-end” 不足以确定私有 trainer 是否允许跨 bridge 梯度；
 - 官方 stats、clip/crop、caption/timeline、原文/paraphrase/stitch 的混合分布；
 - Qwen3 paraphrase 与 transition stitching recipe；
 - 五类 constraint 的 family/关键帧/dense span/heading/冲突精确分布；
@@ -86,9 +82,11 @@ model sha256 before/after:
 
 ## 6. 外部阻塞，不属于代码缺陷
 
-1. BONES-SEED motion/metadata 需要用户接受 gated license；当前下载返回 401，因此未执行真数据一步训练。
+1. 在这份历史快照形成时，BONES-SEED 下载因 gated license 返回 401，未执行真数据训练；
+   后续 2026-08-04 已在获授权的本地数据上完成 3-step 工程短训，见 `h200_training_benchmark.md`。
 2. 完整 1M steps、global batch 2048、16×A100-80GB 尚未实际运行。
 3. 论文 RP 约 700h 数据及 Sec. 6 私有测试集不公开，无法严格数值复现。
 4. 合成 benchmark 使用 stub 文本/TMR embedding，只证明接口闭环；真实指标仍需正式 LLM2Vec、TMR 和 BONES-SEED。
 
-因此项目已具备下一步真数据复现所需的训练系统；解除 gated 数据与算力阻塞后，应依照运行手册执行数据构建、stats、完整训练和公开 benchmark，并保留所有 provenance 输出。
+后续短训只解除“真实 loader/反向/optimizer 能否走通”的工程疑问；完整训练、公开 benchmark 和论文
+私有实验仍需按运行手册执行，并保留所有 provenance 输出。

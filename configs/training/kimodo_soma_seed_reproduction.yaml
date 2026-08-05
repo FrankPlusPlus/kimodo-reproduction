@@ -1,3 +1,4 @@
+# 中文逐字段说明见同目录 CONFIG_REFERENCE.zh-CN.md。
 # Kimodo paper-aligned production defaults. Values not explicitly disclosed by
 # the paper are catalogued in docs/training_reproduction_spec.md.
 schema_version: 1
@@ -44,8 +45,9 @@ model:
   norm_first: false
   input_first_heading_angle: true
   use_text_mask: false
-  # CODE: released training detaches this bridge. PAPER "end-to-end" is
-  # interpreted as joint interleaved training, not specified cross-bridge autograd.
+  # CODE: the released denoiser's training-mode forward detaches this bridge.
+  # PAPER "end-to-end" is interpreted here as joint interleaved optimization;
+  # the paper does not specify cross-bridge autograd and no trainer was released.
   detach_root_for_body: true
 
 curriculum:

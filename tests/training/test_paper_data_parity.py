@@ -99,8 +99,9 @@ def test_stats_reuses_training_cap_and_records_unknown_official_policy(training_
     )
     compute_stats(args)
     metadata = json.loads((output / "stats.metadata.json").read_text(encoding="utf-8"))
-    # The 8-frame clip is covered exactly once as [3, 3, 2], instead of fitting
-    # statistics to a single random 3-frame crop.
+    # This fixture has one distinct manifest span.  That span is partitioned as
+    # [3, 3, 2], instead of fitting statistics to a single random 3-frame crop.
+    # Real full/event/combined spans can overlap and intentionally add weight.
     assert metadata["frame_counts"] == {"global_root": 8, "local_root": 8, "body": 8}
     assert metadata["preprocessing"]["maximum_seconds"] == 0.1
     assert metadata["preprocessing"]["stats_window_count"] == 3

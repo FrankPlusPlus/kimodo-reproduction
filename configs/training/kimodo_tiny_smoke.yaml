@@ -1,3 +1,4 @@
+# 中文逐字段说明见同目录 CONFIG_REFERENCE.zh-CN.md。
 # Same code path as production, reduced only for CPU/GPU smoke validation.
 schema_version: 1
 paper_method_strict: false

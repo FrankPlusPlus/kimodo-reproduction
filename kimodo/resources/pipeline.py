@@ -1,9 +1,12 @@
-"""Idempotent public BONES-SEED preprocessing from pinned resources to training assets."""
+"""Idempotent public BONES-SEED preprocessing from pinned resources to training assets.
+
+See ``PIPELINE_GUIDE.zh-CN.md`` in this directory for the Chinese data/schema guide.
+"""
 
 from __future__ import annotations
 
 import hashlib
-import importlib
+import importlib.metadata
 import json
 import os
 import shutil
@@ -12,6 +15,7 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy as np
@@ -20,6 +24,7 @@ from filelock import FileLock, Timeout
 
 from kimodo.training.file_permissions import publish_file
 
+from .bones import motion_converter_identity
 from .config import PipelinePaths, ResourceCatalog, ResourcePaths
 
 
@@ -193,46 +198,230 @@ def _resource_root(paths: ResourcePaths, name: str) -> Path:
     return paths.binding(name).target
 
 
-def _flowmatching_identity(catalog: ResourceCatalog) -> dict[str, str]:
-    lock_path = catalog.path.parent / "dependencies.lock.yaml"
-    if not lock_path.is_file():
-        raise PipelineError(f"flowmatching dependency lock is missing: {lock_path}")
-    lock = yaml.safe_load(lock_path.read_text(encoding="utf-8"))
-    expected = str((lock.get("flowmatching") or {}).get("revision", ""))
-    if len(expected) != 40 or any(character not in "0123456789abcdef" for character in expected):
-        raise PipelineError(f"invalid flowmatching revision in {lock_path}")
-    try:
-        package = importlib.import_module("kimodo_flow")
-    except ImportError as error:
-        raise PipelineError(
-            "canonical conversion requires the locked kimodo-flowmatching checkout; "
-            "rerun setup_env.sh --flowmatching-repo /path/to/checkout"
-        ) from error
-    package_path = Path(package.__file__).resolve()
-    repository = next((parent for parent in package_path.parents if (parent / ".git").exists()), None)
-    if repository is None:
-        raise PipelineError(
-            f"installed kimodo_flow is not traceable to a Git checkout: {package_path}"
-        )
-    actual = subprocess.check_output(
-        ["git", "-C", str(repository), "rev-parse", "HEAD"], text=True
-    ).strip()
-    if actual != expected:
-        raise PipelineError(
-            f"flowmatching revision mismatch: expected={expected}, actual={actual}"
-        )
-    dirty = subprocess.check_output(
-        ["git", "-C", str(repository), "status", "--porcelain", "--untracked-files=all"],
-        text=True,
-    ).strip()
-    if dirty and os.environ.get("KIMODO_ALLOW_DIRTY_FLOWMATCHING") != "1":
-        raise PipelineError("flowmatching checkout is dirty; converter producer identity is not pinned")
-    return {
-        "remote": str((lock.get("flowmatching") or {}).get("remote", "")),
-        "revision": actual,
-        "lock_sha256": _sha256(lock_path),
-        "dirty_override": str(bool(dirty)).lower(),
+def _motion_converter_identity() -> dict[str, Any]:
+    return dict(motion_converter_identity())
+
+
+def _canonical_fingerprint(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _python_producer_identity(
+    module: str, files: list[Path], *, dependencies: tuple[str, ...] = ()
+) -> dict[str, Any]:
+    project_root = Path(__file__).resolve().parents[2]
+    source_files = {
+        str(path.resolve().relative_to(project_root)): _sha256(path.resolve())
+        for path in sorted(set(files))
     }
+    dependency_versions = {}
+    for name in dependencies:
+        try:
+            dependency_versions[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            dependency_versions[name] = "not-installed"
+    identity = {
+        "module": module,
+        "source_files": source_files,
+        "dependency_versions": dependency_versions,
+    }
+    return {
+        **identity,
+        "producer_fingerprint_sha256": _canonical_fingerprint(identity),
+    }
+
+
+def _manifest_producer_identity() -> dict[str, Any]:
+    source = Path(__file__).resolve().parents[1] / "training" / "manifest_cli.py"
+    return _python_producer_identity("kimodo.training.manifest_cli", [source])
+
+
+def _stats_producer_identity() -> dict[str, Any]:
+    project_root = Path(__file__).resolve().parents[2]
+    files = [
+        project_root / "kimodo" / "assets.py",
+        project_root / "kimodo" / "geometry.py",
+        project_root / "kimodo" / "tools.py",
+        project_root / "kimodo" / "training" / "stats_cli.py",
+    ]
+    files.append(project_root / "kimodo" / "training" / "data.py")
+    files.extend((project_root / "kimodo" / "motion_rep").rglob("*.py"))
+    files.extend((project_root / "kimodo" / "skeleton").rglob("*.py"))
+    files.extend(
+        path
+        for path in (project_root / "kimodo" / "assets" / "skeletons" / "somaskel30").rglob("*")
+        if path.is_file()
+    )
+    return _python_producer_identity(
+        "kimodo.training.stats_cli",
+        files,
+        dependencies=("numpy", "scipy", "torch", "bvhio"),
+    )
+
+
+def _portable_encoder_artifacts(records: dict[str, Any] | None) -> dict[str, Any] | None:
+    if records is None:
+        return None
+    return {
+        name: {key: value for key, value in record.items() if key != "model_name_or_path"}
+        for name, record in records.items()
+    }
+
+
+def _text_cache_reuse_binding(
+    catalog: ResourceCatalog,
+    paths: ResourcePaths,
+    pipeline: PipelinePaths,
+    raw_manifest: Path,
+) -> dict[str, Any]:
+    from kimodo.training import text_cache_cli
+
+    args = SimpleNamespace(
+        provider="local",
+        device=pipeline.text_device,
+        model_lock=str(catalog.path),
+        foundation_model=str(_resource_root(paths, "llm2vec_foundation")),
+        foundation_repo_id=catalog.resources["llm2vec_foundation"].repo_id,
+        foundation_revision=catalog.resources["llm2vec_foundation"].revision,
+        mntp_model=str(_resource_root(paths, "llm2vec_mntp_adapter")),
+        mntp_repo_id=catalog.resources["llm2vec_mntp_adapter"].repo_id,
+        mntp_revision=catalog.resources["llm2vec_mntp_adapter"].revision,
+        supervised_model=str(_resource_root(paths, "llm2vec_supervised_adapter")),
+        supervised_repo_id=catalog.resources["llm2vec_supervised_adapter"].repo_id,
+        supervised_revision=catalog.resources["llm2vec_supervised_adapter"].revision,
+    )
+    artifacts = text_cache_cli._encoder_artifacts(args)
+    provenance = text_cache_cli._cache_provenance(args)
+    identity = text_cache_cli._bind_identity(
+        text_cache_cli._functional_encoder_identity(args), artifacts, provenance
+    )
+    source_metadata = raw_manifest.with_suffix(raw_manifest.suffix + ".metadata.json")
+    return {
+        "schema_version": 1,
+        "source_manifest_sha256": _sha256(raw_manifest),
+        "source_manifest_metadata_sha256": _sha256(source_metadata),
+        "encoder": identity,
+        "encoder_artifacts": _portable_encoder_artifacts(artifacts),
+        "implementation_file_sha256": provenance["implementation_file_sha256"],
+        "dependency_versions": provenance["dependency_versions"],
+        "settings": {
+            "dtype": "float32",
+            "embedding_shape": [1, 4096],
+            "internal_batch_size": 1,
+            "outer_encode_call_size": 64,
+        },
+    }
+
+
+def _stage_metadata_path(primary: Path) -> Path:
+    return primary.with_suffix(primary.suffix + ".metadata.json")
+
+
+def _bind_stage_reuse(primary: Path, binding: dict[str, Any]) -> None:
+    metadata_path = _stage_metadata_path(primary)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["pipeline_reuse"] = binding
+    _atomic_json(metadata_path, metadata)
+
+
+def _require_stage_reuse(primary: Path, binding: dict[str, Any], *, label: str) -> None:
+    metadata_path = _stage_metadata_path(primary)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if metadata.get("pipeline_reuse") != binding:
+        raise PipelineError(
+            f"{label} provenance/settings are stale; choose a new prepared_root and rebuild"
+        )
+
+
+def _validate_text_cache_reuse_metadata(primary: Path, binding: dict[str, Any]) -> None:
+    metadata = json.loads(_stage_metadata_path(primary).read_text(encoding="utf-8"))
+    provenance = metadata.get("cache_provenance") or {}
+    observed = {
+        "schema_version": 1,
+        "source_manifest_sha256": metadata.get("source_manifest_sha256"),
+        "source_manifest_metadata_sha256": metadata.get(
+            "source_manifest_metadata_sha256"
+        ),
+        "encoder": metadata.get("encoder"),
+        "encoder_artifacts": _portable_encoder_artifacts(metadata.get("encoder_artifacts")),
+        "implementation_file_sha256": provenance.get("implementation_file_sha256"),
+        "dependency_versions": provenance.get("dependency_versions"),
+        "settings": {
+            "dtype": metadata.get("dtype"),
+            "embedding_shape": metadata.get("embedding_shape"),
+            "internal_batch_size": metadata.get("internal_batch_size"),
+            "outer_encode_call_size": metadata.get("outer_encode_call_size"),
+        },
+    }
+    if observed != binding or metadata.get("pipeline_reuse") != binding:
+        raise PipelineError(
+            "text cache provenance/settings are stale; choose a new prepared_root and rebuild"
+        )
+
+
+def _raw_manifest_reuse_binding(
+    *,
+    metadata: Path,
+    split: Path,
+    temporal: Path,
+    conversion: Path,
+    conversion_metadata: Path,
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "producer": _manifest_producer_identity(),
+        "inputs": {
+            "metadata_sha256": _sha256(metadata),
+            "split_sha256": _sha256(split),
+            "temporal_labels_sha256": _sha256(temporal),
+            "conversion_inventory_sha256": _sha256(conversion),
+            "conversion_metadata_sha256": _sha256(conversion_metadata),
+        },
+        "settings": {
+            "skeleton": "soma_uniform",
+            "split_name": "train",
+            "source_dataset_fps": 120.0,
+            "motion_cache_fps": 30.0,
+            "repeat_counts": {"full": 1, "event": 1, "combined_event": 1},
+            "allow_missing": False,
+            "path_mode": "relative",
+        },
+    }
+
+
+def _stats_reuse_binding(manifest: Path) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "producer": _stats_producer_identity(),
+        "manifest_sha256": _sha256(manifest),
+        "settings": {
+            "split": "train",
+            "fps": 30,
+            "skeleton_joints": 30,
+            "maximum_seconds": 10.0,
+            "minimum_frames": 2,
+            "seed": 1234,
+        },
+    }
+
+
+def _validate_stats_reuse_metadata(root: Path, binding: dict[str, Any]) -> None:
+    metadata = json.loads((root / "stats.metadata.json").read_text(encoding="utf-8"))
+    settings = binding["settings"]
+    preprocessing = metadata.get("preprocessing") or {}
+    observed = {
+        "split": metadata.get("split"),
+        "fps": metadata.get("fps"),
+        "skeleton_joints": metadata.get("skeleton_joints"),
+        "maximum_seconds": preprocessing.get("maximum_seconds"),
+        "minimum_frames": preprocessing.get("minimum_frames"),
+        "seed": metadata.get("seed"),
+    }
+    if observed != settings or metadata.get("pipeline_reuse") != binding:
+        raise PipelineError(
+            "stats provenance/settings are stale; choose a new prepared_root and rebuild"
+        )
 
 
 def _validate_manifest_pair(manifest: Path, *, source: Path | None = None) -> None:
@@ -255,6 +444,16 @@ def _validate_conversion_inventory(
     metadata_path = inventory.with_suffix(inventory.suffix + ".metadata.json")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     expected_rows = metadata.get("effective_entries")
+    expected_producer_fingerprint = metadata.get("producer_fingerprint_sha256")
+    if not isinstance(expected_producer_fingerprint, str):
+        raise PipelineError("conversion metadata lacks producer fingerprint")
+    producer = metadata.get("motion_converter_producer")
+    if (
+        not isinstance(producer, dict)
+        or producer.get("producer_fingerprint_sha256")
+        != expected_producer_fingerprint
+    ):
+        raise PipelineError("conversion metadata producer fingerprints disagree")
     rows = 0
     with inventory.open(encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
@@ -262,6 +461,10 @@ def _validate_conversion_inventory(
                 continue
             record = json.loads(line)
             rows += 1
+            if record.get("producer_fingerprint_sha256") != expected_producer_fingerprint:
+                raise PipelineError(
+                    f"conversion inventory line {line_number} has a different producer"
+                )
             for field, root, digest_field in (
                 ("source", dataset_root, "source_sha256"),
                 ("cached", motion_root, "cached_sha256"),
@@ -403,7 +606,7 @@ def prepare_pipeline(
         for required in (archive, metadata, temporal, split):
             if not required.is_file():
                 raise FileNotFoundError(required)
-        flowmatching_identity = _flowmatching_identity(catalog)
+        motion_converter_identity = _motion_converter_identity()
         _safe_extract(archive, pipeline.dataset_root)
 
         prepared.mkdir(parents=True, exist_ok=True)
@@ -411,18 +614,11 @@ def prepare_pipeline(
         conversion = prepared / "conversion" / "soma30-30fps.inventory.jsonl"
         conversion_meta = conversion.with_suffix(conversion.suffix + ".metadata.json")
         if plan["canonical_motion"] == "build":
-            try:
-                __import__("kimodo_flow")
-            except ImportError as error:
-                raise PipelineError(
-                    "canonical conversion requires kimodo-flowmatching in this environment; "
-                    "clone it anywhere and rerun setup_env.sh --flowmatching-repo /path/to/clone"
-                ) from error
             _run(
                 [
                     sys.executable,
                     "-m",
-                    "kimodo_flow.data.bones",
+                    "kimodo.resources.bones",
                     "--dataset-root",
                     str(pipeline.dataset_root),
                     "--metadata",
@@ -445,14 +641,19 @@ def prepare_pipeline(
                     EXPECTED_MISSING_SPLIT_SHA256,
                 ]
             )
-        else:
-            record = json.loads(conversion_meta.read_text(encoding="utf-8"))
-            if (
-                record.get("inventory_sha256") != _sha256(conversion)
-                or record.get("metadata_sha256") != _sha256(metadata)
-                or record.get("split_sha256") != _sha256(split)
-            ):
-                raise PipelineError("conversion inventory provenance is stale")
+        record = json.loads(conversion_meta.read_text(encoding="utf-8"))
+        recorded_producer = record.get("motion_converter_producer")
+        producer_stale = recorded_producer != motion_converter_identity
+        if (
+            record.get("inventory_sha256") != _sha256(conversion)
+            or record.get("metadata_sha256") != _sha256(metadata)
+            or record.get("split_sha256") != _sha256(split)
+            or producer_stale
+        ):
+            raise PipelineError(
+                "conversion inventory provenance is stale or was produced by a different "
+                "converter; choose a new prepared_root and rebuild it"
+            )
         _validate_conversion_inventory(
             conversion,
             dataset_root=pipeline.dataset_root,
@@ -462,6 +663,14 @@ def prepare_pipeline(
                 EXPECTED_EFFECTIVE_SPLIT_ENTRIES,
                 EXPECTED_MISSING_SPLIT_SHA256,
             ),
+        )
+
+        raw_reuse = _raw_manifest_reuse_binding(
+            metadata=metadata,
+            split=split,
+            temporal=temporal,
+            conversion=conversion,
+            conversion_metadata=conversion_meta,
         )
 
         raw = prepared / "train.raw.jsonl"
@@ -491,11 +700,14 @@ def prepare_pipeline(
                     str(raw),
                 ]
             )
+            _bind_stage_reuse(raw, raw_reuse)
         else:
-            _validate_manifest_pair(raw)
+            _require_stage_reuse(raw, raw_reuse, label="raw manifest")
+        _validate_manifest_pair(raw)
 
         cached = prepared / "train.cached.jsonl"
         cache_dir = prepared / "text-cache"
+        text_cache_reuse = _text_cache_reuse_binding(catalog, paths, pipeline, raw)
         if plan["text_cache"] == "build":
             foundation = _resource_root(paths, "llm2vec_foundation")
             mntp = _resource_root(paths, "llm2vec_mntp_adapter")
@@ -537,8 +749,11 @@ def prepare_pipeline(
                     catalog.resources["llm2vec_supervised_adapter"].revision,
                 ]
             )
+            _bind_stage_reuse(cached, text_cache_reuse)
         else:
-            _validate_manifest_pair(cached, source=raw)
+            _require_stage_reuse(cached, text_cache_reuse, label="text cache")
+        _validate_manifest_pair(cached, source=raw)
+        _validate_text_cache_reuse_metadata(cached, text_cache_reuse)
 
         stats = prepared / "stats" / "repro-soma30-30fps"
         stats_metadata = stats / "stats.metadata.json"
@@ -566,10 +781,17 @@ def prepare_pipeline(
                     str(pipeline.stats_workers),
                 ]
             )
+            stats_reuse = _stats_reuse_binding(cached)
+            record = json.loads(stats_metadata.read_text(encoding="utf-8"))
+            record["pipeline_reuse"] = stats_reuse
+            _atomic_json(stats_metadata, record)
+            _validate_stats_reuse_metadata(stats, stats_reuse)
         else:
             record = json.loads(stats_metadata.read_text(encoding="utf-8"))
             if record.get("manifest_sha256") != _sha256(cached):
                 raise PipelineError("stats were fitted from a different cached manifest")
+            stats_reuse = _stats_reuse_binding(cached)
+            _validate_stats_reuse_metadata(stats, stats_reuse)
 
         inventory = prepared / "train.cached.references.jsonl"
         inventory_meta = inventory.with_suffix(inventory.suffix + ".metadata.json")
@@ -650,7 +872,7 @@ def prepare_pipeline(
             "status": "repro_train_ready",
             "catalog_sha256": _sha256(catalog.path),
             "paths_sha256": _sha256(paths.path),
-            "flowmatching_producer": flowmatching_identity,
+            "motion_converter_producer": motion_converter_identity,
             "data_preflight": "full_manifest_contract_passed",
             "outputs": {
                 "cached_manifest_sha256": _sha256(cached),

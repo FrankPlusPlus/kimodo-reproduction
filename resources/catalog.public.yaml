@@ -57,7 +57,11 @@ resources:
     repo_type: model
     revision: 53346005fb0ef11d3b6a83b12c895cca40156b6c
     expected_bytes: 16069769481
-    purpose: Non-gated byte-equivalent Llama-3 8B foundation for offline LLM2Vec caching.
+    # The released Kimodo loader names the gated Meta foundation.  This pinned
+    # non-gated repository is an engineering compatibility substitute; no
+    # byte-for-byte equivalence evidence is available in the paper or public
+    # Kimodo repository.
+    purpose: Non-gated Llama-3 8B compatibility foundation for offline LLM2Vec caching.
     post_fetch: Run the text-cache preprocessing stage; this model is not loaded by training.
     files:
       LICENSE:

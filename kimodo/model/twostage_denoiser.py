@@ -3,7 +3,6 @@
 """Two-stage transformer denoiser: root stage then body stage for motion diffusion."""
 
 import contextlib
-from typing import Optional
 
 import torch
 from torch import nn
@@ -19,7 +18,7 @@ class TwostageDenoiser(nn.Module):
         self,
         motion_rep,
         motion_mask_mode,
-        ckpt_path: Optional[str] = None,
+        ckpt_path: str | None = None,
         detach_root_for_body: bool = True,
         **kwargs,
     ):
@@ -27,9 +26,9 @@ class TwostageDenoiser(nn.Module):
         super().__init__()
         self.motion_rep = motion_rep
         self.motion_mask_mode = motion_mask_mode
-        # Match the released training branch: both stages are optimized in one
-        # interleaved forward/update, while the root-to-body conversion is
-        # detached.  False is an explicit gradient-coupled ablation.
+        # Match the released denoiser's training-mode forward by detaching the
+        # root-to-body conversion. Optimizing both stages in one update is this
+        # reconstruction's paper interpretation, not evidence of an official trainer.
         self.detach_root_for_body = bool(detach_root_for_body)
 
         # it should be a dual motion_rep
@@ -82,9 +81,9 @@ class TwostageDenoiser(nn.Module):
         text_feat: torch.Tensor,
         text_feat_pad_mask: torch.Tensor,
         timesteps: torch.Tensor,
-        first_heading_angle: Optional[torch.Tensor] = None,
-        motion_mask: Optional[torch.Tensor] = None,
-        observed_motion: Optional[torch.Tensor] = None,
+        first_heading_angle: torch.Tensor | None = None,
+        motion_mask: torch.Tensor | None = None,
+        observed_motion: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Args:

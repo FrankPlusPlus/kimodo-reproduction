@@ -4,13 +4,13 @@
 
 本审计只把论文明确写出的计算、阶段和数值称为 `PAPER`。公开 checkpoint/config/推理代码提供但论文没有写出的事实称为 `ARTIFACT`。为了闭合训练而选择的值称为 `ASSUMED`；缺少必要资产或协议时称为 `BLOCKED`。
 
-当前结论分成两个不能混淆的层级：**论文明确训练方法的代码与门禁为 PASS**；**完整论文实验为 BLOCKED / NOT-TESTED**。核心模型与训练数学已达到“论文明确项逐条对齐并有契约测试”，但论文明确使用的 Qwen3-32B paraphrase 和 diffusion-transition cross-motion stitching 尚无可生成资产，因此完整 paper-data profile 会主动拒绝启动。该阻断不能用普通 BONES-SEED manifest 静默绕过。
+当前结论分成两个不能混淆的层级：**论文明确的核心计算与优化主干已有实现和门禁覆盖**；**完整训练方法仍为 PARTIAL，完整论文实验为 BLOCKED / NOT-TESTED**。模型与优化数学中论文明确的条款已逐项对齐并有契约测试，但论文明确使用的 Qwen3-32B paraphrase 和 diffusion-transition cross-motion stitching 尚无可生成资产，因此完整 paper-data profile 会主动拒绝启动。该阻断不能用普通 BONES-SEED manifest 静默绕过。
 
 这不是 NVIDIA 官方训练源码，也不能证明私有 trainer 的未披露细节。
 
 ## 2. 本轮发现并修复的问题
 
-1. **两阶段梯度语义**：论文 Sec. 5 p.12 说 interleaved two-stage denoiser `trains end-to-end`，但官方公开训练代码明确在 root→body conversion 使用 `no_grad + detach`。生产 profile 默认 `detach_root_for_body=true`，把 end-to-end 解释为两个 stage 在同一 forward/loss/update 中联合训练；`false` 是梯度耦合消融。
+1. **两阶段梯度语义**：论文 Sec. 5 p.12 说 interleaved two-stage denoiser `trains end-to-end`，但官方仅公开 denoiser，其 training-mode forward 在 root→body conversion 使用 `no_grad + detach`；未公开完整 trainer。生产 profile 默认 `detach_root_for_body=true`，并把 end-to-end 工程解释为两个 stage 在同一 forward/loss/update 中联合训练；`false` 是梯度耦合消融。
 2. **两阶段计算缺少直接证据**：新增 Figure 9 tensor-level test，逐项检查约束覆盖、mask 拼接、完整输入进入 root stage、global-root 转 local-root、imputed noisy body 进入 body stage、最终 root/body 拼接及端到端梯度。
 3. **数据增强可被静默遗漏**：生产配置新增 `require_paper_data_parity=true` 并接入 trainer。缺少 Qwen paraphrase、stitched transition 或其 provenance 时 fail closed。
 4. **manifest provenance 太弱**：普通构建器逐行记录原始文本/时间标签来源，sidecar 明确列出缺失增强；严格 gate 校验 manifest SHA-256、Qwen3-32B 归属、prompt hash、两条不同 source motion、source time ranges、transition checkpoint hash 和 transition frame range。
@@ -96,17 +96,23 @@
 
 ## 6. 当前验收证据与不能通过的 gate
 
-已经有单元/集成证据覆盖：Figure 9 两阶段 tensor 数据流和梯度、DDPM forward 公式、Eq. (1) loss/权重、五类约束、phase/mix 频率、重采样、stats 全覆盖、严格 manifest gate、tiny 两阶段训练、单机与 2-rank resume、官方 checkpoint strict load。
+已经有单元/集成证据覆盖：Figure 9 两阶段 tensor 数据流、DDPM forward 公式、Eq. (1)
+loss/权重、五类约束、phase/mix 频率、重采样、distinct temporal span 的 stats 分窗、严格
+manifest gate、tiny 两阶段训练、单机与 2-rank resume、官方 checkpoint strict load。论文未披露
+stats 的 span mixture；full/event/combined 的重叠区间在当前工程策略中会重复计权。
 
-最终集成自检为 `50 passed, 1 skipped`，官方 1.1 GB checkpoint gate 单独为 `2 passed`。独立 verifier 已在最终文件状态上复跑严格配置门禁和完整测试套件，并将“论文明确训练方法的严格代码门禁与文档披露”审批为 `PASS`；论文完整数据、算力与私有评测实验仍为 `BLOCKED/NOT-TESTED`。严格 manifest gate 只校验自声明 schema、hash 与 provenance，不能证明未公开 prompt、mixture 或 transition 协议与官方私有 recipe 相同。
+测试数量随实现演进，以当前 CI/本地测试输出为准；官方大 checkpoint gate 仍需显式提供资产。
+这些测试只证明实现合约、公开 checkpoint 接口和工程门禁，不是论文数值验收。论文完整数据、算力与
+私有评测实验仍为 `BLOCKED/NOT-TESTED`。严格 manifest gate 只校验自声明 schema、hash 与
+provenance，不能证明未公开 prompt、mixture 或 transition 协议与官方私有 recipe 相同。
 
 以下仍不能标为 `verified`：
 
-- 真 BONES-SEED DataLoader/一步训练；
+- 真 BONES-SEED 已完成 3-step 工程短训，但不能据此外推收敛、最终质量或论文指标；
 - Qwen3-32B paraphrase 生成质量；
 - non-augmented transition model 的训练和 stitched asset 生成；
 - 16xA100-80GB、global batch 2048、完整 1M steps；
 - 私有 Rigplay 训练和论文约 5k test suite；
 - paper evaluator 已通过合成数值 oracle，但未在论文私有约 5k test suite 上运行，因此论文表格数值仍不可验证。
 
-因此最终合格措辞是：**核心训练方法按论文明确条款完成实现与合成验证；完整数据方法和论文数值复现仍受外部资产/算力阻断。**
+因此最终合格措辞是：**论文明确的核心计算与优化主干已完成实现和合成验证；包含论文数据 recipe 的完整训练方法仍属 PARTIAL，论文数值复现仍受外部资产、私有协议与算力阻断。**

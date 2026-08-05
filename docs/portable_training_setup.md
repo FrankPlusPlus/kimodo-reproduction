@@ -9,8 +9,7 @@
 入口是 `scripts/bootstrap_training.sh`。它依次完成：
 
 1. 创建隔离 `.venv`，按 `requirements-training-server.txt` 安装并执行 `pip check`；
-2. 从 `resources/dependencies.lock.yaml` 读取 FM 仓库和精确 commit，自动 clone 到
-   `.deps/kimodo-flowmatching`，以 detached HEAD 校验后安装；
+2. 安装本仓库自带的 BONES converter；不 clone、安装或导入其他训练项目；
 3. 生成 `<storage-root>/config/resources.paths.yaml`；
 4. 下载并逐文件校验固定 revision 的 BONES-SEED 和 LLM2Vec 资源，或校验/绑定已有资源；
 5. 构建 SOMA30/30fps motion、相对路径 manifest、离线 `[1,4096]` 句向量 cache、stats 和
@@ -116,7 +115,7 @@ scripts/bootstrap_training.sh \
 | 内容 | 位置 | 是否进 Git |
 |---|---|---|
 | 固定 repo/revision/文件 hash | `resources/catalog.public.yaml` | 是 |
-| FM 精确依赖 commit | `resources/dependencies.lock.yaml` | 是 |
+| BONES converter revision + 源码 hash | conversion metadata / `resource-state.json` | 是 |
 | 下载、已有资源和 prepare 输出位置 | `<storage-root>/config/resources.paths.yaml` | 否 |
 | trainer 的 manifest/stats/output/resume 路径 | `<storage-root>/config/repro.paths.yaml` | 否 |
 | 论文方法参数 | `configs/training/*.yaml` | 是 |

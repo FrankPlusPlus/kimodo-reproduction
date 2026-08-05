@@ -198,8 +198,10 @@ def bind_prepared_bundle(
     stats_files = _validate_stats_bundle(stats)
     preflight = _preflight_prepared_bundle(prepared, min_frames=2)
     expected = receipt.get("outputs") or {}
-    if expected.get("manifest_sha256") not in (None, _sha256(manifest)):
-        raise PipelineError("prepared manifest does not match resource-state.json")
+    actual_manifest_sha = _sha256(manifest)
+    for key in ("cached_manifest_sha256", "manifest_sha256"):
+        if expected.get(key) not in (None, actual_manifest_sha):
+            raise PipelineError("prepared manifest does not match resource-state.json")
     if expected.get("inventory_sha256") not in (None, _sha256(inventory)):
         raise PipelineError("prepared inventory does not match resource-state.json")
     _atomic_yaml(paths_yaml, _training_paths_payload(prepared, run))

@@ -1,3 +1,4 @@
+# 中文逐字段说明见同目录 CONFIG_REFERENCE.zh-CN.md。
 # Trainable BONES-SEED engineering reconstruction. Every paper-disclosed
 # model/loss/curriculum value is retained. Hardware scale belongs in an overlay. The
 # unavailable official Qwen/transition data recipe is explicitly not claimed.

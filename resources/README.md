@@ -25,9 +25,9 @@ of either YAML schema and are never printed by this tool.
 scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 ```
 
-This creates the environment, clones the pinned FM converter into ignored
-`.deps/`, writes `/shared/kimodo/config/resources.paths.yaml`, fetches/verifies,
-prepares, and emits `/shared/kimodo/config/repro.paths.yaml`. The lower-level
+This creates the environment, writes `/shared/kimodo/config/resources.paths.yaml`,
+fetches/verifies, prepares with this repository's converter, and emits
+`/shared/kimodo/config/repro.paths.yaml`. The lower-level
 `setup_env.sh` and `resources.sh plan/fetch/verify/prepare` commands remain
 available when a cluster administrator wants to run each stage separately.
 

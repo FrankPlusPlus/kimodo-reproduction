@@ -153,7 +153,7 @@ eval:
 | root/body architecture | 两个 transformer；root global，body 接 local-root | PAPER + CODE | Sec. 4.2 p.9-10；`twostage_denoiser.py:36-61,107-152` |
 | 每 stage 层/头/宽度 | 16 / 8 / 1024；总 282M | PAPER | Sec. 4.2 p.10 |
 | FFN/activation/norm | 2048 / GELU / post-norm | ARTIFACT + CODE | 发布 config；`backbone.py:121-134` |
-| root-to-body 梯度 | paper profile 不 detach；兼容消融可 detach | PAPER + CODE-CONFLICT | Sec. 5 p.12 明确 “trains end-to-end”；公开代码训练分支会 detach。论文复现默认优先论文明确语义 |
+| root-to-body 梯度 | 生产 profile detach；不 detach 仅作消融 | CODE + PAPER-AMBIGUOUS | 公开 denoiser 的 training-mode branch 对 conversion 使用 `no_grad`/`detach`；Sec. 5 p.12 的 “trains end-to-end” 未说明 body loss 是否必须跨 bridge 反传，也不能证明私有 trainer 的 autograd 行为 |
 | loss 权重 | `[10,2,10,3,10,4,5]` | PAPER | Eq. (1) 及其后文字，p.10 |
 | loss reduction/物理或 normalized 域 | 未披露 | UNKNOWN | 必须做配置和消融，见 6.3 |
 | optimizer | Adam-atan2，lr `2e-5` | PAPER | Sec. 4.3 p.10 |
@@ -314,9 +314,9 @@ SOMA30 + concat mask 的 shape 合同：
 
 ### 6.2 公开实现与论文的梯度差异
 
-论文 Sec. 5 p.12 说 interleaved two-stage denoiser “trains end-to-end”，但没有明确规定 body loss 必须穿过 global→local bridge。官方公开实现从初始提交起就在训练态对该 conversion 使用 `no_grad` 并 `detach`；两个 stage 仍在同一 forward、总 loss 和 optimizer step 中联合训练。`detach_root_for_body=true` 时 body loss 不经 local-root condition 反传到 root stage；`false` 时使用梯度耦合 bridge。
+论文 Sec. 5 p.12 说 interleaved two-stage denoiser “trains end-to-end”，但没有明确规定 body loss 必须穿过 global→local bridge。官方公开的 denoiser 实现在 training mode 对该 conversion 使用 `no_grad` 并 `detach`；公开仓库没有发布完整 trainer，因此这只能证明已发布 denoiser branch 的行为。两个 stage 仍可在同一 forward、总 loss 和 optimizer step 中联合训练。`detach_root_for_body=true` 时 body loss 不经 local-root condition 反传到 root stage；`false` 时使用梯度耦合 bridge。
 
-**实现决定 [CODE + PAPER-COMPATIBLE]**：生产 profile 默认 `detach_root_for_body=true`，匹配作者公开训练代码，并把论文 “end-to-end” 解释为联合而非分阶段训练。`false` 保留为论文措辞的字面强解释/梯度耦合消融；建议小规模 A/B，但不得把任一私有 trainer 的 autograd 行为宣称为论文明确事实。
+**实现决定 [CODE + PAPER-AMBIGUOUS]**：生产 profile 默认 `detach_root_for_body=true`，匹配已发布 denoiser 的 training-mode branch。这与论文所述的两 stage 联合训练不冲突，但论文未公开 bridge autograd 细节，所以不将私有 trainer 标为已对齐。`false` 保留为梯度耦合消融；建议小规模 A/B，但不得把任一私有 trainer 的 autograd 行为宣称为论文明确事实。
 
 ### 6.3 Loss
 
@@ -400,13 +400,13 @@ Family-specific defaults：
 
 **[DEFAULT]**：采用 Kimodo 引用的 Everett et al. Adam-atan2 stretched 定义 `4/π·λ·atan2(m, λ√v)` 及其论文实验值 `λ=8`，标准 moment betas `(0.9,0.999)`、无 weight decay、constant LR、无 warmup。配置必须保存 `atan2_lambda`，不可只写 `AdamAtan2` 名称；Kimodo 本身未披露 λ。对 embedding/normalization 参数不做优化；所有 denoiser parameter 在同一 parameter group。
 
-梯度 global-norm clip `1.0` 是稳定性默认，不是论文值。每 step 记录 pre/post clip norm；若 99.9 percentile 长期低于阈值，则做关闭 clip 的 ablation。
+梯度 global-norm clip `1.0` 是稳定性默认，不是论文值。建议后续诊断记录每 step 的 pre/post clip norm，并在 99.9 percentile 长期低于阈值时做关闭 clip 的 ablation；当前 trainer 尚未记录这两个诊断量。
 
 ### 8.2 Batch 与精度
 
 最佳模型论文配置：global batch 2048，16×A100 SXM4 80GB，30 fps（Sec. 4.3 p.10-11）。若无 accumulation，则 local batch=128/GPU，这是 **[INFERRED]**。
 
-**[DEFAULT]** DDP + bf16 autocast + FP32 optimizer state；按显存选择 microbatch，并 accumulation 到精确 global batch 2048。梯度 accumulation 期间 loss 必须按 global valid-element denominator 等价归一，不能简单平均不同长度 microbatch。记录 effective frames/step，因为相同 motion batch 可能有不同 frame 数。
+**[DEFAULT]** DDP + bf16 autocast + FP32 optimizer state；按显存选择 microbatch，并 accumulation 到精确 global batch 2048。梯度 accumulation 期间 loss 必须按 global valid-element denominator 等价归一，不能简单平均不同长度 microbatch。建议后续记录 effective frames/step，因为相同 motion batch 可能有不同 frame 数；当前日志尚未包含该字段。
 
 ### 8.3 EMA
 
@@ -424,9 +424,9 @@ Family-specific defaults：
 - Python/NumPy/PyTorch CPU/CUDA RNG；sampler RNG 与 dataloader epoch；
 - data/split/text-cache/stats/skeleton hash；完整 resolved config；
 - 当前 dropout/PE dropout、Adam-atan2 变体参数；
-- 最近验证指标与代码 revision/dirty-state 说明。
+- 代码 revision/dirty-state 与数据/实现 provenance。当前 trainer 没有验证循环，因此不保存“最近验证指标”。
 
-保存：每 10k step、Phase 1 边界 500k、最终 1M、异常退出。保留最近 3 个、每 100k milestone、phase boundary、best proxy 和 final。最终发布另导出 EMA-only `model.safetensors` 与推理 `config.yaml`，但训练恢复必须使用 full-state checkpoint。
+当前实现保存：每 `checkpoint_every` step、Phase 1 边界和最终 step 的 full-state checkpoint；检测到 non-finite 时另存 diagnostic（不是 exact-resume 点）。保留最近若干普通 checkpoint，并保留 phase boundary/final milestone。当前没有 best-proxy/验证最优跟踪，也不承诺一般异常退出都能保存。最终另导出 EMA-only `model.pt`、推理 `config.yaml` 和 stats；训练恢复必须使用 full-state checkpoint。
 
 **选择规则 [DEFAULT]**：论文数值复现主结果使用 **1M-step final EMA**，避免把未公开 early-stopping 伪装成官方规则；验证最优仅作诊断/次要报告。
 

@@ -65,6 +65,7 @@ kimodo_create_smoke_fixture = "kimodo.training.smoke_fixture_cli:main"
 kimodo_reference_inventory = "kimodo.training.reference_inventory_cli:main"
 kimodo_benchmark_train = "kimodo.training.benchmark_cli:main"
 kimodo_resources = "kimodo.resources.cli:main"
+kimodo_prepare_bones = "kimodo.resources.bones:main"
 
 [tool.setuptools]
 include-package-data = true

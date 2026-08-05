@@ -65,9 +65,9 @@ class ModelConfig:
     norm_first: bool = False
     input_first_heading_angle: bool = True
     use_text_mask: bool = False
-    # The released implementation jointly trains both stages but explicitly
-    # detaches the root-to-body conversion in training mode.  Allowing body loss
-    # through the bridge remains available as a gradient-coupled ablation.
+    # The released denoiser's training-mode forward explicitly detaches the
+    # root-to-body conversion. Joint optimization in one update is this
+    # reconstruction's interpretation of the paper, not a released trainer fact.
     detach_root_for_body: bool = True
 
 
@@ -269,6 +269,7 @@ class TrainingConfig:
                 "model.num_layers": (self.model.num_layers, 16),
                 "model.num_heads": (self.model.num_heads, 8),
                 "model.llm_dim": (self.model.llm_dim, 4096),
+                "model.llm_tokens": (self.model.llm_tokens, 1),
                 "model.num_text_tokens_override": (self.model.num_text_tokens_override, 50),
                 "model.input_first_heading_angle": (self.model.input_first_heading_angle, True),
                 "curriculum.phase1_steps": (self.curriculum.phase1_steps, 500_000),

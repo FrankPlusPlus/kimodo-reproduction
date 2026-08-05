@@ -10,9 +10,7 @@ import hashlib
 import json
 import os
 import random
-import socket
 import time
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,6 +36,7 @@ from .losses import KimodoLoss
 from .modeling import build_trainable_denoiser, set_model_dropout, unwrap_model, validate_model_contract
 from .optim import build_optimizer
 from .provenance import collect_provenance, save_provenance
+from .run_lock import ExclusiveRunLock
 
 
 @dataclass(frozen=True)
@@ -143,51 +142,6 @@ class JsonlLogger:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
         print(json.dumps(record, sort_keys=True), flush=True)
-
-
-class ExclusiveRunLock:
-    """NFS-safe single-writer lease for one training output directory."""
-
-    def __init__(self, output_dir: Path) -> None:
-        self.path = output_dir / ".kimodo-active-run.lock"
-        self.token = uuid.uuid4().hex
-        self.held = False
-
-    def acquire(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        record = {
-            "token": self.token,
-            "pid": os.getpid(),
-            "hostname": socket.gethostname(),
-            "started_at_unix": time.time(),
-        }
-        try:
-            descriptor = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o664)
-        except FileExistsError as error:
-            try:
-                owner = self.path.read_text(encoding="utf-8").strip()
-            except OSError:
-                owner = "<unreadable>"
-            raise FileExistsError(
-                f"training output_dir is already locked: {self.path}; owner={owner}"
-            ) from error
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(record, handle, sort_keys=True)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        self.held = True
-
-    def release(self) -> None:
-        if not self.held:
-            return
-        try:
-            current = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            current = None
-        if isinstance(current, dict) and current.get("token") == self.token:
-            self.path.unlink(missing_ok=True)
-        self.held = False
 
 
 def build_training_dataset(config, motion_rep):

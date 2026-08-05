@@ -53,9 +53,6 @@ setup_args=()
 if [[ "${setup_system_site}" == true ]]; then
   setup_args+=(--system-site-packages)
 fi
-if [[ -n "${legacy_root}" || -n "${prepared_root}" ]]; then
-  setup_args+=(--skip-flowmatching)
-fi
 "${project_root}/scripts/resources/setup_env.sh" "${setup_args[@]}"
 python_bin="${KIMODO_VENV:-${project_root}/.venv}/bin/python"
 if [[ "${hf_login}" == true ]]; then

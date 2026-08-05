@@ -22,8 +22,8 @@ paths YAML 采用白名单，放入 batch size、学习率等字段会直接报�
 ## 新服务器最短流程
 
 先在 Hugging Face 接受 `bones-studio/seed` 的 license，并用正常的 HF credential store
-或 `HF_TOKEN` 登录。token 不写入任何 YAML、receipt 或日志。FM converter 会按仓库内 lock
-自动 clone 到 ignored `.deps/`，无需手工维护第二个 checkout：
+或 `HF_TOKEN` 登录。token 不写入任何 YAML、receipt 或日志。BONES converter 属于本仓库，
+流程不 clone、安装或导入 Flow Matching 等第二个项目：
 
 ```bash
 git clone https://github.com/FrankPlusPlus/kimodo-reproduction.git /work/repro
@@ -134,19 +134,24 @@ accumulation 8 = effective global batch 2048。硬件不同可复制 overlay 修
 
 训练只读取已缓存的 `[1,4096]` 句向量，不会加载 Llama、MNTP、supervised adapter 或 Qwen。
 
-## 交给 Flow Matching
-
-FM 不重新下载或编码文本。完成 repro cache/stats 后，在 FM 仓库复制并编辑：
+训练进程会在 output dir 写 `.kimodo-active-run.lock`。同一主机上 PID 已退出、PID 被复用或主机
+已重启时，下一次启动会保守地自动回收；其他主机或无法解析的 owner 不会被猜测为死亡。可先检查：
 
 ```bash
-cd /work/fm
-scripts/setup_env.sh
-cp configs/resources/reuse_repro_cache.example.yaml configs/resources/local.yaml
-scripts/resources/prepare_from_repro_cache.sh configs/resources/local.yaml
+python -m kimodo.training.run_lock inspect /path/to/run
+python -m kimodo.training.run_lock clear-stale /path/to/run
+# 对 remote/unknown owner，先在调度器/对应节点确认任务已终止，再逐字复制 inspect 输出的 token：
+python -m kimodo.training.run_lock clear /path/to/run --expected-token <token>
 ```
 
-该命令构建 FM manifest/inventory/stats，并生成 FM 的 paths YAML；随后使用 FM 自己的
-`.venv` 和 launcher。训练运行时不依赖 repro checkout。
+`clear-stale` 只删除本机能够证明已失效的锁；显式 `clear` 必须给出当前随机 token，避免误删
+已经被另一个训练进程替换的锁，但外部 liveness 判断仍由操作者负责。
+
+## 与其他训练项目的边界
+
+本流程到 `repro.paths.yaml` 和 Kimodo 训练产物为止，不负责生成其他项目的 manifest、stats 或路径文件。
+若另一个项目需要相同原始数据，应按它自己的数据契约独立准备；不要把本仓库安装进对方环境，也不要把
+对方仓库作为本项目的 converter 依赖。
 
 ## 复现边界
 

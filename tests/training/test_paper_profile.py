@@ -21,6 +21,7 @@ def test_production_profile_enforces_paper_method_defaults():
     )
     assert config.paper_method_strict is True
     assert config.model.detach_root_for_body is True
+    assert config.model.llm_tokens == 1
     assert config.data.require_paper_data_parity is True
     assert config.data.reference_verification == "inventory"
     assert config.runtime.enforce_paper_scale is True
@@ -41,6 +42,11 @@ def test_strict_profile_rejects_heading_step_and_runtime_scale_deviations():
         config.validate(require_paths=False)
 
     config.model.input_first_heading_angle = True
+    config.model.llm_tokens = 2
+    with pytest.raises(ValueError, match="model.llm_tokens"):
+        config.validate(require_paths=False)
+
+    config.model.llm_tokens = 1
     config.runtime.max_steps_override = 10
     with pytest.raises(ValueError, match="max_steps_override"):
         config.validate(require_paths=False)
