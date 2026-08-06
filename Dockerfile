@@ -37,10 +37,19 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     python -m pip install --upgrade pip \
  && SKIP_MOTION_CORRECTION_IN_SETUP=1 python -m pip install -r docker_requirements.txt
 
+# Training method/config files and operational launchers are runtime inputs.
+# Datasets, prepared caches, and checkpoints deliberately stay outside the
+# image and are mounted by the scheduler at /mnt/kimodo (or another path
+# selected through KIMODO_PATHS_CONFIG).
+COPY configs /workspace/configs
+COPY resources /workspace/resources
+COPY scripts /workspace/scripts
+RUN chmod +x /workspace/scripts/*.sh /workspace/scripts/resources/*.sh
+
 # Use the docker-entrypoint script, to allow the docker to run as the actual user instead of root
 COPY kimodo/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint
 
 # Default command (change to your entrypoint if you have one)
 ENTRYPOINT ["docker-entrypoint"]
-CMD ["bash"]
+CMD ["/workspace/scripts/train_distributed.sh"]

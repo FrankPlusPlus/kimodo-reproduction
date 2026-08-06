@@ -1,0 +1,13 @@
+# Hardware overlay for two homogeneous nodes with 8 H200 GPUs each.
+# Effective global batch = 16 ranks * 128 samples/rank * 1 accumulation = 2048.
+data:
+  # This is per rank: 4 workers * 8 ranks = 32 loader workers per node.
+  # Tune against host CPU/RAM and storage IOPS instead of raising blindly.
+  num_workers: 4
+
+runtime:
+  batch_size: 128
+  gradient_accumulation_steps: 1
+  precision: bf16
+  distributed: auto
+  enforce_paper_scale: true

@@ -1,0 +1,15 @@
+# Phase-2-only validation initialized from the released final inference bundle.
+# This is a fresh optimizer/EMA experiment, not a resume of NVIDIA trainer state.
+curriculum:
+  phase1_steps: 0
+  phase2_steps: 3000
+
+optimizer:
+  learning_rate: 5.0e-6
+
+runtime:
+  log_every: 10
+  checkpoint_every: 250
+  milestone_every: 0
+  keep_last_checkpoints: 20
+  enforce_paper_scale: false

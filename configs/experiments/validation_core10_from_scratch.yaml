@@ -1,0 +1,15 @@
+# One-day learning validation on the deterministic Core10 subset.
+# This is an engineering proxy, not the paper's 500k + 500k convergence run.
+curriculum:
+  phase1_steps: 20000
+  phase2_steps: 10000
+
+optimizer:
+  learning_rate: 1.0e-5
+
+runtime:
+  log_every: 10
+  checkpoint_every: 5000
+  milestone_every: 0
+  keep_last_checkpoints: 4
+  enforce_paper_scale: false

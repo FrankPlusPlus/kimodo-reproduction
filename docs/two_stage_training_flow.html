@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>two_stage_training_flow.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> or <div class="page"></div> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="kimodo-两阶段-transformer-训练-flow">Kimodo 两阶段 Transformer 训练 Flow</h1>
+<p>当前模型不是“先把 root 模型单独训完，再训练 body 模型”。每个 optimizer step 中，两个 Transformer 都做
+forward、计算同一个总 loss、由同一个 optimizer 更新；“两阶段”指的是<strong>同一次 forward 内先预测全局 root，
+再把 root 转成局部运动条件交给 body Transformer</strong>。</p>
+<h2 id="图例">图例</h2>
+<table>
+<thead>
+<tr>
+<th>颜色</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>蓝色</td>
+<td>DataLoader 输入或普通张量</td>
+</tr>
+<tr>
+<td>绿色</td>
+<td>论文明确的方法/数值</td>
+</tr>
+<tr>
+<td>灰绿色</td>
+<td>NVIDIA 公开模型代码、配置或 checkpoint 给出的结构</td>
+</tr>
+<tr>
+<td>橙色粗框</td>
+<td><strong>论文没有完整代码，本仓自行实现的 trainer/recipe/协议</strong></td>
+</tr>
+<tr>
+<td>紫色</td>
+<td>一个阶段实际输出的张量</td>
+</tr>
+<tr>
+<td>红色</td>
+<td>梯度停止、缺失项或必须注意的边界</td>
+</tr>
+</tbody>
+</table>
+<h2 id="1-一次-optimizer-step-的清晰主干">1. 一次 optimizer step 的清晰主干</h2>
+<p>这张总图只有一条从上到下的计算顺序。局部细节在后面的放大图中说明。</p>
+<pre><code class="language-mermaid"><div class="mermaid">%%{init: {"theme":"base","flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":30,"rankSpacing":42},"themeVariables":{"fontFamily":"sans-serif","fontSize":"14px"}}}%%
+flowchart TB
+    classDef input fill:#EAF2FF,stroke:#3973C6,color:#102A43,stroke-width:1.5px;
+    classDef paper fill:#E7F7ED,stroke:#228B5A,color:#143D2B,stroke-width:2px;
+    classDef released fill:#EEF5EE,stroke:#5C8465,color:#203629,stroke-width:2px;
+    classDef ours fill:#FFF1D6,stroke:#D97706,color:#542D08,stroke-width:3px;
+    classDef product fill:#F1ECFF,stroke:#7457B5,color:#2D1D4E,stroke-width:2px;
+    classDef warning fill:#FFE8E6,stroke:#C24132,color:#5C1E18,stroke-width:3px;
+
+    A["INPUT · DataLoader batch<br/><br/>x₀ clean_motion [B,T,369] normalized<br/>valid_frames [B,T] · lengths [B]<br/>text [B,1,4096] · text_pad_mask [B,1]<br/>first_heading_angle [B]"]:::input
+
+    B["【本仓 trainer】课程与 conditioning 采样<br/><br/>按 optimizer global_step 决定 Phase 1/2<br/>执行 10% text conditioning dropout<br/>Phase 2 在线采样五类 motion constraint<br/>生成 observed_motion 与 motion_mask"]:::ours
+
+    C["PRODUCT · conditioning<br/><br/>text_condition [B,1,4096]<br/>observed_motion [B,T,369]<br/>motion_mask [B,T,369] bool<br/>Phase 1 的 motion_mask 全 False"]:::product
+
+    D["PAPER · DDPM forward noise<br/><br/>t ~ Uniform{0,...,999}<br/>ε ~ Normal(0,I)<br/>xₜ = sqrt(alpha_barₜ)x₀<br/>+ sqrt(1-alpha_barₜ)ε<br/>训练 target 是 clean x₀，不是 ε"]:::paper
+
+    E["PAPER · constraint overwrite/imputation<br/><br/>x_tilde = where(mask, observed x₀, xₜ)<br/>已约束维度放干净观测<br/>其他维度保留 noisy motion"]:::paper
+
+    F["PRODUCT · Stage-1 输入<br/><br/>concat[x_tilde 369, motion_mask 369]<br/>root_input = [B,T,738]"]:::product
+
+    G["RELEASED MODEL · Stage 1<br/>Global-root Transformer<br/><br/>motion input 738→latent 1024<br/>text / time / first-heading<br/>共 52 个 prefix tokens<br/>16 layers · 8 heads<br/>输出 5D global root"]:::released
+
+    H["PRODUCT · predicted global root<br/><br/>r_global_hat [B,T,5]<br/>smoothed root XYZ 3<br/>heading cos/sin 2"]:::product
+
+    I["RELEASED MODEL · global→local bridge<br/><br/>global stats 反归一化<br/>有限差分生成 angular velocity<br/>以及 XZ velocity / root Y<br/>local stats 归一化<br/>training 默认 no_grad + detach"]:::released
+
+    J["PRODUCT · Stage-2 输入<br/><br/>r_local_hat [B,T,4]<br/>x_tilde_body [B,T,364]<br/>concat 二者得 368，再 concat 原 369D mask<br/>body_input = [B,T,737]"]:::product
+
+    K["RELEASED MODEL · Stage 2<br/>Body Transformer<br/><br/>与 root Transformer 参数不共享<br/>同样使用 52 个 prefix<br/>16 layers · 8 heads · latent 1024<br/>输出 body 364D"]:::released
+
+    L["PRODUCT · clean-motion prediction<br/><br/>body_hat [B,T,364]<br/>concat 5D root 与 364D body<br/>x₀_hat [B,T,369]"]:::product
+
+    M["【本仓 trainer】七项 loss 的可执行实现<br/><br/>6 个 representation Smooth-L1<br/>+ 1 个 FK Smooth-L1<br/>只累计 valid frame<br/>默认在 physical domain 计算<br/>权重 10/2/10/3/10/4/5"]:::ours
+
+    N["PRODUCT · weighted frame-sum<br/>尚未除全局分母<br/>每项分别记录 numerator<br/>以及 valid-frame denominator"]:::product
+
+    O["【本仓 trainer】DDP + accumulation<br/><br/>非边界 micro-step：DDP no_sync<br/>accumulation 边界<br/>all-reduce global valid-frame count<br/>再统一缩放梯度<br/>clip norm 1.0 → Adam-atan2<br/>→ EMA → full-state checkpoint"]:::ours
+
+    P["UPDATED STATE<br/><br/>online root/body parameters<br/>optimizer state<br/>EMA shadow（每 10 optimizer steps 更新）<br/>step/microstep + per-rank RNG + provenance"]:::product
+
+    Q["GRADIENT BOUNDARY<br/>body loss 不穿过 detached bridge<br/>因此不更新 root Transformer<br/>root Transformer 主要由<br/>root position / heading loss 更新"]:::warning
+
+    A --> B --> C --> D --> E --> F --> G --> H --> I --> J --> K --> L --> M --> N --> O --> P
+    I -.-> Q
+</div></code></pre>
+<h2 id="2-输入-369d-到底是什么">2. 输入 369D 到底是什么</h2>
+<p><code>clean_motion</code> 已经过数据流水线在线裁剪、随机 heading 和 normalize。最后一维不是抽象 embedding，而是
+具有固定运动学语义的特征：</p>
+<table>
+<thead>
+<tr>
+<th>slice</th>
+<th style="text-align:right">维数</th>
+<th>每帧含义</th>
+<th>交给哪个 stage 预测</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>smoothed root XYZ</td>
+<td style="text-align:right">3</td>
+<td>平滑后的全局 root 位置</td>
+<td>root</td>
+</tr>
+<tr>
+<td>heading cos/sin</td>
+<td style="text-align:right">2</td>
+<td>人体水平朝向，避免角度在 ±π 跳变</td>
+<td>root</td>
+</tr>
+<tr>
+<td>joint positions</td>
+<td style="text-align:right">90</td>
+<td>30 个关节 × XYZ</td>
+<td>body</td>
+</tr>
+<tr>
+<td>global joint rotations</td>
+<td style="text-align:right">180</td>
+<td>30 个关节 × 6D rotation</td>
+<td>body</td>
+</tr>
+<tr>
+<td>joint velocities</td>
+<td style="text-align:right">90</td>
+<td>30 个关节 × XYZ velocity</td>
+<td>body</td>
+</tr>
+<tr>
+<td>heel/toe contacts</td>
+<td style="text-align:right">4</td>
+<td>左右脚跟/脚尖的接触信号</td>
+<td>body</td>
+</tr>
+<tr>
+<td><strong>总计</strong></td>
+<td style="text-align:right"><strong>369</strong></td>
+<td>global root 5 + body 364</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>batch 中其他字段：</p>
+<pre class="hljs"><code><div>{
+  <span class="hljs-string">&quot;clean_motion&quot;</span>: float32[B, T, <span class="hljs-number">369</span>],
+  <span class="hljs-string">&quot;valid_frames&quot;</span>: <span class="hljs-built_in">bool</span>[B, T],          <span class="hljs-comment"># True=真实帧，False=padding</span>
+  <span class="hljs-string">&quot;lengths&quot;</span>: int64[B],
+  <span class="hljs-string">&quot;text_features&quot;</span>: float32[B, <span class="hljs-number">1</span>, <span class="hljs-number">4096</span>],
+  <span class="hljs-string">&quot;text_pad_mask&quot;</span>: <span class="hljs-built_in">bool</span>[B, <span class="hljs-number">1</span>],
+  <span class="hljs-string">&quot;first_heading_angle&quot;</span>: float32[B],
+}
+</div></code></pre>
+<p>这里 <code>B</code> 是单个 rank/GPU 的 micro-batch，<code>T≤300</code>。两卡、每卡 micro-batch 256、累计 4 个 micro-step 时，
+目标 global batch 为 <code>2 × 256 × 4 = 2048</code>。</p>
+<h2 id="3-conditioning-与-diffusion-输入怎样构造">3. conditioning 与 diffusion 输入怎样构造</h2>
+<pre><code class="language-mermaid"><div class="mermaid">%%{init: {"theme":"base","flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":30,"rankSpacing":38},"themeVariables":{"fontFamily":"sans-serif","fontSize":"14px"}}}%%
+flowchart TB
+    classDef input fill:#EAF2FF,stroke:#3973C6,color:#102A43,stroke-width:1.5px;
+    classDef paper fill:#E7F7ED,stroke:#228B5A,color:#143D2B,stroke-width:2px;
+    classDef ours fill:#FFF1D6,stroke:#D97706,color:#542D08,stroke-width:3px;
+    classDef product fill:#F1ECFF,stroke:#7457B5,color:#2D1D4E,stroke-width:2px;
+
+    A["INPUT<br/>x₀ [B,T,369]<br/>text [B,1,4096]<br/>valid_frames [B,T]"]:::input
+    B["PAPER · Phase 1<br/>optimizer step 0..499,999<br/>model dropout=0.1<br/>没有 motion constraint"]:::paper
+    C["PAPER · Phase 2<br/>optimizer step 500,000..999,999<br/>model dropout=0<br/>10% 无约束 · 25% 两类约束 · 65% 一类约束"]:::paper
+    D["【本仓实现】五类 constraint recipe<br/>full-body sparse<br/>end-effector sparse<br/>root sparse / root dense<br/>foot-contact sparse<br/>family 均匀；sparse p(k)∝1/k<br/>dense span=20%–80%<br/>这些不是论文公布的 family 内分布"]:::ours
+    E["【本仓 trainer】共同的 text dropout<br/>每个样本 10% 概率把 text embedding 置 0<br/>同时把 text mask 置 False"]:::ours
+    F["PRODUCT · observed condition<br/>observed_motion=where(mask,x₀,0)<br/>motion_mask [B,T,369]"]:::product
+    G["PAPER · uniform timestep + Gaussian noise<br/>cosine q_sample 得到 xₜ [B,T,369]"]:::paper
+    H["PAPER · imputation<br/>x_tilde = where(mask,observed,xₜ)<br/>root stage 接收<br/>concat[x_tilde,mask] = 738D"]:::product
+
+    A --> B
+    A --> C --> D
+    B --> E
+    D --> E
+    E --> F --> G --> H
+</div></code></pre>
+<p>五类 constraint 的概念：</p>
+<ul>
+<li><code>full-body sparse</code>：少数时间点给出整帧身体状态。</li>
+<li><code>end-effector sparse</code>：少数时间点约束手、脚等末端。</li>
+<li><code>root sparse</code>：少数时间点约束 root。</li>
+<li><code>root dense</code>：连续一段时间约束 root 轨迹。</li>
+<li><code>foot-contact sparse</code>：少数位置给出脚接触条件。</li>
+</ul>
+<p>论文给出了 family、课程的大比例和 sparse 数量逐步增至 20；family 内如何抽取、dense 区间分布、heading
+概率没有公开。图中的 <code>1/k</code>、20%–80%、family 均匀是<strong>本仓实现</strong>，不是官方最优 recipe。</p>
+<h2 id="4-stage-1global-root-transformer-内部">4. Stage 1：Global-root Transformer 内部</h2>
+<pre><code class="language-mermaid"><div class="mermaid">%%{init: {"theme":"base","flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":28,"rankSpacing":38},"themeVariables":{"fontFamily":"sans-serif","fontSize":"14px"}}}%%
+flowchart TB
+    classDef input fill:#EAF2FF,stroke:#3973C6,color:#102A43,stroke-width:1.5px;
+    classDef released fill:#EEF5EE,stroke:#5C8465,color:#203629,stroke-width:2px;
+    classDef product fill:#F1ECFF,stroke:#7457B5,color:#2D1D4E,stroke-width:2px;
+    classDef warning fill:#FFE8E6,stroke:#C24132,color:#5C1E18,stroke-width:2px;
+
+    A["MOTION INPUT<br/>root_input [B,T,738]"]:::input
+    B["RELEASED · input Linear<br/>738→1024<br/>motion tokens [B,T,1024]"]:::released
+    C["TEXT INPUT<br/>[B,1,4096]"]:::input
+    D["RELEASED · pad 到固定 50 slots<br/>1 个真实 embedding + 49 个 zero feature rows<br/>Linear 4096→1024<br/>text tokens [B,50,1024]"]:::released
+    E["TIMESTEP INPUT<br/>t [B]"]:::input
+    F["RELEASED · sinusoidal timestep embedding<br/>time token [B,1,1024]"]:::released
+    G["HEADING INPUT<br/>first_heading_angle [B]"]:::input
+    H["RELEASED · [cos,sin] + Linear<br/>heading token [B,1,1024]"]:::released
+    I["PRODUCT · prefix<br/>50 text + 1 time + 1 heading<br/>[B,52,1024]"]:::product
+    J["PRODUCT · Transformer sequence<br/>concat[prefix,motion tokens]<br/>shape [B,52+T,1024]<br/>再加 sinusoidal positional encoding"]:::product
+    K["RELEASED ARCHITECTURE<br/>16 × TransformerEncoderLayer<br/>8 heads · FFN 2048 · GELU · post-norm<br/>Phase 1 dropout .1；Phase 2 dropout 0"]:::released
+    L["RELEASED · 去掉前 52 个 prefix output<br/>保留 T 个 motion positions<br/>output Linear 1024→5"]:::released
+    M["STAGE-1 PRODUCT<br/>r_global_hat [B,T,5]"]:::product
+    N["注意：released use_text_mask=false<br/>50 个 text slots 都是有效 token<br/>49 个零输入经过带 bias Linear 后<br/>不保证仍是零 latent"]:::warning
+
+    A --> B --> J
+    C --> D --> I
+    E --> F --> I
+    G --> H --> I
+    I --> J --> K --> L --> M
+    D -.-> N
+</div></code></pre>
+<p><code>valid_frames=True</code> 表示真实 motion frame。送入 PyTorch Transformer 前会取反，成为
+<code>src_key_padding_mask=True</code> 的 padding 位置。不要把它和 369D <code>motion_mask</code> 混淆：前者屏蔽补齐帧，后者
+表示用户/课程给了哪些运动约束。</p>
+<h2 id="5-globallocal-bridge-与-stage-2">5. global→local bridge 与 Stage 2</h2>
+<p>body Transformer 不直接读取 5D global root，而读取它的局部变化形式。这样 body 更容易依据“向前移动多少、
+朝向变化多少、root 多高”来生成关节运动。</p>
+<pre><code class="language-mermaid"><div class="mermaid">%%{init: {"theme":"base","flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":28,"rankSpacing":38},"themeVariables":{"fontFamily":"sans-serif","fontSize":"14px"}}}%%
+flowchart TB
+    classDef input fill:#EAF2FF,stroke:#3973C6,color:#102A43,stroke-width:1.5px;
+    classDef released fill:#EEF5EE,stroke:#5C8465,color:#203629,stroke-width:2px;
+    classDef product fill:#F1ECFF,stroke:#7457B5,color:#2D1D4E,stroke-width:2px;
+    classDef warning fill:#FFE8E6,stroke:#C24132,color:#5C1E18,stroke-width:3px;
+
+    A["STAGE-1 OUTPUT<br/>normalized r_global_hat [B,T,5]"]:::input
+    B["RELEASED · global-root mean/std 反归一化<br/>恢复 physical root XYZ 与 heading cos/sin"]:::released
+    C["RELEASED · 沿时间有限差分<br/>heading angular velocity 1<br/>root planar XZ velocity 2<br/>root world Y 1"]:::released
+    D["RELEASED · local-root mean/std 归一化"]:::released
+    E["BRIDGE PRODUCT<br/>r_local_hat [B,T,4]"]:::product
+    F["RELEASED TRAINING BEHAVIOR<br/>no_grad + detach"]:::warning
+    G["INPUT<br/>从 x_tilde 取 body slice<br/>x_tilde_body [B,T,364]"]:::input
+    H["PRODUCT<br/>concat[r_local_hat 4,x_tilde_body 364]<br/>body base [B,T,368]"]:::product
+    I["INPUT<br/>原始完整 motion_mask [B,T,369]"]:::input
+    J["PRODUCT · Stage-2 input<br/>concat[body base 368,mask 369]<br/>body_input [B,T,737]"]:::product
+    K["RELEASED · 独立 body Transformer<br/>737→1024；同样的 52-prefix<br/>16 layers · 8 heads · FFN 2048<br/>output Linear 1024→364"]:::released
+    L["STAGE-2 PRODUCT<br/>body_hat [B,T,364]"]:::product
+    M["FINAL PREDICTION<br/>concat[r_global_hat 5,body_hat 364]<br/>x₀_hat [B,T,369]"]:::product
+
+    A --> B --> C --> D --> E --> F --> H
+    G --> H
+    H --> J
+    I --> J
+    J --> K --> L --> M
+    A --> M
+</div></code></pre>
+<h3 id="梯度边界">梯度边界</h3>
+<pre><code class="language-mermaid"><div class="mermaid">%%{init: {"theme":"base","flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":32,"rankSpacing":36},"themeVariables":{"fontFamily":"sans-serif","fontSize":"14px"}}}%%
+flowchart LR
+    classDef root fill:#EAF2FF,stroke:#3973C6,color:#102A43,stroke-width:2px;
+    classDef body fill:#E7F7ED,stroke:#228B5A,color:#143D2B,stroke-width:2px;
+    classDef stop fill:#FFE8E6,stroke:#C24132,color:#5C1E18,stroke-width:3px;
+    A["root Transformer"]:::root --> B["root 5D"]:::root --> C["root position / heading losses"]:::root
+    B --> D["global→local<br/>DETACH"]:::stop --> E["body Transformer"]:::body --> F["body + FK losses"]:::body
+    F -. "梯度到这里停止" .-> D
+</div></code></pre>
+<p>公开 denoiser 的 training-mode forward 明确 detach。论文使用了 “end-to-end/interleaved” 描述，但未说明
+bridge autograd，因此当前默认跟随公开 forward；不能进一步声称这就是未公开私有 trainer 的梯度策略。</p>
+<h2 id="6-七项-loss-怎样汇合">6. 七项 loss 怎样汇合</h2>
+<pre><code class="language-mermaid"><div class="mermaid">%%{init: {"theme":"base","flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":28,"rankSpacing":38},"themeVariables":{"fontFamily":"sans-serif","fontSize":"14px"}}}%%
+flowchart TB
+    classDef input fill:#EAF2FF,stroke:#3973C6,color:#102A43,stroke-width:1.5px;
+    classDef paper fill:#E7F7ED,stroke:#228B5A,color:#143D2B,stroke-width:2px;
+    classDef ours fill:#FFF1D6,stroke:#D97706,color:#542D08,stroke-width:3px;
+    classDef product fill:#F1ECFF,stroke:#7457B5,color:#2D1D4E,stroke-width:2px;
+
+    A["INPUT<br/>x₀_hat 与 target x₀<br/>valid_frames"]:::input
+    B["【本仓实现】默认先反归一化到 physical domain<br/>每个 component 先做 Smooth-L1 beta=1<br/>每帧内部按 component 维数平均"]:::ours
+    C["PAPER · root position ×10"]:::paper
+    D["PAPER · root heading ×2"]:::paper
+    E["PAPER · joint position ×10"]:::paper
+    F["PAPER · joint velocity ×3"]:::paper
+    G["PAPER · joint rotation ×10"]:::paper
+    H["PAPER · foot contact ×4"]:::paper
+    I["【本仓实现】论文 FK term<br/>rotation 6D→matrix<br/>再转 local rotation<br/>使用 target root convention 做 FK<br/>predicted joint positions vs target · ×5"]:::ours
+    J["【本仓实现】valid-frame reduction<br/>padding 不进入 numerator 或 denominator<br/>保留未除 denominator 的 weighted frame-sum"]:::ours
+    K["PRODUCT<br/>total numerator<br/>+ global valid-frame denominator"]:::product
+
+    A --> B
+    B --> C --> J
+    B --> D --> J
+    B --> E --> J
+    B --> F --> J
+    B --> G --> J
+    B --> H --> J
+    B --> I --> J
+    J --> K
+</div></code></pre>
+<p>论文公开了七项 loss 及权重，但没有公开 normalized/physical domain、Smooth-L1 <code>beta</code>、每项 reduction 和
+FK root convention。图中橙色部分是本仓为得到确定、可测、可多卡等价的训练目标所做的实现选择。</p>
+<h2 id="7-两卡四步累计时怎样更新">7. 两卡、四步累计时怎样更新</h2>
+<pre><code class="language-mermaid"><div class="mermaid">%%{init: {"theme":"base","flowchart":{"htmlLabels":false,"curve":"linear","nodeSpacing":30,"rankSpacing":38},"themeVariables":{"fontFamily":"sans-serif","fontSize":"14px"}}}%%
+flowchart TB
+    classDef input fill:#EAF2FF,stroke:#3973C6,color:#102A43,stroke-width:1.5px;
+    classDef ours fill:#FFF1D6,stroke:#D97706,color:#542D08,stroke-width:3px;
+    classDef paper fill:#E7F7ED,stroke:#228B5A,color:#143D2B,stroke-width:2px;
+    classDef product fill:#F1ECFF,stroke:#7457B5,color:#2D1D4E,stroke-width:2px;
+
+    A["GPU 0<br/>micro-batch 256<br/>4 次 frame-sum backward"]:::input
+    B["GPU 1<br/>micro-batch 256<br/>4 次 frame-sum backward"]:::input
+    C["【本仓实现】micro-step 1..3<br/>DDP no_sync<br/>不提前除各卡/各步不同的有效帧数"]:::ours
+    D["【本仓实现】micro-step 4<br/>accumulation boundary<br/>DDP 同步梯度<br/>all-reduce 两卡四步的<br/>global valid-frame denominator<br/>梯度统一除以全局 denominator"]:::ours
+    E["PRODUCT · 与 global batch 2048 对齐的梯度<br/>2 GPUs × 256 samples × 4 accumulation"]:::product
+    F["【本仓实现】global grad norm clip=1.0"]:::ours
+    G["PAPER + ENGINEERING DEFAULT<br/>Adam-atan2 · lr=2e-5<br/>本仓补足 λ=8<br/>betas=.9/.999 · wd=0<br/>constant LR"]:::ours
+    H["PAPER · EMA decay=.995<br/>每 10 optimizer steps 更新一次"]:::paper
+    I["【本仓实现】exact-resume checkpoint<br/>online model + EMA + optimizer + scaler<br/>step/microstep + per-rank RNG + provenance<br/>atomic publish"]:::ours
+
+    A --> C
+    B --> C
+    C --> D --> E --> F --> G --> H --> I
+</div></code></pre>
+<p>不足 10 个 optimizer step 的短训中，EMA 可能仍基本等于初始化时复制的 online 权重，因此这种短训适合
+验证吞吐、显存、forward/backward 和保存恢复，不适合判断收敛质量。</p>
+<h2 id="8-哪些来自论文哪些是本仓设计">8. 哪些来自论文，哪些是本仓设计</h2>
+<h3 id="论文明确且已实现">论文明确且已实现</h3>
+<table>
+<thead>
+<tr>
+<th>方法</th>
+<th>当前实现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最长 10 秒、30 FPS best model</td>
+<td><code>T≤300</code></td>
+</tr>
+<tr>
+<td>369D motion representation</td>
+<td>global root 5 + body 364</td>
+</tr>
+<tr>
+<td>DDPM 1000 steps、uniform timestep、Gaussian noise、预测 clean x₀</td>
+<td><code>q_sample</code> + x₀ loss</td>
+</tr>
+<tr>
+<td>constraint overwrite 与 mask concat</td>
+<td>root/body 输入均携带原始 369D mask</td>
+</tr>
+<tr>
+<td>global-root→local-root→body</td>
+<td><code>[5]→[4]→body</code></td>
+</tr>
+<tr>
+<td>两个 16-layer、8-head、latent-1024 Transformer</td>
+<td>两套独立参数</td>
+</tr>
+<tr>
+<td>Phase 1/2 各 500k</td>
+<td>按 optimizer global step 切换</td>
+</tr>
+<tr>
+<td>Phase 2：10% none、25% two；五类约束</td>
+<td>在线 sampler</td>
+</tr>
+<tr>
+<td>model dropout <code>.1→0</code>；text dropout 10%</td>
+<td>phase 与 CFG conditioning</td>
+</tr>
+<tr>
+<td>七项 loss 权重 <code>10/2/10/3/10/4/5</code></td>
+<td>trainer loss wiring</td>
+</tr>
+<tr>
+<td>Adam-atan2、lr <code>2e-5</code></td>
+<td>optimizer</td>
+</tr>
+<tr>
+<td>EMA <code>.995</code> 每 10 step</td>
+<td>trainer EMA</td>
+</tr>
+<tr>
+<td>global batch 2048</td>
+<td>两卡 256 micro × 4 accumulation</td>
+</tr>
+</tbody>
+</table>
+<h3 id="公开模型代码配置给出的结构">公开模型代码/配置给出的结构</h3>
+<table>
+<thead>
+<tr>
+<th>结构</th>
+<th>采用方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FFN 2048、GELU、post-norm</td>
+<td>两个 Transformer 保持 checkpoint-compatible</td>
+</tr>
+<tr>
+<td>text 固定 50 slots、first-heading token</td>
+<td>prefix 总长 52</td>
+</tr>
+<tr>
+<td><code>use_text_mask=false</code></td>
+<td>50 个 text slots 均参与 attention</td>
+</tr>
+<tr>
+<td>cosine beta schedule <code>.008/.999</code></td>
+<td>released diffusion primitive</td>
+</tr>
+<tr>
+<td>training-mode bridge <code>no_grad + detach</code></td>
+<td>当前默认保持公开 forward 语义</td>
+</tr>
+<tr>
+<td>official EMA inference weights</td>
+<td>仅可作为结构/权重 oracle，不是可恢复 trainer state</td>
+</tr>
+</tbody>
+</table>
+<h3 id="本仓自行实现的-recon-内容"><strong>本仓自行实现的 RECON 内容</strong></h3>
+<p>这些项目有配置、测试和 provenance，但不是论文公布的精确数值：</p>
+<table>
+<thead>
+<tr>
+<th>类别</th>
+<th>本仓当前实现</th>
+<th>论文/仓库缺少什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>完整训练循环</td>
+<td>BF16 forward/backward、两阶段联合 optimizer step</td>
+<td>官方没有 trainer</td>
+</tr>
+<tr>
+<td>constraint family 内采样</td>
+<td>family 均匀；<code>p(k)∝1/k</code>；dense 20%–80%；heading p=.5</td>
+<td>family 内分布未公开</td>
+</tr>
+<tr>
+<td>direct loss</td>
+<td>physical domain、Smooth-L1 beta=1、每帧分量平均</td>
+<td>domain/beta/reduction 未公开</td>
+</tr>
+<tr>
+<td>FK loss</td>
+<td>predicted rotation + target root convention</td>
+<td>FK root 选择未公开</td>
+</tr>
+<tr>
+<td>DDP accumulation</td>
+<td>frame-sum backward + global valid-frame denominator</td>
+<td>多卡累计协议未公开</td>
+</tr>
+<tr>
+<td>稳定性</td>
+<td>BF16、grad clip 1.0、seed 1234</td>
+<td>precision/clip/seed 未公开</td>
+</tr>
+<tr>
+<td>Adam-atan2 其余参数</td>
+<td>λ=8、betas=.9/.999、wd=0、constant LR</td>
+<td>论文只给 optimizer 名和 LR</td>
+</tr>
+<tr>
+<td>EMA lifecycle</td>
+<td>online 初始化、跨 phase 连续、不重置</td>
+<td>lifecycle 未公开</td>
+</tr>
+<tr>
+<td>checkpoint</td>
+<td>exact-resume full state、per-rank RNG、原子保存、provenance</td>
+<td>保存/恢复协议未公开</td>
+</tr>
+<tr>
+<td>stats</td>
+<td>自行拟合 global/local/body stats</td>
+<td>官方训练 stats recipe 未公开</td>
+</tr>
+</tbody>
+</table>
+<h3 id="没有进入当前训练输入">没有进入当前训练输入</h3>
+<ul>
+<li>Qwen3-32B paraphrase prompt/cache/mixture。</li>
+<li>cross-motion source pair、时间范围、坐标/heading 对齐。</li>
+<li>preliminary diffusion transition checkpoint。</li>
+<li>transition sampling、帧数、质量过滤、生成数量。</li>
+<li>论文最终 full/single/combined/stitched 与 original/paraphrase mixture。</li>
+</ul>
+<p>严格 paper-data profile 会因为这些数据和 provenance 缺失而拒绝启动；public profile 是可运行的工程 baseline，
+不能命名为完整论文数据复现。公开 multi-prompt transition 是推理功能，也不能替代训练数据 augmentation。</p>
+<h2 id="9-实现证据入口">9. 实现证据入口</h2>
+<ul>
+<li><a href="../kimodo/training/engine.py"><code>kimodo/training/engine.py</code></a>：课程、加噪、loss、DDP accumulation、更新主循环。</li>
+<li><a href="../kimodo/model/twostage_denoiser.py"><code>kimodo/model/twostage_denoiser.py</code></a>：root/body forward 与 bridge。</li>
+<li><a href="../kimodo/model/backbone.py"><code>kimodo/model/backbone.py</code></a>：Transformer、prefix、text-mask 行为。</li>
+<li><a href="../kimodo/model/diffusion.py"><code>kimodo/model/diffusion.py</code></a>：cosine schedule 与 <code>q_sample</code>。</li>
+<li><a href="../kimodo/training/constraints.py"><code>kimodo/training/constraints.py</code></a>：本仓 constraint sampler。</li>
+<li><a href="../kimodo/training/losses.py"><code>kimodo/training/losses.py</code></a>：七项 loss 和 valid-frame reduction。</li>
+<li><a href="../kimodo/training/optim.py"><code>kimodo/training/optim.py</code></a>：Adam-atan2。</li>
+<li><a href="../kimodo/training/checkpoint.py"><code>kimodo/training/checkpoint.py</code></a>：full-state checkpoint。</li>
+<li><a href="../configs/training/kimodo_soma_seed_reproduction.yaml"><code>configs/training/kimodo_soma_seed_reproduction.yaml</code></a>：严格训练配置。</li>
+<li><a href="paper_training_parity_audit.md"><code>docs/paper_training_parity_audit.md</code></a>：论文证据和阻断项逐条审计。</li>
+</ul>
+
+</body>
+</html>

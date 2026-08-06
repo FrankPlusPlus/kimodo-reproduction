@@ -35,6 +35,26 @@ class ConstraintCurriculumSampler:
         "foot_contact_sparse",
     )
 
+    # Leaves mirror the public benchmark's capability taxonomy.  Their training
+    # probability is not disclosed, so V2 samples these uniformly inside an
+    # explicitly configured coverage branch while retaining the original
+    # paper-derived branch above.
+    BENCHMARK_PATTERNS = (
+        "benchmark_full_body_inbetweening",
+        "benchmark_full_body_random",
+        "benchmark_ee_feet_posrot",
+        "benchmark_ee_hands_posrot",
+        "benchmark_ee_hands_feet_posrot",
+        "benchmark_root_path_2dpos",
+        "benchmark_root_path_2dposrot",
+        "benchmark_root_waypoint_2dpos",
+        "benchmark_root_waypoint_2dposrot",
+        "benchmark_mix_root_ee_hands_posrot",
+        "benchmark_mix_root_ee_hands_posrot_fullbody",
+        "benchmark_mix_root_ee_hands_feet_posrot_fullbody",
+        "benchmark_mix_root_path_fullbody",
+    )
+
     def __init__(self, motion_rep, config) -> None:
         self.motion_rep = motion_rep
         self.skeleton = motion_rep.skeleton
@@ -135,6 +155,127 @@ class ConstraintCurriculumSampler:
         frames = self._keyframes(length, maximum, generator)
         self._mark_feature(mask, frames, self.motion_rep.slice_dict["foot_contacts"])
 
+    def _benchmark_sparse_frames(self, length, maximum, generator) -> torch.Tensor:
+        maximum = max(
+            1,
+            min(length, maximum, int(self.config.benchmark_sparse_keyframes_max)),
+        )
+        minimum = min(self.config.sparse_keyframes_min, maximum)
+        choices = torch.arange(minimum, maximum + 1, dtype=torch.float32)
+        weights = choices.pow(-float(self.config.benchmark_sparse_count_power))
+        selected = int(torch.multinomial(weights, 1, generator=generator).item())
+        count = minimum + selected
+        return torch.randperm(length, generator=generator)[:count].sort().values
+
+    def _benchmark_mark_full_body(self, mask, frames) -> None:
+        self._mark_feature(mask, frames, self.motion_rep.slice_dict["smooth_root_pos"])
+        self._mark_feature(mask, frames, self.motion_rep.slice_dict["global_root_heading"])
+        self._mark_feature(mask, frames, self.motion_rep.slice_dict["local_joints_positions"])
+
+    def _benchmark_mark_end_effectors(self, mask, frames, groups: list[str]) -> None:
+        rotation_names, position_names = self.skeleton.expand_joint_names(groups)
+        rotation_indices = [self.skeleton.bone_index[name] for name in rotation_names]
+        position_indices = [self.skeleton.bone_index[name] for name in position_names]
+        self._mark_feature(mask, frames, self.motion_rep.slice_dict["smooth_root_pos"])
+        self._mark_feature(mask, frames, self.motion_rep.slice_dict["global_root_heading"])
+        self._mark_joint_features(mask, frames, "local_joints_positions", position_indices, 3)
+        self._mark_joint_features(mask, frames, "global_rot_data", rotation_indices, 6)
+
+    def _benchmark_mark_root(self, mask, frames, *, heading: bool) -> None:
+        frames = frames.to(mask.device)
+        root_pos = self.motion_rep.slice_dict["smooth_root_pos"]
+        mask[frames, root_pos.start] = True
+        mask[frames, root_pos.start + 2] = True
+        if heading:
+            self._mark_feature(mask, frames, self.motion_rep.slice_dict["global_root_heading"])
+
+    def _benchmark_full_body_inbetweening(self, mask, length, maximum, generator) -> None:
+        del maximum, generator
+        self._benchmark_mark_full_body(mask, torch.tensor([0, length - 1]))
+
+    def _benchmark_full_body_random(self, mask, length, maximum, generator) -> None:
+        self._benchmark_mark_full_body(
+            mask, self._benchmark_sparse_frames(length, maximum, generator)
+        )
+
+    def _benchmark_ee(self, mask, length, maximum, generator, groups) -> None:
+        self._benchmark_mark_end_effectors(
+            mask,
+            self._benchmark_sparse_frames(length, maximum, generator),
+            groups,
+        )
+
+    def _benchmark_ee_feet_posrot(self, mask, length, maximum, generator) -> None:
+        self._benchmark_ee(mask, length, maximum, generator, ["LeftFoot", "RightFoot"])
+
+    def _benchmark_ee_hands_posrot(self, mask, length, maximum, generator) -> None:
+        self._benchmark_ee(mask, length, maximum, generator, ["LeftHand", "RightHand"])
+
+    def _benchmark_ee_hands_feet_posrot(self, mask, length, maximum, generator) -> None:
+        self._benchmark_ee(
+            mask,
+            length,
+            maximum,
+            generator,
+            ["LeftHand", "RightHand", "LeftFoot", "RightFoot"],
+        )
+
+    def _benchmark_root_path(self, mask, length, *, heading: bool) -> None:
+        self._benchmark_mark_root(mask, torch.arange(length), heading=heading)
+
+    def _benchmark_root_waypoint(self, mask, length, maximum, generator, *, heading: bool) -> None:
+        self._benchmark_mark_root(
+            mask,
+            self._benchmark_sparse_frames(length, maximum, generator),
+            heading=heading,
+        )
+
+    def _benchmark_root_path_2dpos(self, mask, length, maximum, generator) -> None:
+        del maximum, generator
+        self._benchmark_root_path(mask, length, heading=False)
+
+    def _benchmark_root_path_2dposrot(self, mask, length, maximum, generator) -> None:
+        del maximum, generator
+        self._benchmark_root_path(mask, length, heading=True)
+
+    def _benchmark_root_waypoint_2dpos(self, mask, length, maximum, generator) -> None:
+        self._benchmark_root_waypoint(mask, length, maximum, generator, heading=False)
+
+    def _benchmark_root_waypoint_2dposrot(self, mask, length, maximum, generator) -> None:
+        self._benchmark_root_waypoint(mask, length, maximum, generator, heading=True)
+
+    def _benchmark_mix_root_ee_hands_posrot(self, mask, length, maximum, generator) -> None:
+        root_frames = self._benchmark_sparse_frames(length, maximum, generator)
+        ee_frames = self._benchmark_sparse_frames(length, maximum, generator)
+        self._benchmark_mark_root(mask, root_frames, heading=False)
+        self._benchmark_mark_end_effectors(mask, ee_frames, ["LeftHand", "RightHand"])
+
+    def _benchmark_mix_root_ee_hands_posrot_fullbody(
+        self, mask, length, maximum, generator
+    ) -> None:
+        self._benchmark_mix_root_ee_hands_posrot(mask, length, maximum, generator)
+        self._benchmark_mark_full_body(
+            mask, self._benchmark_sparse_frames(length, maximum, generator)
+        )
+
+    def _benchmark_mix_root_ee_hands_feet_posrot_fullbody(
+        self, mask, length, maximum, generator
+    ) -> None:
+        # The benchmark's mixture leaf named hands_feet uses RightHand+LeftFoot,
+        # unlike the standalone four-end-effector leaf.
+        self._benchmark_root_path(mask, length, heading=False)
+        ee_frames = self._benchmark_sparse_frames(length, maximum, generator)
+        self._benchmark_mark_end_effectors(mask, ee_frames, ["RightHand", "LeftFoot"])
+        self._benchmark_mark_full_body(
+            mask, self._benchmark_sparse_frames(length, maximum, generator)
+        )
+
+    def _benchmark_mix_root_path_fullbody(self, mask, length, maximum, generator) -> None:
+        self._benchmark_root_path(mask, length, heading=False)
+        self._benchmark_mark_full_body(
+            mask, self._benchmark_sparse_frames(length, maximum, generator)
+        )
+
     def _apply_pattern(self, name, mask, length, maximum, generator) -> None:
         getattr(self, f"_{name}")(mask, length, maximum, generator)
 
@@ -169,11 +310,21 @@ class ConstraintCurriculumSampler:
             selected: list[str] = []
             choice = self._rand(generator)
             if choice >= self.config.no_constraint_probability:
-                count = 2 if choice < (
-                    self.config.no_constraint_probability + self.config.mix_two_probability
-                ) else 1
-                order = torch.randperm(len(self.PATTERNS), generator=generator)[:count].tolist()
-                selected = [self.PATTERNS[index] for index in order]
+                if (
+                    self.config.benchmark_coverage_probability > 0
+                    and self._rand(generator) < self.config.benchmark_coverage_probability
+                ):
+                    selected = [
+                        self.BENCHMARK_PATTERNS[
+                            self._randint(len(self.BENCHMARK_PATTERNS), generator)
+                        ]
+                    ]
+                else:
+                    count = 2 if choice < (
+                        self.config.no_constraint_probability + self.config.mix_two_probability
+                    ) else 1
+                    order = torch.randperm(len(self.PATTERNS), generator=generator)[:count].tolist()
+                    selected = [self.PATTERNS[index] for index in order]
                 for name in selected:
                     self._apply_pattern(name, mask[batch_index], length, maximum, generator)
             names.append(selected)

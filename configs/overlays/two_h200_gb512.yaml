@@ -1,0 +1,11 @@
+# Hardware overlay for the Core10 learning validation:
+# 2 ranks * 128 local samples * 2 accumulation = global batch 512.
+data:
+  num_workers: 16
+
+runtime:
+  batch_size: 128
+  gradient_accumulation_steps: 2
+  precision: bf16
+  distributed: auto
+  enforce_paper_scale: false

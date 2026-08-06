@@ -495,10 +495,22 @@ def _run_locked(args) -> None:
         metadata["encoder_artifacts"] = encoder_artifacts
     source_metadata = source.with_suffix(source.suffix + ".metadata.json")
     if source_metadata.is_file():
+        source_metadata_payload = json.loads(source_metadata.read_text(encoding="utf-8"))
         metadata["source_manifest_metadata"] = _serialized_path(
             source_metadata, destination.parent, path_mode
         )
         metadata["source_manifest_metadata_sha256"] = _sha256_file(source_metadata)
+        # Keep policy gates visible on the cached manifest consumed by training.
+        # The source sidecar hash remains authoritative; copying these small
+        # records prevents a derived cache from silently losing V2 provenance.
+        for field in (
+            "paper_data_recipe",
+            "paper_parity_gate",
+            "v2_recipe",
+            "leakage_gate",
+        ):
+            if field in source_metadata_payload:
+                metadata[field] = source_metadata_payload[field]
 
     temporary_path = None
     count = 0

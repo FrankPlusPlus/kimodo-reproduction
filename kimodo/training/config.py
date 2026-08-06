@@ -86,6 +86,14 @@ class CurriculumConfig:
     dense_path_min_fraction: float = 0.2
     dense_path_max_fraction: float = 0.8
     root_heading_probability: float = 0.5
+    # Optional benchmark-coverage branch for the V2 recipe.  Zero preserves the
+    # paper-reconstruction sampler above.  The public benchmark exposes exact
+    # constraint *shapes* (full root paths, endpoint inbetweening, fixed EE
+    # groups), but not their training mixture; this probability is therefore an
+    # explicit engineering choice rather than a paper-parity claim.
+    benchmark_coverage_probability: float = 0.0
+    benchmark_sparse_keyframes_max: int = 9
+    benchmark_sparse_count_power: float = 0.45
 
 
 @dataclass
@@ -210,6 +218,7 @@ class TrainingConfig:
             "no_constraint_probability",
             "mix_two_probability",
             "root_heading_probability",
+            "benchmark_coverage_probability",
         ):
             value = getattr(self.curriculum, name)
             if not 0.0 <= value <= 1.0:
@@ -220,6 +229,10 @@ class TrainingConfig:
             raise ValueError("sparse_keyframes_min must be at least 1")
         if self.curriculum.sparse_keyframes_max < self.curriculum.sparse_keyframes_min:
             raise ValueError("sparse_keyframes_max must be >= sparse_keyframes_min")
+        if self.curriculum.benchmark_sparse_keyframes_max < 1:
+            raise ValueError("benchmark_sparse_keyframes_max must be at least 1")
+        if self.curriculum.benchmark_sparse_count_power <= 0:
+            raise ValueError("benchmark_sparse_count_power must be positive")
         if self.curriculum.sparse_count_power <= 0:
             raise ValueError("sparse_count_power must be positive")
         if not (
@@ -287,6 +300,10 @@ class TrainingConfig:
                 "curriculum.mix_two_probability": (self.curriculum.mix_two_probability, 0.25),
                 "curriculum.sparse_keyframes_min": (self.curriculum.sparse_keyframes_min, 1),
                 "curriculum.sparse_keyframes_max": (self.curriculum.sparse_keyframes_max, 20),
+                "curriculum.benchmark_coverage_probability": (
+                    self.curriculum.benchmark_coverage_probability,
+                    0.0,
+                ),
                 "loss.root_position": (self.loss.root_position, 10.0),
                 "loss.root_heading": (self.loss.root_heading, 2.0),
                 "loss.joint_position": (self.loss.joint_position, 10.0),

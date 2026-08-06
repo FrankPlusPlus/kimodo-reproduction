@@ -26,6 +26,8 @@ scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 
 Never put the Hugging Face token in YAML or Git. Existing datasets/models can be assigned with `existing_path`; an old text cache can be adopted without loading the 8B encoder, and a relocated train-ready bundle can be fully verified and rebound. The pipeline emits the paths YAML consumed by the training launcher; method and hardware hyperparameters stay in separate YAML files. Start with the [clone-to-training deployment guide](docs/portable_training_setup.md), then read the [full reproduction/data-flow guide](docs/reproduction_end_to_end_guide.md), [paper-parity audit](docs/paper_training_parity_audit.md), [small dancing augmentation guide](docs/dancing_augmentation.md), and [H200 benchmark](docs/h200_training_benchmark.md). Run `scripts/smoke_train.sh` for a clone-local two-step check. The strict profile fails closed when the unpublished Qwen paraphrases or transition data are absent; the public profile is explicitly an engineering baseline.
 
+For containerized multi-node training, including the two-node/16-H200 launcher, image boundary, shared-data workflow, NCCL/RDMA responsibilities, batch conversion, and failure checklist, see the [Chinese Kubernetes multi-node runbook](docs/multinode_k8s_training.zh-CN.md).
+
 <div align="center">
   <img src="assets/teaser.gif" width="1280">
 </div>

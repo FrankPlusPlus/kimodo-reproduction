@@ -1,0 +1,7 @@
+# Benchmark-oriented V2 constraint overlay. Apply this on top of
+# configs/training/kimodo_soma_seed_public.yaml. The 0.25 lane probability and
+# sparse-count fit are explicit engineering choices, not disclosed paper values.
+curriculum:
+  benchmark_coverage_probability: 0.25
+  benchmark_sparse_keyframes_max: 9
+  benchmark_sparse_count_power: 0.45

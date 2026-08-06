@@ -1,0 +1,37 @@
+.git
+.github
+.venv
+.venv.*
+venv
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Runtime data belongs on mounted storage, never in an image layer/build context.
+artifacts
+data
+datasets
+runs
+checkpoints
+tmp
+outputs
+wandb
+resources/managed
+resources/paths.local.yaml
+configs/local
+configs/paths/*.yaml
+!configs/paths/*.example.yaml
+*.ckpt
+*.pt
+*.pth
+*.safetensors
+
+# Development-only material not referenced by the Dockerfile.
+tests
+docs
+*.log
+core
+core.*

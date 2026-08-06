@@ -142,6 +142,37 @@ def test_text_cache_streams_equivalent_rows_and_reuses_cache(monkeypatch, tmp_pa
     text_cache_cli.run(_text_cache_args(source, third_destination, cache_dir))
 
 
+def test_text_cache_propagates_v2_policy_gates(monkeypatch, tmp_path):
+    source = tmp_path / "v2.raw.jsonl"
+    source.write_text(json.dumps({"id": "a", "text": "A person walks."}) + "\n", encoding="utf-8")
+    source.with_suffix(".jsonl.metadata.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "paper_data_recipe": {"qwen3_32b_paraphrases": "timeline_multi_only"},
+                "paper_parity_gate": {"eligible": False, "blockers": ["transitions"]},
+                "v2_recipe": {"objective": "benchmark"},
+                "leakage_gate": {"eligible": True, "out_of_train_rows": 0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    destination = tmp_path / "derived" / "v2.cached.jsonl"
+    monkeypatch.setattr(
+        text_cache_cli,
+        "_build_encoder",
+        lambda args: (_FakeEncoder(), "fake-encoder:revision"),
+    )
+    text_cache_cli.run(_text_cache_args(source, destination, tmp_path / "cache"))
+    cached = json.loads(
+        destination.with_suffix(".jsonl.metadata.json").read_text(encoding="utf-8")
+    )
+    assert cached["paper_parity_gate"]["eligible"] is False
+    assert cached["leakage_gate"] == {"eligible": True, "out_of_train_rows": 0}
+    assert cached["v2_recipe"]["objective"] == "benchmark"
+    assert cached["source_manifest_metadata_sha256"]
+
+
 def test_text_cache_failure_does_not_publish_partial_manifest(monkeypatch, tmp_path):
     source = tmp_path / "source.jsonl"
     source.write_text(
