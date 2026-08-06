@@ -85,6 +85,68 @@ def test_two_gpu_profile_only_relaxes_runtime_scale():
     training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=2))
 
 
+def test_v2_30k_profile_uses_normalized_direct_loss_and_preserves_other_loss_terms():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_30k.yaml",
+        ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/two_node_16_h200_gb2048.yaml"],
+    )
+
+    assert config.curriculum.phase1_steps == 20_000
+    assert config.curriculum.phase2_steps == 10_000
+    assert config.curriculum.benchmark_coverage_probability == 0.25
+    assert config.loss.direct_feature_domain == "normalized"
+    assert config.loss.smooth_l1_beta == 1.0
+    assert {
+        "root_position": config.loss.root_position,
+        "root_heading": config.loss.root_heading,
+        "joint_position": config.loss.joint_position,
+        "joint_velocity": config.loss.joint_velocity,
+        "joint_rotation": config.loss.joint_rotation,
+        "foot_contact": config.loss.foot_contact,
+        "forward_kinematics": config.loss.forward_kinematics,
+    } == {
+        "root_position": 10.0,
+        "root_heading": 2.0,
+        "joint_position": 10.0,
+        "joint_velocity": 3.0,
+        "joint_rotation": 10.0,
+        "foot_contact": 4.0,
+        "forward_kinematics": 5.0,
+    }
+    assert config.optimizer.name == "adam_atan2"
+    assert config.optimizer.learning_rate == 1.0e-5
+    assert config.model.detach_root_for_body is True
+    assert config.runtime.batch_size * 16 * config.runtime.gradient_accumulation_steps == 2048
+
+
+def test_company_v2_1m_profile_is_complete_and_does_not_need_a_hardware_overlay():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",
+        ["runtime.dry_run=true"],
+    )
+
+    assert config.paper_method_strict is False
+    assert config.curriculum.phase1_steps == 500_000
+    assert config.curriculum.phase2_steps == 500_000
+    assert config.curriculum.benchmark_coverage_probability == 0.25
+    assert config.loss.direct_feature_domain == "normalized"
+    assert config.loss.forward_kinematics == 5.0
+    assert config.optimizer.name == "adam_atan2"
+    assert config.optimizer.learning_rate == 2.0e-5
+    assert config.runtime.batch_size == 128
+    assert config.runtime.gradient_accumulation_steps == 1
+    assert config.runtime.batch_size * 16 == 2048
+    assert config.runtime.expected_world_size == 16
+    assert config.runtime.expected_global_batch == 2048
+    assert config.runtime.checkpoint_every == 10_000
+    assert config.runtime.milestone_every == 100_000
+    assert config.runtime.enforce_paper_scale is True
+    training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=16))
+    with pytest.raises(RuntimeError, match="deployment contract"):
+        training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=8))
+
+
 def test_public_profile_plus_hardware_overlay_differs_only_in_unavailable_data_claims():
     strict = load_training_config(
         PROJECT_ROOT / "configs/training/kimodo_soma_seed_reproduction.yaml",

@@ -73,7 +73,7 @@ flowchart TB
 
     L["PRODUCT · clean-motion prediction<br/><br/>body_hat [B,T,364]<br/>concat 5D root 与 364D body<br/>x₀_hat [B,T,369]"]:::product
 
-    M["【本仓 trainer】七项 loss 的可执行实现<br/><br/>6 个 representation Smooth-L1<br/>+ 1 个 FK Smooth-L1<br/>只累计 valid frame<br/>默认在 physical domain 计算<br/>权重 10/2/10/3/10/4/5"]:::ours
+    M["【本仓 trainer】七项 loss 的可执行实现<br/><br/>6 个 normalized representation Smooth-L1<br/>+ 1 个 physical FK Smooth-L1<br/>只累计 valid frame<br/>权重 10/2/10/3/10/4/5"]:::ours
 
     N["PRODUCT · weighted frame-sum<br/>尚未除全局分母<br/>每项分别记录 numerator<br/>以及 valid-frame denominator"]:::product
 
@@ -254,7 +254,7 @@ flowchart TB
     classDef product fill:#F1ECFF,stroke:#7457B5,color:#2D1D4E,stroke-width:2px;
 
     A["INPUT<br/>x₀_hat 与 target x₀<br/>valid_frames"]:::input
-    B["【本仓实现】默认先反归一化到 physical domain<br/>每个 component 先做 Smooth-L1 beta=1<br/>每帧内部按 component 维数平均"]:::ours
+    B["【本仓实现】六个 direct component 在 normalized domain<br/>分别做 Smooth-L1 beta=1<br/>每帧内部按 component 维数平均"]:::ours
     C["PAPER · root position ×10"]:::paper
     D["PAPER · root heading ×2"]:::paper
     E["PAPER · joint position ×10"]:::paper
@@ -346,7 +346,7 @@ flowchart TB
 |---|---|---|
 | 完整训练循环 | BF16 forward/backward、两阶段联合 optimizer step | 官方没有 trainer |
 | constraint family 内采样 | family 均匀；`p(k)∝1/k`；dense 20%–80%；heading p=.5 | family 内分布未公开 |
-| direct loss | physical domain、Smooth-L1 beta=1、每帧分量平均 | domain/beta/reduction 未公开 |
+| direct loss | normalized domain、Smooth-L1 beta=1、每帧分量平均 | domain/beta/reduction 未公开 |
 | FK loss | predicted rotation + target root convention | FK root 选择未公开 |
 | DDP accumulation | frame-sum backward + global valid-frame denominator | 多卡累计协议未公开 |
 | 稳定性 | BF16、grad clip 1.0、seed 1234 | precision/clip/seed 未公开 |

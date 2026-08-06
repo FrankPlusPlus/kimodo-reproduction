@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -86,7 +87,9 @@ class CurriculumConfig:
     dense_path_min_fraction: float = 0.2
     dense_path_max_fraction: float = 0.8
     root_heading_probability: float = 0.5
-    # Optional benchmark-coverage branch for the V2 recipe.  Zero preserves the
+    # Optional benchmark-coverage branch for the V2 recipe. This is conditional
+    # on the sample being constrained; the sampler converts it to an unconditional
+    # mass of ``(1 - no_constraint_probability) * probability``. Zero preserves the
     # paper-reconstruction sampler above.  The public benchmark exposes exact
     # constraint *shapes* (full root paths, endpoint inbetweening, fixed EE
     # groups), but not their training mixture; this probability is therefore an
@@ -99,9 +102,9 @@ class CurriculumConfig:
 @dataclass
 class LossConfig:
     # The paper does not disclose the domain of the six direct feature losses.
-    # This explicit switch keeps the default reproducible and makes the
-    # physical-domain alternative available as an ablation.
-    direct_feature_domain: str = "physical"
+    # Project ablations selected normalized direct terms; FK remains physical.
+    # Keep physical available only as an explicit legacy ablation.
+    direct_feature_domain: str = "normalized"
     smooth_l1_beta: float = 1.0
     root_position: float = 10.0
     root_heading: float = 2.0
@@ -148,6 +151,10 @@ class RuntimeConfig:
     resume_mode: str = "in_place"
     initial_global_step: int = 0
     distributed: str = "auto"
+    # Optional deployment contract. Unlike paper_method_strict, these checks
+    # can protect an engineering profile such as the company V2 run.
+    expected_world_size: int | None = None
+    expected_global_batch: int | None = None
     # Keep method parity independent from the disclosed 16-GPU/global-batch
     # scale. Two-GPU reconstructions turn only this gate off.
     enforce_paper_scale: bool = True
@@ -225,15 +232,37 @@ class TrainingConfig:
                 raise ValueError(f"curriculum.{name} must be in [0, 1]")
         if self.curriculum.no_constraint_probability + self.curriculum.mix_two_probability > 1.0:
             raise ValueError("no_constraint_probability + mix_two_probability must not exceed 1")
+        benchmark_mass = (
+            (1.0 - self.curriculum.no_constraint_probability)
+            * self.curriculum.benchmark_coverage_probability
+        )
+        if (
+            self.curriculum.no_constraint_probability
+            + self.curriculum.mix_two_probability
+            + benchmark_mass
+            > 1.0 + 1e-12
+        ):
+            raise ValueError(
+                "curriculum cannot preserve the top-level paper two-pattern exposure: "
+                "no_constraint_probability + mix_two_probability + "
+                "(1 - no_constraint_probability) * benchmark_coverage_probability "
+                "must not exceed 1"
+            )
         if self.curriculum.sparse_keyframes_min < 1:
             raise ValueError("sparse_keyframes_min must be at least 1")
         if self.curriculum.sparse_keyframes_max < self.curriculum.sparse_keyframes_min:
             raise ValueError("sparse_keyframes_max must be >= sparse_keyframes_min")
         if self.curriculum.benchmark_sparse_keyframes_max < 1:
             raise ValueError("benchmark_sparse_keyframes_max must be at least 1")
-        if self.curriculum.benchmark_sparse_count_power <= 0:
+        if (
+            not math.isfinite(self.curriculum.benchmark_sparse_count_power)
+            or self.curriculum.benchmark_sparse_count_power <= 0
+        ):
             raise ValueError("benchmark_sparse_count_power must be positive")
-        if self.curriculum.sparse_count_power <= 0:
+        if (
+            not math.isfinite(self.curriculum.sparse_count_power)
+            or self.curriculum.sparse_count_power <= 0
+        ):
             raise ValueError("sparse_count_power must be positive")
         if not (
             0.0 < self.curriculum.dense_path_min_fraction
@@ -249,6 +278,10 @@ class TrainingConfig:
             raise ValueError("loss.direct_feature_domain must be 'normalized' or 'physical'")
         if self.runtime.batch_size < 1 or self.runtime.gradient_accumulation_steps < 1:
             raise ValueError("batch and gradient accumulation sizes must be positive")
+        if self.runtime.expected_world_size is not None and self.runtime.expected_world_size < 1:
+            raise ValueError("runtime.expected_world_size must be positive when set")
+        if self.runtime.expected_global_batch is not None and self.runtime.expected_global_batch < 1:
+            raise ValueError("runtime.expected_global_batch must be positive when set")
         if (
             self.runtime.log_every < 1
             or self.runtime.checkpoint_every < 1

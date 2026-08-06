@@ -213,9 +213,24 @@ def test_diffusion_loss_and_adam_atan2_contract(training_fixture):
     assert padded["total"].item() == 0.0
 
     physical = KimodoLoss(rep, LossConfig(direct_feature_domain="physical"))
+    normalized = KimodoLoss(rep, LossConfig(direct_feature_domain="normalized"))
     changed = target.clone()
     changed[..., 0] = 1.0
     assert physical(changed, target, torch.ones_like(valid))["root_position"].item() > 0
+
+    # The V2 training profile changes only the six direct representation
+    # losses. FK must be identical because both profiles unnormalize rotations
+    # and targets before evaluating the physical skeleton in meters.
+    random_prediction = torch.randn_like(target)
+    random_target_for_fk = torch.randn_like(target)
+    all_valid = torch.ones_like(valid)
+    physical_fk = physical(random_prediction, random_target_for_fk, all_valid)[
+        "forward_kinematics"
+    ]
+    normalized_fk = normalized(random_prediction, random_target_for_fk, all_valid)[
+        "forward_kinematics"
+    ]
+    assert torch.equal(physical_fk, normalized_fk)
 
     random_target = torch.randn_like(target)
     direct_root, direct_joints = physical._target_positions(random_target)
@@ -245,6 +260,64 @@ def test_diffusion_loss_and_adam_atan2_contract(training_fixture):
     expected_update = (4.0 / torch.pi) * 8.0 * torch.atan2(torch.tensor(2.0), torch.tensor(16.0))
     expected = 1.0 - 0.1 * expected_update
     assert torch.allclose(parameter.detach(), expected[None])
+
+
+def test_loss_keeps_seven_independent_reference_reductions(training_fixture, monkeypatch):
+    """Guard against reintroducing the rejected fused-direct/direct-FK experiment."""
+    rep = _motion_rep(training_fixture)
+    prediction = torch.zeros(2, 8, rep.motion_rep_dim, requires_grad=True)
+    target = torch.zeros_like(prediction)
+    valid = torch.tensor([[True] * 8, [True] * 5 + [False] * 3])
+    original = torch.nn.functional.smooth_l1_loss
+    shapes = []
+
+    def observed(*args, **kwargs):
+        shapes.append(tuple(args[0].shape))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(torch.nn.functional, "smooth_l1_loss", observed)
+    KimodoLoss(rep, LossConfig(direct_feature_domain="normalized"))(
+        prediction, target, valid
+    )["total"].backward()
+
+    feature_widths = [
+        rep.slice_dict[name].stop - rep.slice_dict[name].start
+        for _, name in KimodoLoss.FEATURE_TERMS
+    ]
+    assert [shape[-1] for shape in shapes[:6]] == feature_widths
+    assert shapes[6][-2:] == (30, 3)
+    assert len(shapes) == 7
+    assert torch.isfinite(prediction.grad).all()
+
+
+def test_v1_v2_profiles_preserve_intended_loss_domains_without_acceleration_fields():
+    project_root = Path(__file__).resolve().parents[2]
+    profiles = {
+        "kimodo_soma_seed_public.yaml": "normalized",
+        "kimodo_soma_seed_reproduction.yaml": "normalized",
+        "kimodo_soma_seed_v2_30k.yaml": "normalized",
+        "kimodo_soma_seed_v2_1m_16h200.yaml": "normalized",
+    }
+    rejected = {
+        "forward_kinematics_backend",
+        "foreach",
+        "compile_model",
+        "compile_loss",
+        "compile_optimizer",
+        "compile_mode",
+        "ddp_static_graph",
+        "ddp_gradient_as_bucket_view",
+        "ddp_bucket_cap_mb",
+    }
+    for filename, domain in profiles.items():
+        raw = OmegaConf.to_container(
+            OmegaConf.load(project_root / "configs" / "training" / filename),
+            resolve=False,
+        )
+        assert raw["loss"]["direct_feature_domain"] == domain
+        assert not (rejected & set(raw["loss"]))
+        assert not (rejected & set(raw["optimizer"]))
+        assert not (rejected & set(raw["runtime"]))
 
 
 def test_unequal_length_frame_accumulation_matches_global_batch(training_fixture):

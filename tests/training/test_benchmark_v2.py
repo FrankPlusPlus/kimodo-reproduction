@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+from collections import Counter
 
 import numpy as np
 import torch
@@ -180,6 +181,111 @@ def test_benchmark_constraint_patterns_have_exact_endpoint_and_path_shapes():
     sampler._benchmark_mix_root_ee_hands_feet_posrot_fullbody(mixed, 12, 9, generator)
     # This three-way leaf uses a full root path, irrespective of sparse EE/body frames.
     assert mixed[:, root.start].all() and mixed[:, root.start + 2].all()
+
+
+def test_v2_constraint_registry_is_static_complete_and_implemented():
+    rep = KimodoMotionRep(build_skeleton(30), fps=30, stats_path=None)
+    sampler = ConstraintCurriculumSampler(rep, CurriculumConfig())
+    assert len(sampler.PATTERNS) == 5
+    assert len(sampler.BENCHMARK_PATTERNS) == 13
+    assert len(sampler.ALL_PATTERNS) == 18
+    assert len(set(sampler.ALL_PATTERNS)) == len(sampler.ALL_PATTERNS)
+    assert all(hasattr(sampler, f"_{name}") for name in sampler.ALL_PATTERNS)
+
+
+def test_v2_constraint_lane_probabilities_preserve_paper_two_pattern_mass():
+    rep = KimodoMotionRep(build_skeleton(30), fps=30, stats_path=None)
+    sampler = ConstraintCurriculumSampler(
+        rep,
+        CurriculumConfig(
+            no_constraint_probability=0.1,
+            mix_two_probability=0.25,
+            benchmark_coverage_probability=0.25,
+        ),
+    )
+    generator = torch.Generator().manual_seed(20260806)
+    counts: Counter[str] = Counter()
+    benchmark_patterns: Counter[str] = Counter()
+    samples = 50_000
+    for _ in range(samples):
+        patterns, lane, components = sampler._select_patterns(generator)
+        counts[lane] += 1
+        if lane == "benchmark":
+            assert len(patterns) == 1
+            assert 1 <= components <= 3
+            benchmark_patterns[patterns[0]] += 1
+
+    expected = {
+        "none": 0.1,
+        "paper_two": 0.25,
+        "benchmark": 0.9 * 0.25,
+        "paper_single": 0.425,
+    }
+    assert set(counts) == set(expected)
+    for lane, probability in expected.items():
+        assert abs(counts[lane] / samples - probability) < 0.01
+    assert set(benchmark_patterns) == set(sampler.BENCHMARK_PATTERNS)
+
+
+def test_zero_benchmark_probability_preserves_legacy_sampler_rng_exactly():
+    rep = KimodoMotionRep(build_skeleton(30), fps=30, stats_path=None)
+    config = CurriculumConfig(
+        no_constraint_probability=0.1,
+        mix_two_probability=0.25,
+        benchmark_coverage_probability=0.0,
+    )
+    sampler = ConstraintCurriculumSampler(rep, config)
+    actual_generator = torch.Generator().manual_seed(44321)
+    legacy_generator = torch.Generator().manual_seed(44321)
+
+    for _ in range(1_000):
+        actual, lane, components = sampler._select_patterns(actual_generator)
+        choice = sampler._rand(legacy_generator)
+        if choice < config.no_constraint_probability:
+            expected = []
+        else:
+            count = 2 if choice < (
+                config.no_constraint_probability + config.mix_two_probability
+            ) else 1
+            order = torch.randperm(
+                len(sampler.PATTERNS), generator=legacy_generator
+            )[:count].tolist()
+            expected = [sampler.PATTERNS[index] for index in order]
+        assert actual == expected
+        assert components == len(expected)
+        assert lane == (
+            "none" if not expected else "paper_two" if len(expected) == 2 else "paper_single"
+        )
+        assert torch.equal(actual_generator.get_state(), legacy_generator.get_state())
+
+
+def test_v2_constraint_lane_rejects_mixture_that_would_displace_paper_two():
+    from kimodo.training.config import TrainingConfig
+
+    config = TrainingConfig()
+    config.curriculum.no_constraint_probability = 0.1
+    config.curriculum.mix_two_probability = 0.25
+    config.curriculum.benchmark_coverage_probability = 1.0
+    try:
+        config.validate(require_paths=False)
+    except ValueError as error:
+        assert "preserve the top-level paper two-pattern exposure" in str(error)
+    else:
+        raise AssertionError("invalid V2 constraint mixture was accepted")
+
+
+def test_constraint_count_powers_reject_nonfinite_values():
+    from kimodo.training.config import TrainingConfig
+
+    for field in ("sparse_count_power", "benchmark_sparse_count_power"):
+        config = TrainingConfig()
+        setattr(config.curriculum, field, float("nan"))
+        try:
+            config.validate(require_paths=False)
+        except ValueError as error:
+            assert field in str(error)
+        else:
+            raise AssertionError(f"curriculum.{field}=NaN was accepted")
 
 
 def test_paper_strict_rejects_the_engineering_benchmark_lane():

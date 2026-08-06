@@ -12,8 +12,8 @@ V2 的目标是提升公开 Kimodo Motion Generation Benchmark 所覆盖的文�
   - 3 events：40,681
   - 4 events：6,246
   - 5 events：963
-- 先覆盖不同 ordered source-text tuple，再 round-robin 填充重复 tuple；最终只需 70,169 个 Qwen 请求。
-- Qwen 输出会由同一锁定模型执行第二次 self-judge，逐项检查动作顺序、方向、身体部位、物体、交互和次数；self-judge 不是独立模型评审。被拒绝或 JSON 失败的极少数请求使用完整保留源事件文本的确定性 fallback，并在逐行 provenance 和汇总计数中显式标记；最终仍需人工分层抽检。
+- 先覆盖不同 ordered source-text tuple，再 round-robin 填充重复 tuple；最终只需 70,169 个 LLM 请求。
+- 当前生产方案使用 `mimo-v2.5-pro`，一次 API 调用批量处理 16 个逻辑样本；同一 Pro 模型再做一次语义 self-judge，逐项检查动作顺序、方向、身体部位、物体、交互和次数。self-judge 不是独立模型评审。被拒绝或多次 JSON/API 失败的极少数请求使用完整保留源事件文本的确定性 fallback，并在逐行 provenance 和汇总计数中显式标记；最终仍需人工分层抽检。
 
 预期 V2 raw manifest 为 1,440,741 rows。文本阶段没有生成新 motion，也没有实现论文所述但未公开配方的 cross-motion diffusion transitions。因此 `paper_parity_gate.eligible` 必须保持 `false`。
 
@@ -29,25 +29,105 @@ V2 保留论文公开的原五类 constraint curriculum，同时让 constrained 
 
 覆盖概率和 sparse power 是工程假设，位于 `configs/overlays/benchmark_v2_constraints.yaml`。当前版本对齐 constraint shape，但尚未实现 3–10 秒均匀 duration-aware raw crop；该项需要单独 ablation，不能在 normalized constraint tensor 上事后切片。
 
-## 构建顺序
+## 30k 训练验证配方
+
+V2 的 30k 端到端消融使用 `configs/training/kimodo_soma_seed_v2_30k.yaml`，与公司 1M production
+profile 独立。该配置保持此前验证的
+`20k Phase 1 + 10k Phase 2`、Adam-atan2、`lr=1e-5`、论文七项权重、Smooth-L1 `beta=1`、
+target-root FK 和 root-to-body detach，只做两项与 V2 目标直接相关的显式工程选择：
+
+- 六项 representation direct loss 在 normalized feature domain 计算；
+- Phase 2 启用公开 benchmark 13-leaf coverage lane。
+
+FK 不随 direct domain 改变：rotation 和 target 会在进入骨架前反归一化，FK joint error 始终在物理米制
+空间计算。canonical `kimodo_soma_seed_public.yaml` 继续保留 physical direct-loss baseline，避免把本次
+30k 工程选择倒推为 NVIDIA 未公开的训练事实。
+
+本地两张 H200、global batch 512 的启动选择为：
+
+```bash
+KIMODO_TWO_GPU_CONFIG=configs/training/kimodo_soma_seed_v2_30k.yaml \
+KIMODO_TRAINING_OVERLAY=configs/overlays/two_h200_gb512.yaml \
+KIMODO_PATHS_CONFIG=/path/to/local-v2.paths.yaml \
+scripts/train_two_gpu_seed.sh
+```
+
+V2 manifest、inventory、stats 由 schema-v1 paths 文件提供。公司镜像使用独立的
+`kimodo_soma_seed_v2_1m_16h200.yaml`，不会覆盖这个本地短步配方。
+
+## 构建顺序（MiMo 2.5 Pro）
+
+密钥只能通过环境变量或 Kubernetes Secret 注入，不能写进仓库、镜像、命令行参数或 bundle。下面用
+交互式隐藏输入；实际 CI/Kubernetes 应改为 Secret：
+
+```bash
+read -rsp 'MiMo API key: ' PRODUCT_GRAPH_LLM_API_KEY && echo
+export PRODUCT_GRAPH_LLM_API_KEY
+export PRODUCT_GRAPH_LLM_BASE_URL=https://api.xiaomimimo.com/v1
+export PRODUCT_GRAPH_LLM_MODEL=mimo-v2.5-pro
+```
+
+先生成 train-only timeline plan。历史 staging 中 `qwen.requests` 只是旧文件名，内容本身是
+provider-neutral schema；新目录建议命名为 `llm.requests`：
 
 ```bash
 kimodo_prepare_timeline_v2 \
   --source-manifest /pvc/v1/train.raw.jsonl \
   --train-split artifacts/benchmark-metadata/splits/train_split_paths.txt \
   --output-plan /pvc/v2/provenance/timeline.selected.v2.2.jsonl \
-  --output-requests /pvc/v2/provenance/qwen.requests.v2.2.jsonl
-
-kimodo_generate_qwen_v2 \
-  --requests /pvc/v2/provenance/qwen.requests.v2.2.jsonl \
-  --model /models/Qwen3-32B \
-  --model-identity Qwen/Qwen3-32B \
-  --revision 9216db5781bf21249d130ec9da846c4624c16137 \
-  --shard-count 2 --shard-index 0 --device cuda:0 \
-  --output /pvc/v2/provenance/qwen.responses.0.jsonl
+  --output-requests /pvc/v2/provenance/llm.requests.v2.2.jsonl
 ```
 
-另一张 H200 使用 `--shard-index 1 --device cuda:2`。两片全部通过后，依次运行 `kimodo_build_manifest_v2`、`kimodo_cache_text`、V2 stats 重算、`kimodo_reference_inventory` 全内容验证和真实 batch preflight。只有这些门禁全部通过后，staging 目录才能原子改名为 train-ready bundle。
+先做 64 条分层 pilot，审阅输出与账单后再启动全量。pilot 和全量使用不同输出，不能把 pilot 文件直接
+当成全量 shard：
+
+```bash
+kimodo_generate_llm_v2 \
+  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
+  --model mimo-v2.5-pro --judge-model mimo-v2.5-pro \
+  --batch-size 16 --concurrency 8 --requests-per-minute 90 \
+  --max-requests 64 \
+  --output /pvc/v2/provenance/mimo.responses.pilot.jsonl
+
+kimodo_audit_llm_v2 \
+  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
+  --responses /pvc/v2/provenance/mimo.responses.pilot.jsonl \
+  --allow-partial --report-only \
+  --report /pvc/v2/provenance/mimo.quality.pilot.json \
+  --review-sample /pvc/v2/provenance/mimo.review.pilot.jsonl
+```
+
+pilot 通过人工查看后启动全量。脚本默认关闭 MiMo thinking、要求 JSON object、限速、指数退避，输出
+`.partial` 可用原命令断点续跑；每次成功 API 调用另有不含密钥的 receipts ledger：
+
+```bash
+kimodo_generate_llm_v2 \
+  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
+  --model mimo-v2.5-pro --judge-model mimo-v2.5-pro \
+  --batch-size 16 --concurrency 8 --requests-per-minute 90 \
+  --output /pvc/v2/provenance/mimo.responses.v2.2.jsonl
+
+kimodo_audit_llm_v2 \
+  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
+  --responses /pvc/v2/provenance/mimo.responses.v2.2.jsonl \
+  --report /pvc/v2/provenance/mimo.quality.v2.2.json \
+  --review-sample /pvc/v2/provenance/mimo.review.v2.2.jsonl
+
+kimodo_build_manifest_v2 \
+  --source-manifest /pvc/v1/train.raw.jsonl \
+  --plan /pvc/v2/provenance/timeline.selected.v2.2.jsonl \
+  --responses /pvc/v2/provenance/mimo.responses.v2.2.jsonl \
+  --train-split artifacts/benchmark-metadata/splits/train_split_paths.txt \
+  --expected-model mimo-v2.5-pro --expected-revision provider-managed \
+  --output /pvc/v2/train.raw.jsonl
+```
+
+本地 Qwen3-32B 的 `kimodo_generate_qwen_v2` 仍作为离线 fallback 保留，但 MiMo 产物会诚实标记为
+`timeline_multi_llm`，不会冒充 Qwen 数据。全量质量 gate 通过后，再依次运行
+`kimodo_cache_manifest_v2 extract`、`kimodo_cache_text`、
+`kimodo_cache_manifest_v2 compose --llm-cached-manifest ...`、V2 stats 重算、
+`kimodo_reference_inventory` 全内容验证和真实 batch preflight。只有这些门禁全部通过后，staging 目录
+才能原子改名为 train-ready bundle。
 
 ## PVC 与权限
 

@@ -2,15 +2,16 @@
 set -euo pipefail
 
 # Generic fixed-size torchrun launcher for one or more homogeneous GPU nodes.
-# Kubernetes/Slurm is responsible for starting this script once per node and
-# giving every node the same rendezvous address plus a unique node rank.
+# Kubernetes/Slurm is responsible for starting this script once per launcher
+# allocation (usually one Pod) and giving each allocation the same rendezvous
+# address plus a unique torchrun node rank. Multiple Pods may share one host.
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 python_bin="${KIMODO_PYTHON:-python}"
 config_path="${KIMODO_TRAINING_CONFIG:-${project_root}/configs/training/kimodo_soma_seed_public.yaml}"
 paths_path="${KIMODO_PATHS_CONFIG:-/mnt/kimodo/config/repro.paths.yaml}"
-overlay_path="${KIMODO_TRAINING_OVERLAY:-${project_root}/configs/overlays/two_node_16_h200_gb2048.yaml}"
+overlay_path="${KIMODO_TRAINING_OVERLAY:-}"
 
 nnodes="${KIMODO_NNODES:-${NNODES:-1}}"
 nproc_per_node="${KIMODO_NPROC_PER_NODE:-${NPROC_PER_NODE:-8}}"
@@ -40,12 +41,22 @@ fi
 
 [[ -f "${config_path}" ]] || die "training config is missing: ${config_path}"
 [[ -f "${paths_path}" ]] || die "paths config is missing: ${paths_path}"
-[[ -f "${overlay_path}" ]] || die "training overlay is missing: ${overlay_path}"
+if [[ -n "${overlay_path}" ]]; then
+  [[ -f "${overlay_path}" ]] || die "training overlay is missing: ${overlay_path}"
+fi
 command -v "${python_bin}" >/dev/null 2>&1 || die "Python executable is unavailable: ${python_bin}"
+
+if [[ "${KIMODO_REQUIRE_RDMA:-0}" == 1 ]]; then
+  command -v ibv_devices >/dev/null 2>&1 || die "ibv_devices is unavailable in the image"
+  [[ -d /sys/class/infiniband ]] || die "/sys/class/infiniband is not mounted"
+  compgen -G '/sys/class/infiniband/*' >/dev/null || die "no RDMA device is visible in this container"
+fi
 
 export CUDA_DEVICE_ORDER="${CUDA_DEVICE_ORDER:-PCI_BUS_ID}"
 
-"${python_bin}" - "${nproc_per_node}" "${nnodes}" "${node_rank}" <<'PY'
+"${python_bin}" - \
+  "${nproc_per_node}" "${nnodes}" "${node_rank}" \
+  "${config_path}" "${paths_path}" "${overlay_path}" <<'PY'
 import json
 import os
 import sys
@@ -55,6 +66,9 @@ import torch
 expected_local = int(sys.argv[1])
 nnodes = int(sys.argv[2])
 node_rank = int(sys.argv[3])
+training_config = sys.argv[4]
+paths_config = sys.argv[5]
+training_overlay = sys.argv[6] or None
 visible = torch.cuda.device_count() if torch.cuda.is_available() else 0
 if visible != expected_local:
     raise SystemExit(
@@ -90,6 +104,9 @@ print(
             "nproc_per_node": expected_local,
             "expected_world_size": nnodes * expected_local,
             "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+            "training_config": training_config,
+            "paths_config": paths_config,
+            "training_overlay": training_overlay,
             "devices": devices,
         },
         sort_keys=True,
@@ -99,14 +116,20 @@ print(
 PY
 
 cd "${project_root}"
+training_args=(
+  -m kimodo.training.cli
+  --config "${config_path}"
+  --paths "${paths_path}"
+)
+if [[ -n "${overlay_path}" ]]; then
+  training_args+=(--overlay "${overlay_path}")
+fi
+
 exec "${python_bin}" -m torch.distributed.run \
   --nnodes="${nnodes}" \
   --nproc-per-node="${nproc_per_node}" \
   --node-rank="${node_rank}" \
   --master-addr="${master_addr}" \
   --master-port="${master_port}" \
-  -m kimodo.training.cli \
-  --config "${config_path}" \
-  --paths "${paths_path}" \
-  --overlay "${overlay_path}" \
+  "${training_args[@]}" \
   "$@"

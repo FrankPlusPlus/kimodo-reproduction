@@ -41,9 +41,11 @@ scenepic>=1.1.0
 pillow>=9.0
 av>=16.1.0
 
-py-soma-x @ git+https://github.com/NVlabs/SOMA-X.git
+# Pin the published package. Installing Git main was non-reproducible and its
+# repository uses Git LFS for assets, which ordinary pip VCS installs do not fetch.
+py-soma-x==0.1.0
 
-# Local packages (editable installs for viser and kimodo; MotionCorrection non-editable)
+# Local training packages. The interactive-demo-only kimodo-viser checkout is
+# intentionally excluded so a clean repository checkout can build this image.
 ./MotionCorrection
 -e .
--e ./kimodo-viser

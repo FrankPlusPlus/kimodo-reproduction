@@ -305,7 +305,10 @@ def run_benchmark(args) -> None:
     final_step = initial_step + args.warmup_steps + args.measure_steps
     output_dir = Path(args.output_dir).expanduser().resolve()
     result_path = Path(args.result).expanduser().resolve()
-    overrides = [
+    # Candidate-only execution switches (for example compile/foreach) are
+    # applied first; benchmark-controlled data, scale, timing and output fields
+    # below remain authoritative.
+    overrides = list(args.set) + [
         f"data.manifest={fixture / 'manifest.jsonl'}",
         f"data.num_workers={args.num_workers}",
         f"data.prefetch_factor={args.prefetch_factor}",
@@ -390,6 +393,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--initial-step", type=int, default=0)
     run.add_argument("--num-workers", type=int, default=8)
     run.add_argument("--prefetch-factor", type=int, default=2)
+    run.add_argument(
+        "--set",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Strict candidate config override; benchmark-controlled fields still win",
+    )
     return parser
 
 

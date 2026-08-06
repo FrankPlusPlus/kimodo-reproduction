@@ -64,7 +64,9 @@ curriculum:
   root_heading_probability: 0.5
 
 loss:
-  direct_feature_domain: physical
+  # The data version does not select the loss domain: all new V1/V2 training
+  # uses normalized direct terms and physical-space FK.
+  direct_feature_domain: normalized
   smooth_l1_beta: 1.0
   root_position: 10.0
   root_heading: 2.0

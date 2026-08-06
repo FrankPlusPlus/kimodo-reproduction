@@ -161,14 +161,35 @@ def build_training_dataset(config, motion_rep):
 
 
 def validate_paper_runtime_scale(config, context: DistributedContext) -> None:
-    """Enforce the paper's disclosed 16-rank/global-batch-2048 training scale."""
-    if not config.paper_method_strict or not config.runtime.enforce_paper_scale:
-        return
+    """Enforce explicit deployment and strict-paper runtime scale contracts."""
     effective_global_batch = (
         context.world_size
         * config.runtime.batch_size
         * config.runtime.gradient_accumulation_steps
     )
+    deployment_mismatches = []
+    if (
+        config.runtime.expected_world_size is not None
+        and context.world_size != config.runtime.expected_world_size
+    ):
+        deployment_mismatches.append(
+            f"world_size={context.world_size} (config requires {config.runtime.expected_world_size})"
+        )
+    if (
+        config.runtime.expected_global_batch is not None
+        and effective_global_batch != config.runtime.expected_global_batch
+    ):
+        deployment_mismatches.append(
+            "effective_global_batch="
+            f"{effective_global_batch} (config requires {config.runtime.expected_global_batch})"
+        )
+    if deployment_mismatches:
+        raise RuntimeError(
+            "runtime deployment contract rejected this launch: "
+            + "; ".join(deployment_mismatches)
+        )
+    if not config.paper_method_strict or not config.runtime.enforce_paper_scale:
+        return
     mismatches = []
     if context.world_size != 16:
         mismatches.append(f"world_size={context.world_size} (paper requires 16)")
@@ -407,6 +428,19 @@ class KimodoTrainer:
             return contextlib.nullcontext()
         return self.step_observer.section(name)
 
+    def _export_current_inference_bundle_if_missing(self) -> None:
+        destination = self.output_dir / "exports" / f"step-{self.global_step:09d}"
+        if self.context.is_main and not destination.is_dir():
+            export_inference_bundle(
+                self.model,
+                self.ema,
+                self.output_dir,
+                self.global_step,
+                self.config,
+            )
+        if self.context.world_size > 1:
+            dist.barrier()
+
     def _phase_dropout(self) -> float:
         if self.global_step < self.config.curriculum.phase1_steps:
             return self.config.curriculum.phase1_dropout
@@ -481,6 +515,22 @@ class KimodoTrainer:
             self.epoch += completed_epochs
             self.batch_in_epoch = skip_batches
         started = time.time()
+        interval_started = time.perf_counter()
+        interval_optimizer_steps = 0
+        interval_skipped_steps = 0
+        interval_gradient_norm_sum = 0.0
+        interval_gradient_clip_hits = 0
+        if self.context.device.type == "cuda":
+            torch.cuda.reset_peak_memory_stats(self.context.device)
+        if (
+            self.config.runtime.resume
+            and self.config.runtime.milestone_every
+            and self.global_step % self.config.runtime.milestone_every == 0
+        ):
+            # A job may fail after atomically publishing the trainer checkpoint
+            # but before publishing its EMA bundle. Recreate that derived
+            # artifact on resume without changing any training state.
+            self._export_current_inference_bundle_if_missing()
         accumulated_valid_frames = 0
         accumulated_loss_sums: dict[str, torch.Tensor] = {}
         curriculum_counts = {
@@ -488,11 +538,24 @@ class KimodoTrainer:
             "text_dropped": 0.0,
             "constrained": 0.0,
             "two_patterns": 0.0,
+            "none_lane": 0.0,
+            "paper_single_lane": 0.0,
+            "benchmark_lane": 0.0,
+            "benchmark_atomic": 0.0,
+            "benchmark_two_component": 0.0,
+            "benchmark_three_component": 0.0,
+            "benchmark_with_text": 0.0,
+            "benchmark_without_text": 0.0,
+            "benchmark_duration_lt_3s": 0.0,
+            "benchmark_duration_3_to_10s": 0.0,
+            "benchmark_duration_gt_10s": 0.0,
+            "exact_two_component": 0.0,
+            "physical_multi_constraint": 0.0,
             "joint": 0.0,
             "constraint_only": 0.0,
             "text_only": 0.0,
             "unconditional": 0.0,
-            **{f"pattern/{name}": 0.0 for name in self.constraint_sampler.PATTERNS},
+            **{f"pattern/{name}": 0.0 for name in self.constraint_sampler.ALL_PATTERNS},
             **{f"data_source/{name}": 0.0 for name in self.dataset.mixture_sources},
         }
 
@@ -526,15 +589,55 @@ class KimodoTrainer:
                         batch["clean_motion"], batch["lengths"], self.global_step, cpu_generator
                     )
                     dropped_values = text_dropped.detach().cpu().tolist()
-                    for dropped_value, patterns in zip(
-                        dropped_values, conditioning.pattern_names, strict=True
+                    length_values = batch["lengths"].detach().cpu().tolist()
+                    for dropped_value, length_value, patterns, lane, component_count in zip(
+                        dropped_values,
+                        length_values,
+                        conditioning.pattern_names,
+                        conditioning.sampling_lanes,
+                        conditioning.component_counts,
+                        strict=True,
                     ):
                         dropped = bool(dropped_value)
                         constrained = bool(patterns)
                         curriculum_counts["samples"] += 1
                         curriculum_counts["text_dropped"] += float(dropped)
                         curriculum_counts["constrained"] += float(constrained)
-                        curriculum_counts["two_patterns"] += float(len(patterns) == 2)
+                        curriculum_counts["two_patterns"] += float(lane == "paper_two")
+                        curriculum_counts["none_lane"] += float(lane in {"none", "phase1_none"})
+                        curriculum_counts["paper_single_lane"] += float(lane == "paper_single")
+                        curriculum_counts["benchmark_lane"] += float(lane == "benchmark")
+                        curriculum_counts["benchmark_atomic"] += float(
+                            lane == "benchmark" and component_count == 1
+                        )
+                        curriculum_counts["benchmark_two_component"] += float(
+                            lane == "benchmark" and component_count == 2
+                        )
+                        curriculum_counts["benchmark_three_component"] += float(
+                            lane == "benchmark" and component_count == 3
+                        )
+                        curriculum_counts["benchmark_with_text"] += float(
+                            lane == "benchmark" and not dropped
+                        )
+                        curriculum_counts["benchmark_without_text"] += float(
+                            lane == "benchmark" and dropped
+                        )
+                        duration_seconds = float(length_value) / self.config.data.fps
+                        curriculum_counts["benchmark_duration_lt_3s"] += float(
+                            lane == "benchmark" and duration_seconds < 3.0
+                        )
+                        curriculum_counts["benchmark_duration_3_to_10s"] += float(
+                            lane == "benchmark" and 3.0 <= duration_seconds <= 10.0
+                        )
+                        curriculum_counts["benchmark_duration_gt_10s"] += float(
+                            lane == "benchmark" and duration_seconds > 10.0
+                        )
+                        curriculum_counts["exact_two_component"] += float(
+                            component_count == 2
+                        )
+                        curriculum_counts["physical_multi_constraint"] += float(
+                            component_count >= 2
+                        )
                         branch = (
                             "unconditional"
                             if dropped and not constrained
@@ -581,7 +684,11 @@ class KimodoTrainer:
                             observed_motion=conditioning.observed_motion,
                         )
                     with self._observed_section("seven_term_loss"):
-                        losses = self.loss(prediction, batch["clean_motion"], batch["valid_frames"])
+                        losses = self.loss(
+                            prediction,
+                            batch["clean_motion"],
+                            batch["valid_frames"],
+                        )
                 with self._observed_section("finite_check"):
                     finite_flag = torch.isfinite(losses["total"]).to(dtype=torch.float32)
                     if self.context.world_size > 1:
@@ -619,9 +726,29 @@ class KimodoTrainer:
                         if parameter.grad is not None:
                             parameter.grad.mul_(gradient_scale)
                     if self.config.optimizer.gradient_clip_norm is not None:
-                        torch.nn.utils.clip_grad_norm_(
+                        gradient_norm = torch.nn.utils.clip_grad_norm_(
                             self.model.parameters(), self.config.optimizer.gradient_clip_norm
                         )
+                    else:
+                        per_parameter_norms = [
+                            parameter.grad.detach().float().norm(2)
+                            for parameter in self.model.parameters()
+                            if parameter.grad is not None
+                        ]
+                        gradient_norm = (
+                            torch.stack(per_parameter_norms).norm(2)
+                            if per_parameter_norms
+                            else torch.zeros((), device=self.context.device)
+                        )
+                    gradient_finite = torch.isfinite(gradient_norm).to(dtype=torch.float32)
+                    if self.context.world_size > 1:
+                        dist.all_reduce(gradient_finite, op=dist.ReduceOp.MIN)
+                    if not bool(gradient_finite.item()):
+                        self._save(diagnostic_reason="nonfinite-gradient")
+                        raise FloatingPointError(
+                            f"Non-finite gradient norm at global_step={self.global_step}"
+                        )
+                    gradient_norm_value = float(gradient_norm.detach().float().item())
                 with self._observed_section("optimizer"):
                     previous_scale = self.scaler.get_scale()
                     self.scaler.step(self.optimizer)
@@ -629,12 +756,19 @@ class KimodoTrainer:
                     self.optimizer.zero_grad(set_to_none=True)
                 step_skipped = self.scaler.is_enabled() and self.scaler.get_scale() < previous_scale
                 if step_skipped:
+                    interval_skipped_steps += 1
                     accumulated_valid_frames = 0
                     accumulated_loss_sums.clear()
                     for name in curriculum_counts:
                         curriculum_counts[name] = 0.0
                     continue
                 self.global_step += 1
+                interval_optimizer_steps += 1
+                interval_gradient_norm_sum += gradient_norm_value
+                interval_gradient_clip_hits += int(
+                    self.config.optimizer.gradient_clip_norm is not None
+                    and gradient_norm_value > self.config.optimizer.gradient_clip_norm
+                )
 
                 if self.ema is not None and self.global_step % self.config.ema.update_every == 0:
                     with self._observed_section("ema"):
@@ -661,6 +795,47 @@ class KimodoTrainer:
                         dist.all_reduce(count_values, op=dist.ReduceOp.SUM)
                     global_counts = dict(zip(count_names, count_values.tolist()))
                     sample_count = max(1.0, global_counts["samples"])
+                    benchmark_count = max(1.0, global_counts["benchmark_lane"])
+                    interval_seconds_value = torch.tensor(
+                        time.perf_counter() - interval_started,
+                        device=self.context.device,
+                        dtype=torch.float64,
+                    )
+                    if self.context.world_size > 1:
+                        dist.all_reduce(interval_seconds_value, op=dist.ReduceOp.MAX)
+                    interval_seconds = max(float(interval_seconds_value.item()), 1e-12)
+                    optimization_values = torch.tensor(
+                        [
+                            interval_gradient_norm_sum,
+                            float(interval_gradient_clip_hits),
+                            float(interval_optimizer_steps),
+                            float(interval_skipped_steps),
+                        ],
+                        device=self.context.device,
+                        dtype=torch.float64,
+                    )
+                    if self.context.world_size > 1:
+                        dist.all_reduce(optimization_values, op=dist.ReduceOp.SUM)
+                    gradient_observations = max(float(optimization_values[2].item()), 1.0)
+                    attempted_observations = max(
+                        float((optimization_values[2] + optimization_values[3]).item()), 1.0
+                    )
+                    if self.context.device.type == "cuda":
+                        memory_values = torch.tensor(
+                            [
+                                torch.cuda.max_memory_allocated(self.context.device),
+                                torch.cuda.max_memory_reserved(self.context.device),
+                            ],
+                            device=self.context.device,
+                            dtype=torch.float64,
+                        )
+                        if self.context.world_size > 1:
+                            dist.all_reduce(memory_values, op=dist.ReduceOp.MAX)
+                        peak_allocated_bytes = int(memory_values[0].item())
+                        peak_reserved_bytes = int(memory_values[1].item())
+                    else:
+                        peak_allocated_bytes = 0
+                        peak_reserved_bytes = 0
                     record = {
                         "global_step": self.global_step,
                         "phase": phase,
@@ -669,11 +844,100 @@ class KimodoTrainer:
                         "text_dropout_fraction": global_counts["text_dropped"] / sample_count,
                         "constraint_fraction": global_counts["constrained"] / sample_count,
                         "two_pattern_fraction": global_counts["two_patterns"] / sample_count,
+                        "paper_two_pattern_fraction": global_counts["two_patterns"] / sample_count,
+                        "none_lane_fraction": global_counts["none_lane"] / sample_count,
+                        "paper_single_lane_fraction": (
+                            global_counts["paper_single_lane"] / sample_count
+                        ),
+                        "benchmark_lane_fraction": global_counts["benchmark_lane"] / sample_count,
+                        "benchmark_atomic_fraction": global_counts["benchmark_atomic"] / sample_count,
+                        "benchmark_atomic_per_sample": (
+                            global_counts["benchmark_atomic"] / sample_count
+                        ),
+                        "benchmark_atomic_within_benchmark": (
+                            global_counts["benchmark_atomic"] / benchmark_count
+                        ),
+                        "benchmark_two_component_fraction": (
+                            global_counts["benchmark_two_component"] / sample_count
+                        ),
+                        "benchmark_two_component_per_sample": (
+                            global_counts["benchmark_two_component"] / sample_count
+                        ),
+                        "benchmark_two_component_within_benchmark": (
+                            global_counts["benchmark_two_component"] / benchmark_count
+                        ),
+                        "benchmark_three_component_fraction": (
+                            global_counts["benchmark_three_component"] / sample_count
+                        ),
+                        "benchmark_three_component_per_sample": (
+                            global_counts["benchmark_three_component"] / sample_count
+                        ),
+                        "benchmark_three_component_within_benchmark": (
+                            global_counts["benchmark_three_component"] / benchmark_count
+                        ),
+                        "benchmark_with_text_within_benchmark": (
+                            global_counts["benchmark_with_text"] / benchmark_count
+                        ),
+                        "benchmark_without_text_within_benchmark": (
+                            global_counts["benchmark_without_text"] / benchmark_count
+                        ),
+                        "benchmark_duration_lt_3s_within_benchmark": (
+                            global_counts["benchmark_duration_lt_3s"] / benchmark_count
+                        ),
+                        "benchmark_duration_3_to_10s_within_benchmark": (
+                            global_counts["benchmark_duration_3_to_10s"] / benchmark_count
+                        ),
+                        "benchmark_duration_gt_10s_within_benchmark": (
+                            global_counts["benchmark_duration_gt_10s"] / benchmark_count
+                        ),
+                        "exact_two_component_fraction": (
+                            global_counts["exact_two_component"] / sample_count
+                        ),
+                        "intended_multi_component_fraction": (
+                            global_counts["physical_multi_constraint"] / sample_count
+                        ),
+                        "physical_multi_constraint_fraction": (
+                            global_counts["physical_multi_constraint"] / sample_count
+                        ),
                         "maximum_sparse_keyframes": conditioning.maximum_sparse_keyframes,
+                        "optimizer/learning_rate": float(self.optimizer.param_groups[0]["lr"]),
+                        "optimizer/gradient_norm_before_clip": (
+                            float(optimization_values[0].item()) / gradient_observations
+                        ),
+                        "optimizer/gradient_clip_fraction": (
+                            float(optimization_values[1].item()) / gradient_observations
+                        ),
+                        "optimizer/skipped_step_fraction": (
+                            float(optimization_values[3].item()) / attempted_observations
+                        ),
+                        "ema/num_updates": self.ema.num_updates if self.ema is not None else 0,
+                        "system/world_size": self.context.world_size,
+                        "system/per_rank_batch": self.config.runtime.batch_size,
+                        "system/gradient_accumulation_steps": (
+                            self.config.runtime.gradient_accumulation_steps
+                        ),
+                        "system/effective_global_batch": (
+                            self.config.runtime.batch_size
+                            * self.config.runtime.gradient_accumulation_steps
+                            * self.context.world_size
+                        ),
+                        "system/interval_seconds": interval_seconds,
+                        "system/optimizer_steps_per_second": (
+                            interval_optimizer_steps / interval_seconds
+                        ),
+                        "system/samples_per_second": (
+                            self.config.runtime.batch_size
+                            * self.config.runtime.gradient_accumulation_steps
+                            * self.context.world_size
+                            * interval_optimizer_steps
+                            / interval_seconds
+                        ),
+                        "system/peak_cuda_allocated_bytes": peak_allocated_bytes,
+                        "system/peak_cuda_reserved_bytes": peak_reserved_bytes,
                     }
                     for branch in ("joint", "constraint_only", "text_only", "unconditional"):
                         record[f"conditioning/{branch}_fraction"] = global_counts[branch] / sample_count
-                    for pattern in self.constraint_sampler.PATTERNS:
+                    for pattern in self.constraint_sampler.ALL_PATTERNS:
                         record[f"conditioning/{pattern}_per_sample"] = (
                             global_counts[f"pattern/{pattern}"] / sample_count
                         )
@@ -685,18 +949,41 @@ class KimodoTrainer:
                     record.update(
                         {f"loss/{name}": float(value.item() / denominator) for name, value in logged_sums.items()}
                     )
+                    for term_name, _ in self.loss.FEATURE_TERMS:
+                        record[f"loss_weighted/{term_name}"] = (
+                            record[f"loss/{term_name}"]
+                            * float(getattr(self.config.loss, term_name))
+                        )
+                    record["loss_weighted/forward_kinematics"] = (
+                        record["loss/forward_kinematics"]
+                        * float(self.config.loss.forward_kinematics)
+                    )
                     self.logger.write(record)
+                    interval_started = time.perf_counter()
+                    interval_optimizer_steps = 0
+                    interval_skipped_steps = 0
+                    interval_gradient_norm_sum = 0.0
+                    interval_gradient_clip_hits = 0
+                    if self.context.device.type == "cuda":
+                        torch.cuda.reset_peak_memory_stats(self.context.device)
 
                 accumulated_valid_frames = 0
                 accumulated_loss_sums.clear()
                 for name in curriculum_counts:
                     curriculum_counts[name] = 0.0
 
-                if self.global_step % self.config.runtime.checkpoint_every == 0 or (
+                milestone_step = bool(
                     self.config.runtime.milestone_every
                     and self.global_step % self.config.runtime.milestone_every == 0
-                ) or self.global_step == self.config.curriculum.phase1_steps:
+                )
+                if (
+                    self.global_step % self.config.runtime.checkpoint_every == 0
+                    or milestone_step
+                    or self.global_step == self.config.curriculum.phase1_steps
+                ):
                     self._save()
+                if milestone_step and self.global_step < self.config.total_steps:
+                    self._export_current_inference_bundle_if_missing()
                 if self.global_step >= self.config.total_steps:
                     break
 
@@ -709,13 +996,4 @@ class KimodoTrainer:
         if self.context.world_size > 1:
             dist.barrier()
         self._save()
-        if self.context.is_main:
-            export_inference_bundle(
-                self.model,
-                self.ema,
-                self.output_dir,
-                self.global_step,
-                self.config,
-            )
-        if self.context.world_size > 1:
-            dist.barrier()
+        self._export_current_inference_bundle_if_missing()

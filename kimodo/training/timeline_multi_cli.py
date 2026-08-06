@@ -32,22 +32,29 @@ CRITICAL_GROUPS = (
 )
 
 
+def description_word_limit(source_texts: list[str]) -> int:
+    """Allow extra room only when preserving the source cannot fit the usual 90 words."""
+    source_words = re.findall(r"[a-z0-9]+(?:'[a-z]+)?", " ".join(source_texts).lower())
+    return min(180, max(90, len(source_words) + 30))
+
+
 def validate_description(source_texts: list[str], description: str) -> None:
     if not isinstance(description, str) or not description.strip():
-        raise ValueError("empty Qwen description")
+        raise ValueError("empty LLM description")
     words = re.findall(r"[a-z0-9]+(?:'[a-z]+)?", description.lower())
-    if not 7 <= len(words) <= 90:
-        raise ValueError(f"Qwen description has {len(words)} words; expected 7..90")
-    source_words = set(
-        re.findall(r"[a-z0-9]+(?:'[a-z]+)?", " ".join(source_texts).lower())
-    )
+    maximum = description_word_limit(source_texts)
+    if not 7 <= len(words) <= maximum:
+        raise ValueError(
+            f"LLM description has {len(words)} words; expected 7..{maximum} for this source information load"
+        )
+    source_words = set(re.findall(r"[a-z0-9]+(?:'[a-z]+)?", " ".join(source_texts).lower()))
     output_words = set(words)
     for alternatives in CRITICAL_GROUPS:
         if source_words.intersection(alternatives) and not output_words.intersection(alternatives):
-            raise ValueError(f"Qwen description dropped critical direction token {alternatives}")
+            raise ValueError(f"LLM description dropped critical direction token {alternatives}")
     lowered = description.lower()
     if any(marker in lowered for marker in ("as an ai", "i cannot", "ordered source actions")):
-        raise ValueError("Qwen description contains generation boilerplate")
+        raise ValueError("LLM description contains generation boilerplate")
 
 
 def _sha256_file(path: Path) -> str:
@@ -136,15 +143,9 @@ def _enumerate_candidates(groups, *, fps: int, max_frames: int, max_gap_frames: 
                 selected = events[start : start + event_count]
                 if len(selected) != event_count:
                     break
-                if any(
-                    right["event_index"] != left["event_index"] + 1
-                    for left, right in pairwise(selected)
-                ):
+                if any(right["event_index"] != left["event_index"] + 1 for left, right in pairwise(selected)):
                     continue
-                if any(
-                    right["start_frame"] - left["end_frame"] > max_gap_frames
-                    for left, right in pairwise(selected)
-                ):
+                if any(right["start_frame"] - left["end_frame"] > max_gap_frames for left, right in pairwise(selected)):
                     continue
                 start_frame = selected[0]["start_frame"]
                 end_frame = selected[-1]["end_frame"]
@@ -173,9 +174,7 @@ def _enumerate_candidates(groups, *, fps: int, max_frames: int, max_gap_frames: 
                         "end_frame": end_frame,
                         "event_count": event_count,
                         "source_event_ids": source_event_ids,
-                        "source_time_ranges": [
-                            [row["start_frame"], row["end_frame"]] for row in selected
-                        ],
+                        "source_time_ranges": [[row["start_frame"], row["end_frame"]] for row in selected],
                         "source_texts": source_texts,
                         "qwen_request_id": request_id,
                     }

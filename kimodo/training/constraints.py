@@ -15,6 +15,8 @@ class ConstraintBatch:
     motion_mask: torch.Tensor
     pattern_names: list[list[str]]
     maximum_sparse_keyframes: int
+    sampling_lanes: list[str]
+    component_counts: list[int]
 
 
 class ConstraintCurriculumSampler:
@@ -54,11 +56,26 @@ class ConstraintCurriculumSampler:
         "benchmark_mix_root_ee_hands_feet_posrot_fullbody",
         "benchmark_mix_root_path_fullbody",
     )
+    ALL_PATTERNS = PATTERNS + BENCHMARK_PATTERNS
+    BENCHMARK_TWO_COMPONENT = frozenset(
+        {
+            "benchmark_mix_root_ee_hands_posrot",
+            "benchmark_mix_root_path_fullbody",
+        }
+    )
+    BENCHMARK_THREE_COMPONENT = frozenset(
+        {
+            "benchmark_mix_root_ee_hands_posrot_fullbody",
+            "benchmark_mix_root_ee_hands_feet_posrot_fullbody",
+        }
+    )
 
     def __init__(self, motion_rep, config) -> None:
         self.motion_rep = motion_rep
         self.skeleton = motion_rep.skeleton
         self.config = config
+        if len(self.ALL_PATTERNS) != len(set(self.ALL_PATTERNS)):
+            raise RuntimeError("Constraint pattern registry contains duplicate names")
 
     def _phase2_progress(self, global_step: int) -> float:
         offset = global_step - self.config.phase1_steps
@@ -69,7 +86,7 @@ class ConstraintCurriculumSampler:
         progress = self._phase2_progress(global_step)
         low = self.config.sparse_keyframes_min
         high = self.config.sparse_keyframes_max
-        return int(round(low + progress * (high - low)))
+        return round(low + progress * (high - low))
 
     @staticmethod
     def _rand(generator: torch.Generator) -> float:
@@ -140,8 +157,8 @@ class ConstraintCurriculumSampler:
 
     def _root_dense(self, mask, length, maximum, generator) -> None:
         del maximum
-        low = max(1, int(round(length * self.config.dense_path_min_fraction)))
-        high = max(low, int(round(length * self.config.dense_path_max_fraction)))
+        low = max(1, round(length * self.config.dense_path_min_fraction))
+        high = max(low, round(length * self.config.dense_path_max_fraction))
         span = low + self._randint(high - low + 1, generator)
         start = self._randint(length - span + 1, generator)
         frames = torch.arange(start, start + span, device=mask.device)
@@ -279,6 +296,34 @@ class ConstraintCurriculumSampler:
     def _apply_pattern(self, name, mask, length, maximum, generator) -> None:
         getattr(self, f"_{name}")(mask, length, maximum, generator)
 
+    def _select_patterns(self, generator: torch.Generator) -> tuple[list[str], str, int]:
+        """Select one stable top-level lane while preserving paper mixture mass."""
+        choice = self._rand(generator)
+        no_constraint = float(self.config.no_constraint_probability)
+        paper_two = float(self.config.mix_two_probability)
+        benchmark_mass = (
+            (1.0 - no_constraint) * float(self.config.benchmark_coverage_probability)
+        )
+        if choice < no_constraint:
+            return [], "none", 0
+        if choice < no_constraint + paper_two:
+            order = torch.randperm(len(self.PATTERNS), generator=generator)[:2].tolist()
+            return [self.PATTERNS[index] for index in order], "paper_two", 2
+        if choice < no_constraint + paper_two + benchmark_mass:
+            name = self.BENCHMARK_PATTERNS[
+                self._randint(len(self.BENCHMARK_PATTERNS), generator)
+            ]
+            components = (
+                3
+                if name in self.BENCHMARK_THREE_COMPONENT
+                else 2
+                if name in self.BENCHMARK_TWO_COMPONENT
+                else 1
+            )
+            return [name], "benchmark", components
+        order = torch.randperm(len(self.PATTERNS), generator=generator)[:1].tolist()
+        return [self.PATTERNS[order[0]]], "paper_single", 1
+
     def sample(
         self,
         clean_motion: torch.Tensor,
@@ -303,31 +348,21 @@ class ConstraintCurriculumSampler:
                 mask,
                 [[] for _ in range(batch_size)],
                 maximum,
+                ["phase1_none" for _ in range(batch_size)],
+                [0 for _ in range(batch_size)],
             )
 
+        lanes: list[str] = []
+        component_counts: list[int] = []
         for batch_index, length_value in enumerate(lengths_list):
             length = int(length_value)
-            selected: list[str] = []
-            choice = self._rand(generator)
-            if choice >= self.config.no_constraint_probability:
-                if (
-                    self.config.benchmark_coverage_probability > 0
-                    and self._rand(generator) < self.config.benchmark_coverage_probability
-                ):
-                    selected = [
-                        self.BENCHMARK_PATTERNS[
-                            self._randint(len(self.BENCHMARK_PATTERNS), generator)
-                        ]
-                    ]
-                else:
-                    count = 2 if choice < (
-                        self.config.no_constraint_probability + self.config.mix_two_probability
-                    ) else 1
-                    order = torch.randperm(len(self.PATTERNS), generator=generator)[:count].tolist()
-                    selected = [self.PATTERNS[index] for index in order]
+            selected, lane, component_count = self._select_patterns(generator)
+            if selected:
                 for name in selected:
                     self._apply_pattern(name, mask[batch_index], length, maximum, generator)
             names.append(selected)
+            lanes.append(lane)
+            component_counts.append(component_count)
 
         observed = torch.where(mask, clean_motion, torch.zeros_like(clean_motion))
-        return ConstraintBatch(observed, mask, names, maximum)
+        return ConstraintBatch(observed, mask, names, maximum, lanes, component_counts)

@@ -1,8 +1,8 @@
 # 两机 16×H200 的容器化与多机 DDP 部署
 
-本文对应本仓库当前实现，目标拓扑是两个 Kubernetes 训练 Pod、每个 Pod 看到 8 张 H200，合计
-16 个训练进程。它不假定集群使用哪一种训练控制器；Kubeflow Trainer、旧 PyTorchJob、Volcano、
-Kueue/JobSet 或公司自研平台都可以，只要满足本文的启动与网络契约。
+本文对应本仓库当前实现，物理资源是两台 8×H200，训练契约是 16 个 DDP rank。Kubernetes Pod 的
+切分由公司平台决定：可以是 `2 Pods × 8 GPU`、`4 Pods × 4 GPU` 或 `16 Pods × 1 GPU`。一个 Pod
+不能跨物理节点，因此在每台只有 8 卡时，`1 Pod × 16 GPU` 不可调度。
 
 ## 1. 谁负责什么
 
@@ -15,14 +15,12 @@ Kueue/JobSet 或公司自研平台都可以，只要满足本文的启动与网�
   ├─ config/repro.paths.yaml（训练时只读）
   └─ runs/：日志、checkpoint、export（rank 0 可写）
 
-训练 Pod 0（node rank 0）              训练 Pod 1（node rank 1）
-  ├─ local rank 0 → GPU 0               ├─ local rank 0 → GPU 0
-  ├─ ...                                ├─ ...
-  └─ local rank 7 → GPU 7               └─ local rank 7 → GPU 7
+Pod/launcher group 0..N-1
+  └─ 每 Pod 启动 M 个 local ranks；N × M 必须等于 16
              └──── NCCL：机内 NVLink/NVSwitch，机间 IB/RoCE ────┘
 ```
 
-Kubernetes 负责 Pod、GPU、网络、DNS、存储和失败重启；`torchrun` 负责在每个节点生成 8 个进程并
+Kubernetes 负责 Pod、GPU、网络、DNS、存储和失败重启；`torchrun` 负责在每个 Pod 生成相应进程并
 给出 `RANK/WORLD_SIZE/LOCAL_RANK`；训练代码使用这些变量初始化 NCCL/DDP。应用代码不实现 TCP、
 RDMA、ring all-reduce 或梯度发送。
 
@@ -44,7 +42,8 @@ RDMA、ring all-reduce 或梯度发送。
 
 镜像应包含代码、Python/CUDA/NCCL 运行时、依赖、训练 YAML 和启动脚本；不要包含数百 GB 数据、
 Hugging Face token、运行日志或 checkpoint。当前 Dockerfile 已复制 `configs/`、`resources/`、
-`scripts/`，默认命令为多机启动器。
+`scripts/`。镜像还包含 RDMA userspace 与诊断工具，默认命令为公司 16-rank 启动器
+`scripts/train_company_16h200.sh`；本地双卡仍显式调用 `scripts/train_two_gpu_seed.sh`。
 
 ```bash
 docker build -t REGISTRY/kimodo-train:GIT_SHA .
@@ -76,25 +75,24 @@ LLM2Vec。
 3. 两节点训练 Job；
 4. 可选验证/导出 Job。
 
-不要在两个训练 Pod 的 initContainer 中各跑一次完整 prepare。那会竞争共享目录、重复占 GPU，并让每次
+不要在各训练 Pod 的 initContainer 中各跑一次完整 prepare。那会竞争共享目录、重复占 GPU，并让每次
 训练重启都重新检查大数据。initContainer 只适合做“路径存在、容量足够、DNS 可解析”之类的轻检查。
 
-## 5. 两个训练 Pod 必须获得的契约
+## 5. 训练 Pod 必须获得的契约
 
-两个 Pod 使用同一个镜像和相同命令：
+所有 Pod 使用同一个不可变镜像和相同命令：
 
 ```bash
-/workspace/scripts/train_distributed.sh \
-  --set runtime.output_dir=/mnt/kimodo/runs/experiment-001
+/workspace/scripts/train_company_16h200.sh
 ```
 
-公共环境：
+默认 `2×8` 切分的公共环境：
 
 ```text
 KIMODO_NNODES=2
 KIMODO_NPROC_PER_NODE=8
 KIMODO_PATHS_CONFIG=/mnt/kimodo/config/repro.paths.yaml
-KIMODO_TRAINING_OVERLAY=/workspace/configs/overlays/two_node_16_h200_gb2048.yaml
+KIMODO_RUN_DIR=/mnt/kimodo/runs/v2-1m-production
 MASTER_ADDR=<node-rank-0 的稳定 Pod DNS 或 IP>
 MASTER_PORT=29500
 ```
@@ -102,20 +100,22 @@ MASTER_PORT=29500
 每 Pod 唯一环境：
 
 ```text
-Pod 0: KIMODO_NODE_RANK=0
-Pod 1: KIMODO_NODE_RANK=1
+Pod 0..N-1: KIMODO_NODE_RANK=0..N-1
 ```
 
-每个 Pod 请求 `nvidia.com/gpu: 8`，并把同一个共享卷挂到相同的 `/mnt/kimodo`。如果平台的 PyTorch
+若平台采用每物理节点两个 4-GPU Pod，则设置 `KIMODO_NNODES=4`、
+`KIMODO_NPROC_PER_NODE=4` 和四个唯一 node rank。这里的 `KIMODO_NNODES` 是 launcher/Pod 数，
+不是物理机器数。production YAML 还会在 trainer 内再次强制检查 `world_size=16` 和
+`effective_global_batch=2048`，因此绕过 launcher 也不会静默跑成错误规模。所有 Pod 把同一个共享卷
+挂到相同的 `/mnt/kimodo`。如果平台的 PyTorch
 runtime 已经替你执行 `torchrun` 并直接注入每个训练进程的 `RANK/WORLD_SIZE/LOCAL_RANK`，不要再次
 套 `train_distributed.sh`；此时容器命令直接使用：
 
 ```bash
 python -m kimodo.training.cli \
-  --config /workspace/configs/training/kimodo_soma_seed_public.yaml \
+  --config /workspace/configs/training/kimodo_soma_seed_v2_1m_16h200.yaml \
   --paths /mnt/kimodo/config/repro.paths.yaml \
-  --overlay /workspace/configs/overlays/two_node_16_h200_gb2048.yaml \
-  --set runtime.output_dir=/mnt/kimodo/runs/experiment-001
+  --set runtime.output_dir=/mnt/kimodo/runs/v2-1m-production
 ```
 
 这是上线前必须向平台管理员确认的第一件事：平台是“一 Pod 一节点，由镜像内部 torchrun”，还是“平台
@@ -129,8 +129,9 @@ python -m kimodo.training.cli \
 world_size × per-rank batch_size × gradient_accumulation_steps
 ```
 
-原两卡 overlay 是 `2 × 128 × 8 = 2048`；新 overlay 是 `16 × 128 × 1 = 2048`，所以无需再累计
-8 次。若真实序列分布让单卡 batch 128 OOM，可以保持全局 2048 改成 `16 × 64 × 2` 或
+本地两卡 overlay 是 `2 × 128 × 8 = 2048`；公司完整 production YAML 是
+`16 × 128 × 1 = 2048`，无需额外硬件 overlay。若真实序列分布让单卡 batch 128 OOM，可以保持
+全局 2048 改成 `16 × 64 × 2` 或
 `16 × 32 × 4`。这里的 `batch_size` 是每个进程/每张卡，不是每节点也不是全局值。
 
 DDP 会在每张卡保留完整模型、optimizer 和 EMA。16 卡提升数据并行吞吐，并不会把模型显存自动分摊到
@@ -159,38 +160,41 @@ NCCL_DEBUG_SUBSYS=INIT,NET
 
 ## 8. 推荐上线顺序
 
-1. 在一个 H200 Pod 中执行 `nvidia-smi`、导入 torch、检查 8 卡可见；
-2. 两 Pod 运行 NCCL tests（至少 all-reduce），分别验证 TCP 基线和 IB/RoCE 带宽；
+1. 在一个 H200 Pod 中执行 `nvidia-smi`、导入 torch、检查申请的 GPU 数全部可见；
+2. 跨两台物理节点运行 NCCL tests（至少 all-reduce），分别验证 TCP 基线和 IB/RoCE 带宽；
 3. 用 trainer `--preflight` 验证共享数据；
-4. 两机 16 卡只跑 2–10 optimizer steps，`checkpoint_every=1`；
-5. 检查日志中的 `world_size=16`、`effective_global_batch=2048`、每个节点 8 个 local rank；
+4. 两机 16 卡先跑 200 optimizer steps；
+5. 检查日志中的 `world_size=16`、`effective_global_batch=2048`、每 Pod local rank 数符合资源申请；
 6. kill 一个训练 Pod，验证控制器的 gang restart 行为和从共享 checkpoint 恢复；
 7. 再提交正式新 output directory 的长训。
 
 示例 smoke 参数：
 
 ```bash
-/workspace/scripts/train_distributed.sh \
-  --set runtime.output_dir=/mnt/kimodo/runs/ddp16-smoke-001 \
-  --set runtime.max_steps_override=2 \
-  --set runtime.checkpoint_every=1 \
+KIMODO_RUN_DIR=/mnt/kimodo/runs/ddp16-smoke-001 \
+KIMODO_AUTO_RESUME=0 \
+/workspace/scripts/train_company_16h200.sh \
+  --set runtime.max_steps_override=200 \
+  --set runtime.checkpoint_every=100 \
   --set runtime.log_every=1
 ```
 
 本 trainer 的精确 resume 要求训练关键配置、代码/data/stats fingerprint、world size 和 per-rank RNG 数量
 一致。因此两卡 checkpoint 不能直接作为 16 卡的“精确续训”checkpoint；16 卡作业应 fresh start，或者
 另行实现只加载模型权重、不恢复 optimizer/RNG 的 warm-start 语义。16 卡之间原地 resume 则保持
-`world_size=16` 并显式指定同一 run 下的 checkpoint。
+`world_size=16`。公司 launcher 默认从同一 `KIMODO_RUN_DIR/checkpoints/latest.txt` 自动恢复；最终
+checkpoint 和完整 EMA bundle 都已存在时才直接成功退出，否则会恢复并补齐导出。控制器必须 gang
+restart 全部 Pod，不能只留下部分旧 rank。
 
 ## 9. 常见卡住位置
 
 | 现象 | 最先检查 |
 |---|---|
-| 只有 8 个 rank | 第二个 Pod 是否启动；两个 Pod 的 `MASTER_ADDR/PORT` 是否一致；node rank 是否唯一 |
+| rank 数不足 | 所有 Pod 是否启动；`MASTER_ADDR/PORT` 是否一致；torchrun node rank 是否唯一 |
 | `Address already in use` | rank 0 DNS 指错、同节点重复启动 launcher、多个作业共用了 hostNetwork 端口 |
 | NCCL init hang | Pod 间 DNS/端口/NetworkPolicy、错误 NIC、RDMA device 未挂载、两节点 NCCL/driver 不一致 |
 | 能跑但很慢 | NCCL 日志是否回落 Socket；数据盘 IOPS；16 rank 同时扫描 manifest；DataLoader worker 总数 |
-| checkpoint 找不到 | 两 Pod 是否挂载同一 PVC 和相同绝对路径；rank 0 是否有写权限 |
+| checkpoint 找不到 | 所有 Pod 是否挂载同一 PVC 和相同绝对路径；rank 0 是否有写权限 |
 | 一启动主机内存暴涨 | 每 rank 都会解析大 manifest；先减少 `num_workers` 只影响 worker，再评估 manifest 索引格式 |
 | OOM | `batch_size` 是每卡；改为 64/2 或 32/4，保持全局 batch 2048 |
 

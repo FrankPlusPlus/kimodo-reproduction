@@ -16,7 +16,7 @@ from kimodo.training.config import TrainingConfig
 from kimodo.training.engine import KimodoTrainer
 
 
-def _config(fixture: Path, output: Path, steps: int) -> TrainingConfig:
+def _config(fixture: Path, output: Path, steps: int, benchmark_lane: bool) -> TrainingConfig:
     config = TrainingConfig()
     config.data.manifest = str(fixture / "manifest.jsonl")
     config.data.max_seconds = 1.0
@@ -32,6 +32,12 @@ def _config(fixture: Path, output: Path, steps: int) -> TrainingConfig:
     config.curriculum.phase1_steps = 1
     config.curriculum.phase2_steps = 1
     config.curriculum.sparse_keyframes_max = 2
+    if benchmark_lane:
+        config.curriculum.phase1_steps = 0
+        config.curriculum.phase2_steps = 2
+        config.curriculum.no_constraint_probability = 0.0
+        config.curriculum.mix_two_probability = 0.0
+        config.curriculum.benchmark_coverage_probability = 1.0
     config.runtime.output_dir = str(output)
     config.runtime.device = "cpu"
     config.runtime.precision = "fp32"
@@ -64,12 +70,24 @@ def _logs(path: Path) -> list[dict]:
     result = []
     for line in path.read_text(encoding="utf-8").splitlines():
         record = json.loads(line)
-        record.pop("elapsed_seconds", None)
+        for key in (
+            "elapsed_seconds",
+            "system/interval_seconds",
+            "system/optimizer_steps_per_second",
+            "system/samples_per_second",
+        ):
+            record.pop(key, None)
         result.append(record)
     return result
 
 
-def _rank_main(rank: int, fixture_value: str, root_value: str, rendezvous_value: str) -> None:
+def _rank_main(
+    rank: int,
+    fixture_value: str,
+    root_value: str,
+    rendezvous_value: str,
+    benchmark_lane: bool,
+) -> None:
     fixture, root = Path(fixture_value), Path(root_value)
     os.environ.update(WORLD_SIZE="2", RANK=str(rank), LOCAL_RANK=str(rank))
     dist.init_process_group(
@@ -82,10 +100,10 @@ def _rank_main(rank: int, fixture_value: str, root_value: str, rendezvous_value:
     continuous = root / "continuous"
     resumed = root / "resumed"
 
-    KimodoTrainer(_config(fixture, continuous, 2), project_root).train()
-    KimodoTrainer(_config(fixture, resumed, 1), project_root).train()
+    KimodoTrainer(_config(fixture, continuous, 2, benchmark_lane), project_root).train()
+    KimodoTrainer(_config(fixture, resumed, 1, benchmark_lane), project_root).train()
     checkpoint = resumed / "checkpoints" / "step-000000001.pt"
-    second = _config(fixture, resumed, 2)
+    second = _config(fixture, resumed, 2, benchmark_lane)
     second.runtime.resume = str(checkpoint)
     KimodoTrainer(second, project_root).train()
 
@@ -121,11 +139,12 @@ def _rank_main(rank: int, fixture_value: str, root_value: str, rendezvous_value:
 
 def main() -> None:
     fixture, root = map(Path, sys.argv[1:3])
+    benchmark_lane = len(sys.argv) == 4 and sys.argv[3] == "benchmark"
     root.mkdir(parents=True, exist_ok=True)
     rendezvous = root / "file-store"
     mp.spawn(
         _rank_main,
-        args=(str(fixture), str(root), str(rendezvous)),
+        args=(str(fixture), str(root), str(rendezvous), benchmark_lane),
         nprocs=2,
         join=True,
     )

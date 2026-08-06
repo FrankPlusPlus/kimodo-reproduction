@@ -329,13 +329,13 @@ SOMA30 + concat mask 的 shape 合同：
 **[DEFAULT] 可编码定义**：
 
 1. diffusion 输入/输出始终 normalized。
-2. direct six component loss 默认在 **unnormalized physical feature domain** 计算，每项先对有效 `[B,T,component_dims]` 做 mean，再乘论文权重；`SmoothL1(beta=1.0)`。
+2. direct six component loss 默认在 **normalized feature domain** 计算，每项先对有效 `[B,T,component_dims]` 做 mean，再乘论文权重；`SmoothL1(beta=1.0)`。FK 仍在反归一化后的物理空间计算。
 3. rotation direct loss 对代码存储的 global 6D 表示计算。
 4. FK loss：6D→rotation matrix→按 skeleton 转 local rotations→FK；与 GT global joint positions 比较，单位 m，对有效 batch/time/joint/xyz 做 mean。
 5. contact target 为 0/1；使用同一 SmoothL1，不额外 BCE。
 6. 记录七个未加权 loss、七个加权 loss 和 total；任何 NaN 立即保存 crash checkpoint。
 
-**必须做的二选一消融**：`loss_domain={physical,normalized_direct_physical_fk}`。第二种对 direct six components 在 normalized domain 算，FK 仍在 physical domain。以 50k-step proxy 对 constraint error、foot skate、FID 决定工程默认；结果记录后不得倒推成官方事实。
+**已完成的二选一消融**：`loss_domain={physical,normalized_direct_physical_fk}`。项目选择后者作为 V1/V2 新训练的统一工程默认；physical 仅保留作旧 30K 历史对照。该结论不得倒推成 NVIDIA 未公开的官方事实。
 
 ## 7. Phase 1 / Phase 2 curriculum
 

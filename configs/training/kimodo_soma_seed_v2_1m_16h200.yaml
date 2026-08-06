@@ -1,19 +1,20 @@
-# 中文逐字段说明见同目录 CONFIG_REFERENCE.zh-CN.md。
-# Kimodo paper-aligned production defaults. Values not explicitly disclosed by
-# the paper are catalogued in docs/training_reproduction_spec.md.
+# Complete production profile for the company 16-H200 V2 run. The scheduler
+# may partition the 16 ranks across 2x8, 4x4, or 16x1 launcher pods.
+# Machine/PVC paths are the only external layer, supplied through --paths.
 schema_version: 1
-paper_method_strict: true
+paper_method_strict: false
 
 data:
-  # Supplied by --paths. This profile remains blocked until the unavailable
-  # paper augmentation assets satisfy the strict parity gate.
   manifest: ""
   split: train
   fps: 30
   max_seconds: 10.0
-  # The paper discloses only the 10 s maximum, not a training minimum.
   min_frames: 2
-  num_workers: 8
+  # Per rank: local fixed-300f H200 tests measured 1.64/0.76/0.52 s per step
+  # at 4/8/12 workers. 12 is the lowest tested non-starving setting. On an
+  # 8-rank node this is 96 single-threaded workers; override only after a real
+  # PV/CPU smoke benchmark.
+  num_workers: 12
   multiprocessing_context: fork
   pin_memory: true
   prefetch_factor: 2
@@ -21,10 +22,7 @@ data:
   require_cached_text: true
   reference_verification: inventory
   reference_inventory: null
-  # Fail-closed paper-asset schema gate. This intentionally rejects plain BONES-SEED
-  # manifest until Qwen3-32B paraphrases and diffusion-transition stitched clips
-  # with provenance have been supplied, but cannot certify NVIDIA's unpublished recipe.
-  require_paper_data_parity: true
+  require_paper_data_parity: false
 
 model:
   checkpoint_dir: null
@@ -45,9 +43,6 @@ model:
   norm_first: false
   input_first_heading_angle: true
   use_text_mask: false
-  # CODE: the released denoiser's training-mode forward detaches this bridge.
-  # PAPER "end-to-end" is interpreted here as joint interleaved optimization;
-  # the paper does not specify cross-bridge autograd and no trainer was released.
   detach_root_for_body: true
 
 curriculum:
@@ -64,9 +59,12 @@ curriculum:
   dense_path_min_fraction: 0.2
   dense_path_max_fraction: 0.8
   root_heading_probability: 0.5
+  # V2 benchmark-oriented engineering lane; not an unpublished NVIDIA value.
+  benchmark_coverage_probability: 0.25
+  benchmark_sparse_keyframes_max: 9
+  benchmark_sparse_count_power: 0.45
 
 loss:
-  # Engineering default selected by our ablation; the paper does not disclose it.
   direct_feature_domain: normalized
   smooth_l1_beta: 1.0
   root_position: 10.0
@@ -95,6 +93,7 @@ runtime:
   seed: 1234
   device: auto
   precision: bf16
+  # Per GPU/rank. 16 x 128 x 1 = effective global batch 2048.
   batch_size: 128
   gradient_accumulation_steps: 1
   log_every: 10
@@ -102,8 +101,11 @@ runtime:
   milestone_every: 100000
   keep_last_checkpoints: 3
   resume: null
+  resume_mode: in_place
   initial_global_step: 0
   distributed: auto
+  expected_world_size: 16
+  expected_global_batch: 2048
   enforce_paper_scale: true
   dry_run: false
   max_steps_override: null

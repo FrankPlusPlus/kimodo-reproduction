@@ -54,9 +54,7 @@ def _atomic_publish_jsonl(destination: Path, write_rows) -> tuple[int, str, Path
         raise
 
 
-def _publish_sidecar_then_manifest(
-    destination: Path, temporary: Path, metadata: dict
-) -> None:
+def _publish_sidecar_then_manifest(destination: Path, temporary: Path, metadata: dict) -> None:
     sidecar = _metadata_path(destination)
     sidecar_temporary = None
     try:
@@ -99,7 +97,7 @@ def extract(args) -> dict:
                 if not line.strip():
                     continue
                 row = json.loads(line)
-                if row.get("sample_kind") == "timeline_multi_qwen":
+                if row.get("sample_kind") in {"timeline_multi_qwen", "timeline_multi_llm"}:
                     output.write(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n")
                     count += 1
         return count
@@ -130,31 +128,45 @@ def _portable_path(path: Path, base: Path) -> str:
 def compose(args) -> dict:
     v2_raw = Path(args.v2_raw_manifest).expanduser().resolve()
     base = Path(args.v1_cached_manifest).expanduser().resolve()
-    qwen = Path(args.qwen_cached_manifest).expanduser().resolve()
+    llm_manifest = getattr(args, "llm_cached_manifest", None) or getattr(args, "qwen_cached_manifest", None)
+    if not llm_manifest:
+        raise ValueError("An LLM cached manifest is required")
+    llm = Path(llm_manifest).expanduser().resolve()
     destination = Path(args.output).expanduser().resolve()
     destination_root = destination.parent
     raw_metadata_path = _metadata_path(v2_raw)
     base_metadata_path = _metadata_path(base)
-    qwen_metadata_path = _metadata_path(qwen)
+    llm_metadata_path = _metadata_path(llm)
     raw_metadata = json.loads(raw_metadata_path.read_text(encoding="utf-8"))
     base_metadata = json.loads(base_metadata_path.read_text(encoding="utf-8"))
-    qwen_metadata = json.loads(qwen_metadata_path.read_text(encoding="utf-8"))
+    llm_metadata = json.loads(llm_metadata_path.read_text(encoding="utf-8"))
     for path, metadata in (
         (v2_raw, raw_metadata),
         (base, base_metadata),
-        (qwen, qwen_metadata),
+        (llm, llm_metadata),
     ):
         if metadata.get("output", {}).get("sha256") != _sha256(path):
             raise ValueError(f"Manifest hash disagrees with sidecar: {path}")
-    if base_metadata.get("source_manifest_sha256") != raw_metadata.get("sources", {}).get(
-        "v1_raw_manifest", {}
-    ).get("sha256"):
+    if base_metadata.get("source_manifest_sha256") != raw_metadata.get("sources", {}).get("v1_raw_manifest", {}).get(
+        "sha256"
+    ):
         raise ValueError("V1 cached manifest does not belong to the V1 raw source of V2")
-    if qwen_metadata.get("paper_parity_gate") != raw_metadata.get("paper_parity_gate"):
-        raise ValueError("Qwen cached manifest lost the V2 paper-parity gate")
+    if llm_metadata.get("paper_parity_gate") != raw_metadata.get("paper_parity_gate"):
+        raise ValueError("LLM cached manifest lost the V2 paper-parity gate")
 
     base_cache = destination_root / args.base_cache_dir
-    qwen_cache = destination_root / args.qwen_cache_dir
+    llm_cache_dir = getattr(args, "llm_cache_dir", None) or getattr(args, "qwen_cache_dir", None)
+    llm_kinds = set()
+    with llm.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                llm_kinds.add(json.loads(line).get("sample_kind"))
+    if not llm_kinds or not llm_kinds <= {"timeline_multi_qwen", "timeline_multi_llm"}:
+        raise ValueError(f"Unexpected LLM cached sample kinds: {sorted(llm_kinds)}")
+    llm_lane = "v2_qwen_multi" if llm_kinds == {"timeline_multi_qwen"} else "v2_llm_multi"
+    if llm_cache_dir is None:
+        llm_cache_dir = "text-cache-v2-qwen" if llm_lane == "v2_qwen_multi" else "text-cache-v2-llm"
+    llm_cache = destination_root / llm_cache_dir
     seen_ids = set()
     validated_files = set()
     counts = Counter()
@@ -176,14 +188,12 @@ def compose(args) -> dict:
         validate_file(embedding)
         validate_file(embedding_metadata)
         row["text_embedding"] = _portable_path(embedding, destination_root)
-        row["text_embedding_metadata"] = _portable_path(
-            embedding_metadata, destination_root
-        )
+        row["text_embedding_metadata"] = _portable_path(embedding_metadata, destination_root)
 
     def write_rows(output) -> int:
         for source, lane, cache_root in (
             (base, "v1_base", base_cache),
-            (qwen, "v2_qwen_multi", qwen_cache),
+            (llm, llm_lane, llm_cache),
         ):
             with source.open(encoding="utf-8") as handle:
                 for line_number, line in enumerate(handle, start=1):
@@ -196,8 +206,12 @@ def compose(args) -> dict:
                         continue
                     if lane == "v1_base" and kind not in {"full", "event"}:
                         raise ValueError(f"Unexpected V1 row kind at {source}:{line_number}: {kind}")
+                    if lane != "v1_base" and kind not in {"timeline_multi_qwen", "timeline_multi_llm"}:
+                        raise ValueError(f"Unexpected LLM row kind at {source}:{line_number}: {kind}")
                     if lane == "v2_qwen_multi" and kind != "timeline_multi_qwen":
-                        raise ValueError(f"Unexpected Qwen row kind at {source}:{line_number}: {kind}")
+                        raise ValueError(f"Qwen compatibility lane contains {kind} at {source}:{line_number}")
+                    if lane == "v2_llm_multi" and kind != "timeline_multi_llm":
+                        raise ValueError(f"Generic LLM lane contains {kind} at {source}:{line_number}")
                     sample_id = str(row["id"])
                     if sample_id in seen_ids:
                         raise ValueError(f"Cached V2 repeats id: {sample_id}")
@@ -220,7 +234,7 @@ def compose(args) -> dict:
         "path_mode": "relative",
         "encoder_identities": {
             "v1_base": base_metadata.get("encoder"),
-            "v2_qwen_multi": qwen_metadata.get("encoder"),
+            llm_lane: llm_metadata.get("encoder"),
         },
         "paper_data_recipe": raw_metadata.get("paper_data_recipe"),
         "paper_parity_gate": raw_metadata.get("paper_parity_gate"),
@@ -229,7 +243,7 @@ def compose(args) -> dict:
         "sources": {
             "v2_raw": {"path": v2_raw.name, "sha256": _sha256(v2_raw)},
             "v1_cached": {"path": str(base), "sha256": _sha256(base)},
-            "qwen_cached": {"path": qwen.name, "sha256": _sha256(qwen)},
+            "llm_cached": {"path": llm.name, "sha256": _sha256(llm)},
         },
         "counts": dict(sorted(counts.items())),
         "output": {"path": destination.name, "sha256": digest, "entries": count},
@@ -248,9 +262,12 @@ def build_parser() -> argparse.ArgumentParser:
     compose_parser = subparsers.add_parser("compose")
     compose_parser.add_argument("--v2-raw-manifest", required=True)
     compose_parser.add_argument("--v1-cached-manifest", required=True)
-    compose_parser.add_argument("--qwen-cached-manifest", required=True)
+    cached_group = compose_parser.add_mutually_exclusive_group(required=True)
+    cached_group.add_argument("--llm-cached-manifest")
+    cached_group.add_argument("--qwen-cached-manifest")
     compose_parser.add_argument("--base-cache-dir", default="text-cache-v1")
-    compose_parser.add_argument("--qwen-cache-dir", default="text-cache-v2-qwen")
+    compose_parser.add_argument("--llm-cache-dir")
+    compose_parser.add_argument("--qwen-cache-dir")
     compose_parser.add_argument("--output", required=True)
     compose_parser.set_defaults(handler=compose)
     return parser

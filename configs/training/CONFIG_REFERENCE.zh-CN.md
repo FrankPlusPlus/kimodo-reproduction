@@ -497,7 +497,7 @@ Phase 2 中每个样本有 25% 概率同时抽两个不同约束 pattern。结�
 
 ```yaml
 loss:
-  direct_feature_domain: physical
+  direct_feature_domain: normalized
   smooth_l1_beta: 1.0
   root_position: 10.0
   root_heading: 2.0
@@ -518,13 +518,13 @@ loss:
 所有项只在 `valid_frames=true` 的帧上计算，padding 不参与；先按每帧特征分量平均，再按全局有效帧数
 归一化，使变长 batch、梯度累积和 DDP 的数学权重一致。
 
-### `direct_feature_domain: physical`
+### `direct_feature_domain: normalized`
 
 - `physical`：先反归一化，再在米、速度、6D rotation、contact 等原始数值域计算六个直接 loss。
 - `normalized`：直接在 z-score 后的模型空间计算六项。
 
-FK loss 无论该字段取什么都在反归一化后的物理空间计算。论文没有披露六项 direct loss 的确切域，
-public 配置选择 physical 并明确记录。
+FK loss 无论该字段取什么都在反归一化后的物理空间计算。论文没有披露六项 direct loss 的确切域；
+本项目消融后统一选择 normalized 作为 V1/V2 新训练默认，physical 只用于显式的历史对照。
 
 ### `smooth_l1_beta: 1.0`
 
@@ -751,6 +751,12 @@ full-state checkpoint 路径。恢复内容包括：
 - false 风格值：关闭。
 
 CUDA 使用 NCCL，CPU 使用 Gloo。
+
+### `expected_world_size: null` / `expected_global_batch: null`
+
+可选部署门禁，和 `paper_method_strict` 无关。公司 16-H200 profile 分别设为 16 和 2048；实际 torchrun
+规模或 `world_size × per-rank batch × accumulation` 不匹配时，trainer 在分配模型前立即拒绝启动。
+本地短训 profile 保持 null，不受该门禁影响。
 
 ### `enforce_paper_scale: true`
 

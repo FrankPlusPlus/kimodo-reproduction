@@ -1,6 +1,13 @@
 # Benchmark-oriented V2 constraint overlay. Apply this on top of
-# configs/training/kimodo_soma_seed_public.yaml. The 0.25 lane probability and
-# sparse-count fit are explicit engineering choices, not disclosed paper values.
+# configs/training/kimodo_soma_seed_public.yaml. The 0.25 value is conditional
+# on a sample being constrained: with the base recipe's 0.10 no-constraint rate,
+# the resulting benchmark lane is 0.90 * 0.25 = 22.5% of all Phase-2 samples.
+# That 22.5% replaces paper-single samples (65% -> 42.5%); it does not change
+# the base recipe's 10% no-constraint or 25% paper-two exposure.
+# Sampling is not duration-filtered; inspect the emitted <3s/3-10s/>10s lane
+# metrics before claiming alignment with the benchmark's 3-10 second cases.
+# This lane probability and sparse-count fit are explicit engineering choices,
+# not disclosed paper values.
 curriculum:
   benchmark_coverage_probability: 0.25
   benchmark_sparse_keyframes_max: 9

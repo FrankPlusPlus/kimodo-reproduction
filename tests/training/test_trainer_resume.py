@@ -8,6 +8,7 @@ import pytest
 import torch
 
 from kimodo.training.config import TrainingConfig
+from kimodo.training.constraints import ConstraintCurriculumSampler
 from kimodo.training.engine import KimodoTrainer
 
 
@@ -65,6 +66,96 @@ def test_two_phase_training_checkpoint_exact_resume(training_fixture, tmp_path):
     assert all(torch.equal(expected[key], actual[key]) for key in expected)
     assert (resumed_dir / "exports" / "step-000000002" / "config.yaml").is_file()
     assert (resumed_dir / "exports" / "step-000000002" / "model.pt").is_file()
+
+
+def test_phase2_benchmark_lane_trains_and_logs_static_pattern_schema(
+    training_fixture, tmp_path
+):
+    project_root = Path(__file__).resolve().parents[2]
+    output = tmp_path / "benchmark-lane"
+    config = _config(training_fixture, output, 1, accumulation=2)
+    config.curriculum.phase1_steps = 0
+    config.curriculum.phase2_steps = 1
+    config.curriculum.no_constraint_probability = 0.0
+    config.curriculum.mix_two_probability = 0.0
+    config.curriculum.benchmark_coverage_probability = 1.0
+    config.validate()
+
+    KimodoTrainer(config, project_root).train()
+
+    records = [
+        json.loads(line)
+        for line in (output / "train.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(records) == 1
+    record = records[0]
+    assert record["phase"] == "phase2"
+    assert record["benchmark_lane_fraction"] == 1.0
+    assert record["paper_two_pattern_fraction"] == 0.0
+    assert record["two_pattern_fraction"] == 0.0
+    assert record["system/world_size"] == 1
+    assert record["system/per_rank_batch"] == 2
+    assert record["system/gradient_accumulation_steps"] == 2
+    assert record["system/effective_global_batch"] == 4
+    assert record["system/optimizer_steps_per_second"] > 0
+    assert record["system/samples_per_second"] > 0
+    assert record["optimizer/learning_rate"] == config.optimizer.learning_rate
+    assert record["optimizer/gradient_norm_before_clip"] >= 0
+    assert 0 <= record["optimizer/gradient_clip_fraction"] <= 1
+    assert record["optimizer/skipped_step_fraction"] == 0
+    assert record["ema/num_updates"] == 1
+    for name in (
+        "root_position",
+        "root_heading",
+        "joint_position",
+        "joint_velocity",
+        "joint_rotation",
+        "foot_contact",
+        "forward_kinematics",
+    ):
+        assert record[f"loss_weighted/{name}"] == pytest.approx(
+            record[f"loss/{name}"] * getattr(config.loss, name)
+        )
+    assert (
+        record["exact_two_component_fraction"]
+        == record["benchmark_two_component_fraction"]
+    )
+    assert (
+        record["benchmark_atomic_within_benchmark"]
+        + record["benchmark_two_component_within_benchmark"]
+        + record["benchmark_three_component_within_benchmark"]
+        == 1.0
+    )
+    assert (
+        record["benchmark_with_text_within_benchmark"]
+        + record["benchmark_without_text_within_benchmark"]
+        == 1.0
+    )
+    assert (
+        record["benchmark_duration_lt_3s_within_benchmark"]
+        + record["benchmark_duration_3_to_10s_within_benchmark"]
+        + record["benchmark_duration_gt_10s_within_benchmark"]
+        == 1.0
+    )
+    benchmark_keys = [
+        f"conditioning/{name}_per_sample"
+        for name in ConstraintCurriculumSampler.BENCHMARK_PATTERNS
+    ]
+    assert all(key in record for key in benchmark_keys)
+    assert sum(record[key] for key in benchmark_keys) == 1.0
+
+
+def test_nonfinal_milestone_exports_ema_bundle(training_fixture, tmp_path):
+    project_root = Path(__file__).resolve().parents[2]
+    output = tmp_path / "milestone-export"
+    config = _config(training_fixture, output, 2)
+    config.runtime.milestone_every = 1
+
+    KimodoTrainer(config, project_root).train()
+
+    assert (output / "exports/step-000000001/model.pt").is_file()
+    assert (output / "exports/step-000000001/config.yaml").is_file()
+    assert (output / "exports/step-000000002/model.pt").is_file()
 
 
 def test_epoch_boundary_resume_with_accumulation(training_fixture, tmp_path):

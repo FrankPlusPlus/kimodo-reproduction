@@ -5,6 +5,12 @@ HOST_UID="${HOST_UID:-}"
 HOST_GID="${HOST_GID:-}"
 HOST_USER="${HOST_USER:-user}"
 
+# Kubernetes commonly sets runAsUser. A non-root process cannot and need not
+# edit /etc/passwd; preserve the scheduler identity and execute directly.
+if [[ "$(id -u)" != 0 ]]; then
+  exec "$@"
+fi
+
 if [[ -z "${HOST_UID}" || -z "${HOST_GID}" ]]; then
   if [[ -d /workspace ]]; then
     HOST_UID="$(stat -c %u /workspace)"

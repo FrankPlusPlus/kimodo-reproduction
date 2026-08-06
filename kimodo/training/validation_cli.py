@@ -176,7 +176,7 @@ def evaluate(args) -> dict:
             for name, value in losses.frame_sums.items():
                 sums[f"all/{name}"] += float(value.float().item())
             denominators["all"] += denominator
-            for pattern in constraint_sampler.PATTERNS:
+            for pattern in constraint_sampler.ALL_PATTERNS:
                 selected = [
                     index
                     for index, names in enumerate(conditioning.pattern_names)

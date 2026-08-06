@@ -165,6 +165,7 @@ def collect_provenance(config, project_root: str | Path, context=None) -> dict:
         "cuda_available": torch.cuda.is_available(),
         "cuda_version": torch.version.cuda,
         "git_commit": _git_commit(Path(project_root)),
+        "image_git_commit": os.environ.get("KIMODO_IMAGE_GIT_COMMIT"),
         "hardware": runtime_hardware_facts(config, context),
         "manifest": manifest_record,
         "stats": stats_fingerprints(stats_path) if stats_path else {},

@@ -6,6 +6,7 @@ venv
 __pycache__
 **/__pycache__
 *.py[cod]
+*.so
 .pytest_cache
 .ruff_cache
 .mypy_cache
@@ -28,6 +29,7 @@ configs/paths/*.yaml
 *.pt
 *.pth
 *.safetensors
+.DS_Store
 
 # Development-only material not referenced by the Dockerfile.
 tests
