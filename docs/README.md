@@ -1,56 +1,19 @@
-# Documentation
+# 当前文档
 
-## Training reconstruction
+本目录只维护当前训练复现、V2 数据和公司部署合同。NVIDIA 的推理、Demo、API 和公开 benchmark
+基础说明直接以[官方在线文档](https://research.nvidia.com/labs/sil/projects/kimodo/docs/index.html)为准，
+不再在本仓库复制一套 Sphinx 源文件。
 
-The training implementation is a clean-room reconstruction layered on the released
-Kimodo inference code. Read these documents in this order:
+建议按以下顺序阅读：
 
-1. [`data_pipeline_flow.md`](data_pipeline_flow.md): visual, artifact-by-artifact path
-   from BONES-SEED downloads and BVH conversion through LLM2Vec and the final batch.
-2. [`two_stage_training_flow.md`](two_stage_training_flow.md): tensor-level visual
-   walkthrough of the root/body Transformers, diffusion objective, losses and updates,
-   including a standalone 3600 px model-architecture SVG with every dimension change.
-3. [`portable_training_setup.md`](portable_training_setup.md): one-command fresh
-   setup, verified legacy-cache adoption, relocated-bundle binding, and training.
-4. [`reproduction_end_to_end_guide.md`](reproduction_end_to_end_guide.md): complete
-   resource, data, model, training, artifact and paper-alignment walkthrough.
-5. [`training_reproduction_runbook.md`](training_reproduction_runbook.md): operational
-   commands for a fresh server and two-H200 training.
-6. [`paper_training_parity_audit.md`](paper_training_parity_audit.md): clause-by-clause
-   paper gate and known unavailable inputs.
-7. [`training_reproduction_spec.md`](training_reproduction_spec.md): detailed
-   `PAPER`/`CODE`/`RECONSTRUCTION` decisions.
-8. [`h200_training_benchmark.md`](h200_training_benchmark.md): measured performance,
-   memory and effective-batch analysis.
-9. [`dancing_augmentation.md`](dancing_augmentation.md): zero-copy small dancing
-   oversampling without adding another trainer data path.
+1. [`benchmark_v2_data_recipe.zh-CN.md`](benchmark_v2_data_recipe.zh-CN.md)：V2 数据组成、MiMo
+   增强、质量门禁、bundle 构建和发布合同。
+2. [`training_phase2_dataflow.zh-CN.md`](training_phase2_dataflow.zh-CN.md)：从 bundle 读取、约束采样、
+   Transformer 输入直到 Phase 1/2 loss 的完整张量流。
+3. [`multinode_k8s_training.zh-CN.md`](multinode_k8s_training.zh-CN.md)：PVC、镜像、两机 16×H200、
+   NCCL/RDMA 和启动脚本。
+4. [`training_benchmark_monitor.zh-CN.md`](training_benchmark_monitor.zh-CN.md)：训练旁路评测和公开
+   benchmark 指标监控。
+5. [`code_surface.zh-CN.md`](code_surface.zh-CN.md)：公共入口、核心模块和内部审计工具边界。
 
-## Local build
-
-Install doc dependencies:
-
-```bash
-pip install -r docs/requirements.txt
-```
-
-Build HTML:
-
-```bash
-cd docs
-make html
-```
-
-Open the output at `docs/build/html/index.html`.
-
-## API reference generation
-
-Generate API stubs from the Python packages:
-
-```bash
-cd docs
-make apidoc
-make html
-```
-
-Note: generated stubs are written to `docs/source/api_reference/_generated` and are not
-included in the default navigation. Add them to a toctree if you want to expose them.
+历史验收快照、V1 设计草案、重复流程图以及上游网站生成源已经删除，避免旧结论与当前 V2 链路并存。

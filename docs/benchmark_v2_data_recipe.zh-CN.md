@@ -57,6 +57,11 @@ V2 manifest、inventory、stats 由 schema-v1 paths 文件提供。公司镜像�
 
 ## 构建顺序（MiMo 2.5 Pro）
 
+仓库统一入口是 `scripts/v2_pipeline.sh`。它收敛了用户需要记忆的命令面，但不会删除或绕过内部的
+manifest、cache、lineage、quality、inventory 和 publish CLI；这些工具的输出哈希属于成品审计链。
+先执行 `scripts/v2_pipeline.sh plan` 可以看到完整阶段。`REVIEW-GATE` 是有意保留的人工门禁，不能把
+LLM 生成成功误当成语义质量合格。
+
 密钥只能通过环境变量或 Kubernetes Secret 注入，不能写进仓库、镜像、命令行参数或 bundle。下面用
 交互式隐藏输入；实际 CI/Kubernetes 应改为 Secret：
 
@@ -72,10 +77,18 @@ provider-neutral schema；新目录建议命名为 `llm.requests`：
 
 ```bash
 kimodo_prepare_timeline_v2 \
-  --source-manifest /pvc/v1/train.raw.jsonl \
+  --source-manifest /mnt/kimodo/data/adopted-legacy-soma30-v1/train.raw.jsonl \
   --train-split artifacts/benchmark-metadata/splits/train_split_paths.txt \
-  --output-plan /pvc/v2/provenance/timeline.selected.v2.2.jsonl \
-  --output-requests /pvc/v2/provenance/llm.requests.v2.2.jsonl
+  --output-plan /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/timeline.selected.v2.2.jsonl \
+  --output-requests /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/llm.requests.v2.2.jsonl
+```
+
+等价的统一入口为：
+
+```bash
+KIMODO_STORAGE_ROOT=/mnt/kimodo \
+KIMODO_LLM_REQUESTS=/mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/llm.requests.v2.2.jsonl \
+scripts/v2_pipeline.sh prepare
 ```
 
 先做 64 条分层 pilot，审阅输出与账单后再启动全量。pilot 和全量使用不同输出，不能把 pilot 文件直接
@@ -83,18 +96,18 @@ kimodo_prepare_timeline_v2 \
 
 ```bash
 kimodo_generate_llm_v2 \
-  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
+  --requests /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/llm.requests.v2.2.jsonl \
   --model mimo-v2.5-pro --judge-model mimo-v2.5-pro \
   --batch-size 16 --concurrency 8 --requests-per-minute 90 \
   --max-requests 64 \
-  --output /pvc/v2/provenance/mimo.responses.pilot.jsonl
+  --output /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.responses.pilot.jsonl
 
 kimodo_audit_llm_v2 \
-  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
-  --responses /pvc/v2/provenance/mimo.responses.pilot.jsonl \
+  --requests /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/llm.requests.v2.2.jsonl \
+  --responses /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.responses.pilot.jsonl \
   --allow-partial --report-only \
-  --report /pvc/v2/provenance/mimo.quality.pilot.json \
-  --review-sample /pvc/v2/provenance/mimo.review.pilot.jsonl
+  --report /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.quality.pilot.json \
+  --review-sample /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.review.pilot.jsonl
 ```
 
 pilot 通过人工查看后启动全量。脚本默认关闭 MiMo thinking、要求 JSON object、限速、指数退避，输出
@@ -102,24 +115,24 @@ pilot 通过人工查看后启动全量。脚本默认关闭 MiMo thinking、要
 
 ```bash
 kimodo_generate_llm_v2 \
-  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
+  --requests /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/llm.requests.v2.2.jsonl \
   --model mimo-v2.5-pro --judge-model mimo-v2.5-pro \
   --batch-size 16 --concurrency 8 --requests-per-minute 90 \
-  --output /pvc/v2/provenance/mimo.responses.v2.2.jsonl
+  --output /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.responses.v2.2.jsonl
 
 kimodo_audit_llm_v2 \
-  --requests /pvc/v2/provenance/llm.requests.v2.2.jsonl \
-  --responses /pvc/v2/provenance/mimo.responses.v2.2.jsonl \
-  --report /pvc/v2/provenance/mimo.quality.v2.2.json \
-  --review-sample /pvc/v2/provenance/mimo.review.v2.2.jsonl
+  --requests /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/llm.requests.v2.2.jsonl \
+  --responses /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.responses.v2.2.jsonl \
+  --report /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.quality.v2.2.json \
+  --review-sample /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.review.v2.2.jsonl
 
 kimodo_build_manifest_v2 \
-  --source-manifest /pvc/v1/train.raw.jsonl \
-  --plan /pvc/v2/provenance/timeline.selected.v2.2.jsonl \
-  --responses /pvc/v2/provenance/mimo.responses.v2.2.jsonl \
+  --source-manifest /mnt/kimodo/data/adopted-legacy-soma30-v1/train.raw.jsonl \
+  --plan /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/timeline.selected.v2.2.jsonl \
+  --responses /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/provenance/mimo.responses.v2.2.jsonl \
   --train-split artifacts/benchmark-metadata/splits/train_split_paths.txt \
   --expected-model mimo-v2.5-pro --expected-revision provider-managed \
-  --output /pvc/v2/train.raw.jsonl
+  --output /mnt/kimodo/data/benchmark-v2-soma30-v2.2.building/train.raw.jsonl
 ```
 
 本地 Qwen3-32B 的 `kimodo_generate_qwen_v2` 仍作为离线 fallback 保留，但 MiMo 产物会诚实标记为

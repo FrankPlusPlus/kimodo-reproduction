@@ -20,11 +20,10 @@ from kimodo.training.v2_bundle_publish_cli import (
 from kimodo.training.v2_lineage_cli import validate_lineage
 from kimodo.training.v2_resource_state_cli import verify_resource_state
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = PROJECT_ROOT / "scripts/build_v2_bundle.sh"
-DELIVERY_WATCHER = PROJECT_ROOT / "scripts/watch_v2_delivery.sh"
-PACKAGE = PROJECT_ROOT / "scripts/package_v2_bundle.sh"
+SCRIPT = PROJECT_ROOT / "scripts/internal/build_v2_bundle.sh"
+DELIVERY_WATCHER = PROJECT_ROOT / "scripts/internal/watch_v2_delivery.sh"
+PACKAGE = PROJECT_ROOT / "scripts/internal/package_v2_bundle.sh"
 
 
 def test_delivery_package_has_exclusive_atomic_publication():
@@ -109,7 +108,7 @@ def test_lineage_rejects_cached_manifest_from_different_raw(tmp_path):
         sidecar.write_text(json.dumps(metadata), encoding="utf-8")
         return path, digest, hashlib.sha256(sidecar.read_bytes()).hexdigest()
 
-    raw, raw_sha, raw_meta_sha = pair(
+    _raw, raw_sha, raw_meta_sha = pair(
         "train.raw.jsonl",
         '{}\n',
         {

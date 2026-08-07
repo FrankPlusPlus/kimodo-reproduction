@@ -80,5 +80,5 @@ scripts/resources/resources.sh --paths resources/paths.local.yaml all
 To adopt a complete legacy cache without running LLM2Vec, or to bind a copied
 train-ready prepared root on a new server, use `bootstrap_training.sh
 --legacy-root ...` or `bootstrap_training.sh --prepared-root ...`. Full commands,
-storage behavior, and training/resume examples are in
-[`docs/portable_training_setup.md`](../docs/portable_training_setup.md).
+storage behavior, V2 construction, and training deployment are documented in
+[`docs/README.md`](../docs/README.md).

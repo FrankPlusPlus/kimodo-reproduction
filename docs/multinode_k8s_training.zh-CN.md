@@ -42,12 +42,25 @@ RDMA、ring all-reduce 或梯度发送。
 
 镜像应包含代码、Python/CUDA/NCCL 运行时、依赖、训练 YAML 和启动脚本；不要包含数百 GB 数据、
 Hugging Face token、运行日志或 checkpoint。当前 Dockerfile 已复制 `configs/`、`resources/`、
-`scripts/`。镜像还包含 RDMA userspace 与诊断工具，默认命令为公司 16-rank 启动器
-`scripts/train_company_16h200.sh`；本地双卡仍显式调用 `scripts/train_two_gpu_seed.sh`。
+`scripts/`。镜像还包含 RDMA userspace 与诊断工具。镜像默认进入硬件无关的 `idle` 模式，因此普通
+CPU/GPU 节点、数据检查 Pod 和调试 Pod 不会因为缺少 16 张 H200、RDMA 或生产 PVC 而立即退出。
+正式作业必须由 Kubernetes 显式覆盖命令，或设置受支持的 `KIMODO_CONTAINER_MODE`：
+
+```text
+idle           默认保活，不训练
+train-company  两机/多 Pod、总计 16 rank 的正式训练
+train-local    实验室两卡训练
+prepare        PVC 数据准备或绑定
+preflight      只读取并验证一个真实 batch
+eval-watch     监控训练导出并运行 benchmark
+eval-official  生成固定官方 baseline
+```
+
+显式 Pod `command` 的优先级最高；例如直接调用 `scripts/train_company_16h200.sh` 时无需设置 mode。
 
 ```bash
-docker build -t REGISTRY/kimodo-train:GIT_SHA .
-docker push REGISTRY/kimodo-train:GIT_SHA
+docker build -t REGISTRY/yezitao-kimodo-train:GIT_SHA .
+docker push REGISTRY/yezitao-kimodo-train:GIT_SHA
 ```
 
 镜像 tag 最好使用 commit SHA 或不可变 digest。基础镜像中的 CUDA、PyTorch 和 NCCL 必须与 H200
@@ -86,11 +99,18 @@ LLM2Vec。
 /workspace/scripts/train_company_16h200.sh
 ```
 
+如果公司平台不允许覆盖容器命令、只允许注入环境变量，则设置：
+
+```text
+KIMODO_CONTAINER_MODE=train-company
+```
+
 默认 `2×8` 切分的公共环境：
 
 ```text
 KIMODO_NNODES=2
 KIMODO_NPROC_PER_NODE=8
+KIMODO_STORAGE_ROOT=/mnt/kimodo
 KIMODO_PATHS_CONFIG=/mnt/kimodo/config/repro.paths.yaml
 KIMODO_RUN_DIR=/mnt/kimodo/runs/v2-1m-production
 MASTER_ADDR=<node-rank-0 的稳定 Pod DNS 或 IP>
@@ -107,7 +127,8 @@ Pod 0..N-1: KIMODO_NODE_RANK=0..N-1
 `KIMODO_NPROC_PER_NODE=4` 和四个唯一 node rank。这里的 `KIMODO_NNODES` 是 launcher/Pod 数，
 不是物理机器数。production YAML 还会在 trainer 内再次强制检查 `world_size=16` 和
 `effective_global_batch=2048`，因此绕过 launcher 也不会静默跑成错误规模。所有 Pod 把同一个共享卷
-挂到相同的 `/mnt/kimodo`。如果平台的 PyTorch
+挂到所有 Pod 中相同的 `/mnt/kimodo`。如果公司的实际挂载点不同，只设置
+`KIMODO_STORAGE_ROOT` 和 paths/run 变量，不要把个人目录写入镜像。如果平台的 PyTorch
 runtime 已经替你执行 `torchrun` 并直接注入每个训练进程的 `RANK/WORLD_SIZE/LOCAL_RANK`，不要再次
 套 `train_distributed.sh`；此时容器命令直接使用：
 

@@ -19,7 +19,7 @@ constraints without text；约束样本至少覆盖 root、end-effector、full-b
 `Kimodo-SOMA-SEED-v1.1`：
 
 ```bash
-KIMODO_BENCHMARK_ROOT=/mnt/kimodo/benchmark/proxy \
+KIMODO_BENCHMARK_ROOT=/mnt/kimodo/eval/benchmark/proxy \
 KIMODO_OFFICIAL_EVAL_ROOT=/mnt/kimodo/eval/official-seed-v1.1 \
 /workspace/scripts/eval_official_baseline.sh
 ```
@@ -33,7 +33,7 @@ postprocess。官方模型只校准评测资产和目标线，不会进入或污
 
 ```bash
 KIMODO_RUN_DIR=/mnt/kimodo/runs/v2-1m-production \
-KIMODO_BENCHMARK_ROOT=/mnt/kimodo/benchmark/proxy \
+KIMODO_BENCHMARK_ROOT=/mnt/kimodo/eval/benchmark/proxy \
 KIMODO_EVAL_ROOT=/mnt/kimodo/eval/v2-1m \
 KIMODO_OFFICIAL_BASELINE_SUMMARY=/mnt/kimodo/eval/official-seed-v1.1/summary_rows.json \
 /workspace/scripts/eval_company_watcher.sh

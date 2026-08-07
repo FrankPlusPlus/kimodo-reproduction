@@ -3,7 +3,8 @@ set -euo pipefail
 
 # Run this in a separate one-GPU eval Pod. It reads immutable EMA exports from
 # the training PV and never imports or mutates the live DDP trainer.
-run_dir="${KIMODO_RUN_DIR:-/mnt/kimodo/runs/v2-1m-production}"
+storage_root="${KIMODO_STORAGE_ROOT:-/mnt/kimodo}"
+run_dir="${KIMODO_RUN_DIR:-${storage_root}/runs/v2-1m-production}"
 benchmark_root="${KIMODO_BENCHMARK_ROOT:?set KIMODO_BENCHMARK_ROOT to the fixed public proxy}"
 output_root="${KIMODO_EVAL_ROOT:?set KIMODO_EVAL_ROOT to a separate eval volume}"
 

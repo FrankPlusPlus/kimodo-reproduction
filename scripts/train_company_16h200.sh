@@ -8,11 +8,14 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
+storage_root="${KIMODO_STORAGE_ROOT:-/mnt/kimodo}"
 
 default_training_config="${project_root}/configs/training/kimodo_soma_seed_v2_1m_16h200.yaml"
 export KIMODO_TRAINING_CONFIG="${KIMODO_TRAINING_CONFIG:-${default_training_config}}"
 export KIMODO_TRAINING_OVERLAY=""
-export KIMODO_PATHS_CONFIG="${KIMODO_PATHS_CONFIG:-/mnt/kimodo/config/repro.paths.yaml}"
+export KIMODO_DATA_ROOT="${KIMODO_DATA_ROOT:-${storage_root}/data/benchmark-v2-soma30-v2.2}"
+export KIMODO_RUN_ROOT="${KIMODO_RUN_ROOT:-${storage_root}/runs}"
+export KIMODO_PATHS_CONFIG="${KIMODO_PATHS_CONFIG:-${storage_root}/config/repro.paths.yaml}"
 export KIMODO_NNODES="${KIMODO_NNODES:-${NNODES:-2}}"
 export KIMODO_NPROC_PER_NODE="${KIMODO_NPROC_PER_NODE:-${NPROC_PER_NODE:-8}}"
 export KIMODO_EXPECTED_GPU_PATTERN="${KIMODO_EXPECTED_GPU_PATTERN:-H200}"
@@ -32,7 +35,7 @@ if [[ "${KIMODO_TRAINING_CONFIG}" != "${default_training_config}" && -z "${KIMOD
   echo "KIMODO_RUN_DIR is required when selecting a non-default V1/V2 training config" >&2
   exit 2
 fi
-run_dir="${KIMODO_RUN_DIR:-/mnt/kimodo/runs/v2-1m-production}"
+run_dir="${KIMODO_RUN_DIR:-${KIMODO_RUN_ROOT}/v2-1m-production}"
 resume_args=()
 data_args=()
 if [[ -n "${KIMODO_DATA_WORKERS:-}" ]]; then

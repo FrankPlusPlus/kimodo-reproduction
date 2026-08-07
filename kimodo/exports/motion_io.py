@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import os
 import warnings
-from typing import Any, Dict, Tuple
+from typing import Any
 
 import numpy as np
 import torch
@@ -48,11 +48,11 @@ def _quaternion_slerp(q0: torch.Tensor, q1: torch.Tensor, t: torch.Tensor) -> to
 
 
 def resample_motion_dict_to_kimodo_fps(
-    motion_dict: Dict[str, torch.Tensor],
+    motion_dict: dict[str, torch.Tensor],
     skeleton: SkeletonBase,
     source_fps: float,
     target_fps: float = KIMODO_CONVERT_TARGET_FPS,
-) -> Tuple[Dict[str, torch.Tensor], bool]:
+) -> tuple[dict[str, torch.Tensor], bool]:
     """Resample a Kimodo motion dict to ``target_fps``.
 
     Samples are placed on the target-rate time grid over the same half-open
@@ -158,10 +158,10 @@ def complete_motion_dict(
     root_positions: torch.Tensor,
     skeleton: SkeletonBase,
     fps: float,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """Build the Kimodo motion output dict from local rotations and root positions.
 
-    Matches keys written by CLI generation (see docs/source/user_guide/output_formats.md).
+    Matches keys written by the public Kimodo CLI generation contract.
 
     Args:
         local_rot_mats: (T, J, 3, 3) or (1, T, J, 3, 3) local rotation matrices.
@@ -209,9 +209,9 @@ def complete_motion_dict(
     }
 
 
-def motion_dict_to_numpy(d: Dict[str, Any]) -> Dict[str, np.ndarray]:
+def motion_dict_to_numpy(d: dict[str, Any]) -> dict[str, np.ndarray]:
     """Convert motion dict values to numpy arrays for ``np.savez``."""
-    out: Dict[str, np.ndarray] = {}
+    out: dict[str, np.ndarray] = {}
     for k, v in d.items():
         if hasattr(v, "detach"):
             out[k] = to_numpy(v)
@@ -222,12 +222,12 @@ def motion_dict_to_numpy(d: Dict[str, Any]) -> Dict[str, np.ndarray]:
     return out
 
 
-def save_kimodo_npz(path: str, motion_dict: Dict[str, Any]) -> None:
+def save_kimodo_npz(path: str, motion_dict: dict[str, Any]) -> None:
     """Save a Kimodo-compatible motion dict to ``.npz`` (numpy arrays)."""
     np.savez(path, **motion_dict_to_numpy(motion_dict))
 
 
-def load_kimodo_npz(path: str) -> Dict[str, np.ndarray]:
+def load_kimodo_npz(path: str) -> dict[str, np.ndarray]:
     """Load arrays from a Kimodo ``.npz`` file."""
     with np.load(path, allow_pickle=False) as data:
         return {k: np.asarray(data[k]) for k in data.files}
@@ -238,7 +238,7 @@ def load_g1_csv(
     source_fps: float = KIMODO_CONVERT_TARGET_FPS,
     *,
     mujoco_rest_zero: bool = False,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """Load a G1 MuJoCo ``qpos`` CSV (``(T, 36)``) into a Kimodo motion dict.
 
     Args:
@@ -261,7 +261,7 @@ def load_amass_npz(
     source_fps: float | None = None,
     *,
     z_up: bool = True,
-) -> Dict[str, torch.Tensor]:
+) -> dict[str, torch.Tensor]:
     """Load an AMASS-style SMPL-X ``.npz`` into a Kimodo motion dict (22 joints).
 
     Args:
@@ -281,7 +281,7 @@ def load_kimodo_npz_as_torch(
     source_fps: float = KIMODO_CONVERT_TARGET_FPS,
     *,
     ensure_complete: bool = True,
-) -> tuple[Dict[str, torch.Tensor], int]:
+) -> tuple[dict[str, torch.Tensor], int]:
     """Load a Kimodo NPZ and return all arrays as torch tensors on the skeleton device.
 
     Args:
@@ -310,7 +310,7 @@ def load_kimodo_npz_as_torch(
     if not ensure_complete:
         if "local_rot_mats" not in raw:
             raise ValueError("Kimodo NPZ must contain 'local_rot_mats' (and typically 'root_positions').")
-        out: Dict[str, torch.Tensor] = {}
+        out: dict[str, torch.Tensor] = {}
         for k, v in raw.items():
             out[k] = torch.from_numpy(np.asarray(v)).to(device=device, dtype=dtype)
         return out, j
@@ -329,7 +329,7 @@ def load_kimodo_npz_as_torch(
 
 
 def save_kimodo_npz_at_target_fps(
-    motion: Dict[str, torch.Tensor],
+    motion: dict[str, torch.Tensor],
     skeleton: SkeletonBase,
     source_fps: float,
     output_path: str,
@@ -344,7 +344,7 @@ def save_kimodo_npz_at_target_fps(
     save_kimodo_npz(output_path, motion)
 
 
-def kimodo_npz_to_bytes(motion_dict: Dict[str, Any]) -> bytes:
+def kimodo_npz_to_bytes(motion_dict: dict[str, Any]) -> bytes:
     """Serialize a Kimodo motion dict to in-memory NPZ bytes."""
     import io
 
@@ -353,7 +353,7 @@ def kimodo_npz_to_bytes(motion_dict: Dict[str, Any]) -> bytes:
     return buf.getvalue()
 
 
-def g1_csv_to_bytes(motion_dict: Dict[str, Any], skeleton: SkeletonBase, device: Any) -> bytes:
+def g1_csv_to_bytes(motion_dict: dict[str, Any], skeleton: SkeletonBase, device: Any) -> bytes:
     """Convert a motion dict to G1 MuJoCo CSV bytes via :class:`MujocoQposConverter`."""
     import io
 
@@ -370,7 +370,7 @@ def g1_csv_to_bytes(motion_dict: Dict[str, Any], skeleton: SkeletonBase, device:
     return buf.getvalue().encode("utf-8")
 
 
-def amass_npz_to_bytes(motion_dict: Dict[str, Any], skeleton: SkeletonBase, fps: float) -> bytes:
+def amass_npz_to_bytes(motion_dict: dict[str, Any], skeleton: SkeletonBase, fps: float) -> bytes:
     """Convert a motion dict to AMASS NPZ bytes via :class:`AMASSConverter`."""
     import io
 
@@ -400,7 +400,7 @@ def load_motion_file(
     *,
     z_up: bool = True,
     mujoco_rest_zero: bool = False,
-) -> tuple[Dict[str, torch.Tensor], int]:
+) -> tuple[dict[str, torch.Tensor], int]:
     """Load a motion file and return a Kimodo motion dict plus joint count.
 
     Supports SOMA BVH (``.bvh``), G1 MuJoCo CSV (``.csv``), Kimodo NPZ, and AMASS SMPL-X NPZ

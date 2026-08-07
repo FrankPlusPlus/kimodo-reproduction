@@ -1,6 +1,6 @@
 # 中文逐字段说明见同目录 CONFIG_REFERENCE.zh-CN.md。
 # Kimodo paper-aligned production defaults. Values not explicitly disclosed by
-# the paper are catalogued in docs/training_reproduction_spec.md.
+# the paper remain explicit fail-closed checks in this configuration and trainer.
 schema_version: 1
 paper_method_strict: true
 

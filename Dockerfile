@@ -13,7 +13,8 @@ ENV KIMODO_IMAGE_GIT_COMMIT=${KIMODO_GIT_COMMIT}
 ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    KIMODO_STORAGE_ROOT=/mnt/kimodo
 
 # Where your code will live inside the container
 WORKDIR /workspace
@@ -23,6 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates \
       cmake build-essential \
       gosu \
+      zstd \
       libibverbs1 ibverbs-providers rdma-core \
       infiniband-diags perftest ibutils ibverbs-utils \
     && rm -rf /var/lib/apt/lists/*
@@ -52,19 +54,21 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Training method/config files and operational launchers are runtime inputs.
 # Datasets, prepared caches, and checkpoints deliberately stay outside the
-# image and are mounted by the scheduler at /mnt/kimodo (or another path
-# selected through KIMODO_PATHS_CONFIG).
+# image. Mount the PVC at KIMODO_STORAGE_ROOT (default: /mnt/kimodo), or set
+# that environment variable to the platform-specific mount path at runtime.
 COPY configs /workspace/configs
 COPY resources /workspace/resources
 COPY scripts /workspace/scripts
 COPY benchmark /workspace/benchmark
-RUN chmod +x /workspace/scripts/*.sh /workspace/scripts/resources/*.sh
+RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} +
 
 # Use the docker-entrypoint script, to allow the docker to run as the actual user instead of root
 COPY kimodo/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint
 
-# The default command is the company launcher; its training config and paths
-# remain runtime-selectable, so the same image supports V1, V2 and eval Pods.
+# Keep the image hardware-neutral by default.  The dispatcher stays alive in
+# idle mode, while Kubernetes can either override the command with a concrete
+# launcher or select an explicit KIMODO_CONTAINER_MODE.  Importantly, merely
+# creating a Pod must not require 16 H200s, RDMA, or a mounted production PVC.
 ENTRYPOINT ["docker-entrypoint"]
-CMD ["/workspace/scripts/train_company_16h200.sh"]
+CMD ["/workspace/scripts/container_start.sh"]

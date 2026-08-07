@@ -24,9 +24,11 @@ proxy_on  # optional, only when this server requires it
 scripts/bootstrap_training.sh --storage-root /shared/kimodo --hf-login
 ```
 
-Never put the Hugging Face token in YAML or Git. Existing datasets/models can be assigned with `existing_path`; an old text cache can be adopted without loading the 8B encoder, and a relocated train-ready bundle can be fully verified and rebound. The pipeline emits the paths YAML consumed by the training launcher; method and hardware hyperparameters stay in separate YAML files. Start with the [clone-to-training deployment guide](docs/portable_training_setup.md), then read the [full reproduction/data-flow guide](docs/reproduction_end_to_end_guide.md), [paper-parity audit](docs/paper_training_parity_audit.md), [small dancing augmentation guide](docs/dancing_augmentation.md), and [H200 benchmark](docs/h200_training_benchmark.md). Run `scripts/smoke_train.sh` for a clone-local two-step check. The strict profile fails closed when the unpublished Qwen paraphrases or transition data are absent; the public profile is explicitly an engineering baseline.
+Never put Hugging Face or LLM API tokens in YAML, shell scripts, Docker layers, or Git. Existing datasets/models can be assigned with `existing_path`; a relocated train-ready bundle can be verified and rebound without rebuilding it. The current documentation index is [`docs/README.md`](docs/README.md); V2 construction uses the single public entry `scripts/v2_pipeline.sh`, and training consumes V1/V2 through the same manifest contract.
 
 For containerized multi-node training, including the two-node/16-H200 launcher, image boundary, shared-data workflow, NCCL/RDMA responsibilities, batch conversion, and failure checklist, see the [Chinese Kubernetes multi-node runbook](docs/multinode_k8s_training.zh-CN.md).
+
+The supported container/data/training/evaluation entry points and the boundary between core code and provenance-preserving audit tools are documented in the [Chinese code-surface guide](docs/code_surface.zh-CN.md).
 
 <div align="center">
   <img src="assets/teaser.gif" width="1280">
@@ -206,12 +208,12 @@ As a proof of concept, we have also incorporated Kimodo into the [interactive GE
 
 Alongside the Kimodo models, we provide a benchmark designed to standardize evaluation for motion generation models with a comprehensive set of test cases. This includes:
 
-* **Evaluation Data**: A suite of test cases [available on Hugging Face](https://huggingface.co/datasets/nvidia/Kimodo-Motion-Gen-Benchmark) is used in concert with the [BONES-SEED](https://huggingface.co/datasets/bones-studio/seed) dataset to construct the full benchmark. 
+* **Evaluation Data**: A suite of test cases [available on Hugging Face](https://huggingface.co/datasets/nvidia/Kimodo-Motion-Gen-Benchmark) is used in concert with the [BONES-SEED](https://huggingface.co/datasets/bones-studio/seed) dataset to construct the full benchmark.
 * **Diverse Test Cases**: Test cases cover a wide range of text-conditioned and constraint-conditioned motion generation.
 * **Evaluation Pipeline**: Code for the full evaluation pipeline including benchmark construction, motion generation, and evaluation.
 * **Metrics**: Several metrics to evaluate generated motions that cover motion quality, constraint following, and text alignment. Our [TMR-SOMA-RP-v1](https://huggingface.co/nvidia/TMR-SOMA-RP-v1) model trained on all 700 hours of the Bones Rigplay dataset is a powerful embedding model to compute common metrics like R-precision and FID.
 
-To facilitate future research, we [report benchmark results](https://research.nvidia.com/labs/sil/projects/kimodo/docs/benchmark/results.html) for Kimodo-SOMA-v1.1 models, which are reproducible and easily comparable to other methods trained on the BONES-SEED data. 
+To facilitate future research, we [report benchmark results](https://research.nvidia.com/labs/sil/projects/kimodo/docs/benchmark/results.html) for Kimodo-SOMA-v1.1 models, which are reproducible and easily comparable to other methods trained on the BONES-SEED data.
 
 ## Timeline Annotations for BONES-SEED
 
@@ -263,4 +265,3 @@ This project builds upon excellent open-source projects:
 For questions or issues, please open an issue on this repository or reach out directly to the authors.
 
 ---
- 

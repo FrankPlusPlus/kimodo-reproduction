@@ -207,14 +207,14 @@ def test_reproduction_source_has_no_flowmatching_import_or_lock() -> None:
 
 def test_public_docs_do_not_restore_disproven_or_removed_contract_claims() -> None:
     root = Path(__file__).resolve().parents[2]
-    guide = (root / "docs/reproduction_end_to_end_guide.md").read_text(encoding="utf-8")
-    spec = (root / "docs/training_reproduction_spec.md").read_text(encoding="utf-8")
-    report = (root / "docs/expert_acceptance_report.md").read_text(encoding="utf-8")
+    current_docs = "\n".join(
+        path.read_text(encoding="utf-8") for path in (root / "docs").glob("*.md")
+    )
     catalog = (root / "resources/catalog.public.yaml").read_text(encoding="utf-8")
 
-    assert "FM adapter" not in guide
-    assert "clone/锁定 FM converter" not in guide
-    assert "semantic_contract_json" not in guide
+    assert "FM adapter" not in current_docs
+    assert "clone/锁定 FM converter" not in current_docs
+    assert "semantic_contract_json" not in current_docs
     assert "Non-gated byte-equivalent" not in catalog
-    assert "paper profile 不 detach" not in spec
-    assert "P0/P1/P2 = 0" not in report
+    assert "paper profile 不 detach" not in current_docs
+    assert "P0/P1/P2 = 0" not in current_docs
