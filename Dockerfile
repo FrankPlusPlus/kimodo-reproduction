@@ -77,6 +77,7 @@ RUN python -c "from pip._internal.operations.check import create_package_set_fro
 # /workspace/.git makes the running Pod useful for reviewed `git fetch/pull`
 # workflows; runtime datasets, checkpoints, caches and secrets remain excluded
 # by .dockerignore and belong on the PVC.
+RUN find /workspace -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 COPY . /workspace
 RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} + \
  && git config --system --add safe.directory /workspace \
