@@ -40,9 +40,17 @@ RUN if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
       && rm -rf /var/lib/apt/lists/*; \
     fi
 
-# The company SSH gateway forwards an authenticated connection to port 22 in
-# the Pod. Keep password login disabled; the platform may mount authorized_keys,
-# or KIMODO_SSH_PUBLIC_KEY can provide the public key at runtime.
+# Hanhai/Kubeflow Notebook SSH: gateway authenticates user-ssh-public-key, then
+# forwards to Pod :22 and logs in as jovyan (the Jupyter/Kubeflow default login
+# account; home is /home/jovyan, usually the Notebook workspace PVC). Custom
+# images must run sshd, ship that account, and install authorized_keys at
+# runtime from KIMODO_SSH_PUBLIC_KEY or a mounted file.
+ARG NB_USER=jovyan
+ARG NB_UID=1000
+ARG NB_GID=100
+ENV NB_USER=${NB_USER} \
+    NB_UID=${NB_UID} \
+    NB_GID=${NB_GID}
 RUN mkdir -p /run/sshd /etc/ssh/sshd_config.d \
  && rm -f /etc/ssh/ssh_host_* \
  && printf '%s\n' \
@@ -51,7 +59,24 @@ RUN mkdir -p /run/sshd /etc/ssh/sshd_config.d \
       'PubkeyAuthentication yes' \
       'PermitRootLogin prohibit-password' \
       'AllowTcpForwarding yes' \
-      > /etc/ssh/sshd_config.d/kimodo.conf
+      > /etc/ssh/sshd_config.d/kimodo.conf \
+ && if ! getent group "${NB_GID}" >/dev/null; then \
+      groupadd -g "${NB_GID}" users || groupadd -g "${NB_GID}" "${NB_USER}"; \
+    fi \
+ && if ! getent passwd "${NB_USER}" >/dev/null; then \
+      if getent passwd "${NB_UID}" >/dev/null; then \
+        echo "NB_UID=${NB_UID} already present; leaving existing account in place"; \
+      else \
+        useradd -M -u "${NB_UID}" -g "${NB_GID}" -d "/home/${NB_USER}" -s /bin/bash "${NB_USER}"; \
+      fi; \
+    fi \
+ && mkdir -p "/home/${NB_USER}" \
+ && chown "${NB_UID}:${NB_GID}" "/home/${NB_USER}" \
+ && if getent passwd "${NB_USER}" >/dev/null; then \
+      # useradd leaves "!" locked accounts; OpenSSH rejects locked users even for
+      # publickey. "*" disables password auth while keeping the account usable.
+      usermod -p '*' "${NB_USER}"; \
+    fi
 
 EXPOSE 22
 

@@ -49,10 +49,23 @@ def test_image_provides_public_key_only_ssh_for_remote_pod_development():
     assert "openssh-server" in source
     assert "PasswordAuthentication no" in source
     assert "PermitRootLogin prohibit-password" in source
+    assert "ARG NB_USER=jovyan" in source
+    assert 'useradd -M -u "${NB_UID}"' in source
+    assert "usermod -p '*'" in source
     assert "KIMODO_SSH_PUBLIC_KEY" in entrypoint
+    assert "collect_ssh_authorized_keys" in entrypoint
+    assert "ensure_notebook_user" in entrypoint
+    assert 'usermod -p \'*\'' in entrypoint or "usermod -p '*'" in entrypoint
+    assert 'NB_USER="${NB_USER:-jovyan}"' in entrypoint
+    assert "/home/${NB_USER}/.ssh/authorized_keys" in entrypoint
+    assert "/root/.ssh/authorized_keys" in entrypoint
+    assert "/etc/ssh/kimodo_authorized_keys" in entrypoint
+    assert "world-writable sticky" in entrypoint
+    assert "no authorized_keys found" in entrypoint
     assert "/usr/sbin/sshd" in entrypoint
     assert "continuing without SSH" in entrypoint
     assert "/tmp/kimodo-sshd" in entrypoint
+    assert "Jupyter/Kubeflow default login" in source
 
 
 def test_container_dispatcher_help_lists_reviewed_modes():
