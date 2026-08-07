@@ -51,6 +51,8 @@ def test_image_provides_public_key_only_ssh_for_remote_pod_development():
     assert "PermitRootLogin prohibit-password" in source
     assert "KIMODO_SSH_PUBLIC_KEY" in entrypoint
     assert "/usr/sbin/sshd" in entrypoint
+    assert "continuing without SSH" in entrypoint
+    assert "/tmp/kimodo-sshd" in entrypoint
 
 
 def test_container_dispatcher_help_lists_reviewed_modes():
