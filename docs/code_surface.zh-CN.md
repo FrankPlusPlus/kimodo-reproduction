@@ -38,13 +38,14 @@ Docker/Kubernetes 用户通常只需要以上入口。Python CLI 仍可用于测
 这些模块同时消费 V1/V2 manifest。数据版本差异由 paths、manifest、stats 和训练 YAML 表达，不应为每个
 bundle 复制一套 trainer。
 
-### 通用数据合同
+### 通用离线数据管线：`kimodo/data_pipeline/`
 
 - `manifest_cli.py`、`text_cache_cli.py`、`stats_cli.py`；
 - `reference_inventory.py` / `reference_inventory_cli.py`；
-- `file_permissions.py`、`provenance.py`。
+- 原子发布的公共实现位于 `kimodo/common/file_permissions.py`；训练 provenance 仍位于
+  `kimodo/training/provenance.py`。
 
-### V2 核心链
+### V2 核心链：`kimodo/data_pipeline/v2/`
 
 - `timeline_multi_cli.py`；
 - `llm_api_augmentation_cli.py`、`llm_quality_cli.py`；
@@ -52,7 +53,7 @@ bundle 复制一套 trainer。
 - `v2_manifest_cli.py`、`v2_cached_manifest_cli.py`、`v2_lineage_cli.py`；
 - `v2_bundle_publish_cli.py`、`v2_resource_state_cli.py`。
 
-### 评测链
+### 评测链：`kimodo/evaluation/`
 
 - `validation_cli.py`、`eval_monitor_cli.py`；
 - `benchmark/` 下生成、embedding、指标和汇总脚本。
@@ -62,12 +63,13 @@ bundle 复制一套 trainer。
 - `qwen_augmentation_cli.py`：MiMo 不可用时的离线 fallback；
 - `semantic_count_repair_cli.py`、`semantic_response_finalize_cli.py`；
 - `independent_review_remediation_cli.py`、`duplicate_response_repair_cli.py`；
-- `core_subset_cli.py`、`smoke_fixture_cli.py`、`benchmark_cli.py`；
+- `kimodo/devtools/` 下的 `core_subset_cli.py`、`smoke_fixture_cli.py`；
+- `kimodo/evaluation/benchmark_cli.py`；
 - `manifest_overlay_cli.py`。
 
-前四类记录了已经发生过的语义修复和成品 provenance。移动模块、改 generator identity 或删除实现都会让
-旧成品难以精确重放；应在下一数据协议版本中迁入 `audit_tools/` 命名空间并保留兼容 shim，而不是在 V2
-训练上线前删除。后三类分别服务快速验证、性能基准和显式数据消融，也不属于正式训练热路径。
+前四类记录了已经发生过的语义修复和成品 provenance。实现现已从训练热路径迁入
+`kimodo/data_pipeline/v2/`，但成品中已经发布的 generator identity 和 schema 字段保持不变，因此现有
+V2 bundle 仍可逐哈希验证。后三类分别服务快速验证、性能基准和显式数据消融，也不属于正式训练热路径。
 
 ## 当前仍然有意留在链外的部分
 
@@ -78,12 +80,12 @@ bundle 复制一套 trainer。
 因此，“统一入口”不等于“取消门禁”。`scripts/v2_pipeline.sh plan` 中的 `REVIEW-GATE` 必须由明确的审阅
 结果和 immutable response selection 才能越过。
 
-## 后续安全清理顺序
+## 已完成的安全迁移
 
-1. 先让训练、数据和评测只引用上述稳定入口；
-2. 为内部 CLI 增加弃用/兼容周期，不改变既有 provenance identity；
-3. 再按 `runtime/`、`data_pipeline/`、`audit_tools/` 做包级迁移；
-4. 至少完成一次 V1 preflight、V2 resource-state verify、16-rank smoke 和 benchmark smoke 后，才删除 shim。
+1. `kimodo/training/` 只保留 trainer、Dataset、模型/loss/optimizer、checkpoint/EMA 和运行锁；
+2. 离线数据、V2、评测和开发工具分别迁入独立包；
+3. console-script 名称保持不变，仅更新其 Python module target；
+4. 既有 provenance identity 保持不变，新实现路径由代码清单和测试单独约束。
 
 不要以“没有被生产训练 import”为唯一删除依据：离线构建、断点恢复、成品审计和历史重放同样属于本项目
 的可交付能力。

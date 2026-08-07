@@ -13,6 +13,7 @@ def test_dockerfile_uses_hardware_neutral_dispatcher():
     source = DOCKERFILE.read_text(encoding="utf-8")
     assert 'CMD ["/workspace/scripts/container_start.sh"]' in source
     assert 'CMD ["/workspace/scripts/train_company_16h200.sh"]' not in source
+    assert "KIMODO_PYTHON=python /workspace/scripts/smoke_train.sh" in source
 
 
 def test_dockerfile_uses_generic_storage_root_and_can_extract_v2_archive():
@@ -55,6 +56,28 @@ def test_container_dispatcher_rejects_unknown_mode():
     )
     assert result.returncode == 2
     assert "unknown KIMODO_CONTAINER_MODE" in result.stderr
+
+
+def test_container_preflight_defaults_to_the_extracted_portable_v2_bundle(tmp_path):
+    storage_root = tmp_path / "storage"
+    data_root = storage_root / "benchmark-v2-soma30-v2.2"
+    data_root.mkdir(parents=True)
+    (data_root / "repro.paths.yaml").write_text("schema_version: 1\n", encoding="utf-8")
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "KIMODO_CONTAINER_MODE": "preflight",
+            "KIMODO_PYTHON": "/bin/true",
+            "KIMODO_STORAGE_ROOT": str(storage_root),
+        }
+    )
+    subprocess.run(
+        [str(RUNNER)],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        check=True,
+        timeout=5,
+    )
 
 
 def test_container_dispatcher_default_is_a_long_running_idle_process():

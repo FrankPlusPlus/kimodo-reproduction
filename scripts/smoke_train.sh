@@ -19,7 +19,7 @@ fi
 fixture_root="${smoke_root}/fixture"
 run_root="${smoke_root}/run"
 
-"${python_bin}" -m kimodo.training.smoke_fixture_cli --output "${fixture_root}"
+"${python_bin}" -m kimodo.devtools.smoke_fixture_cli --output "${fixture_root}"
 
 common_args=(
   --config "${project_root}/configs/training/kimodo_tiny_smoke.yaml"

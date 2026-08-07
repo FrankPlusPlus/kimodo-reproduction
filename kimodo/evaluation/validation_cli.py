@@ -13,13 +13,13 @@ from pathlib import Path
 import torch
 from torch.utils.data import DataLoader, Subset
 
-from .checkpoint import atomic_text_write
-from .config import load_training_config
-from .constraints import ConstraintCurriculumSampler
-from .data import MotionManifestDataset, collate_motion_batch
-from .engine import Diffusion, _autocast_context, _to_device
-from .losses import KimodoLoss
-from .modeling import build_trainable_denoiser, set_model_dropout
+from kimodo.training.checkpoint import atomic_text_write
+from kimodo.training.config import load_training_config
+from kimodo.training.constraints import ConstraintCurriculumSampler
+from kimodo.training.data import MotionManifestDataset, collate_motion_batch
+from kimodo.training.engine import Diffusion, _autocast_context, _to_device
+from kimodo.training.losses import KimodoLoss
+from kimodo.training.modeling import build_trainable_denoiser, set_model_dropout
 
 
 def _sha256(path: Path) -> str:

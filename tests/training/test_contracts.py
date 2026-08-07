@@ -12,6 +12,9 @@ import torch
 from omegaconf import OmegaConf
 
 from kimodo.constraints import FootContactConstraintSet
+from kimodo.data_pipeline.manifest_cli import build_manifest
+from kimodo.data_pipeline.stats_cli import compute_stats
+from kimodo.devtools.smoke_fixture_cli import create_smoke_fixture
 from kimodo.model.diffusion import Diffusion
 from kimodo.model.loading import instantiate_from_dict
 from kimodo.motion_rep.reps.kimodo_motionrep import KimodoMotionRep
@@ -25,12 +28,9 @@ from kimodo.training.data import (
 )
 from kimodo.training.ema import ExponentialMovingAverage
 from kimodo.training.losses import KimodoLoss
-from kimodo.training.manifest_cli import build_manifest
 from kimodo.training.modeling import build_trainable_denoiser, validate_model_contract
 from kimodo.training.optim import AdamAtan2
 from kimodo.training.provenance import code_fingerprints
-from kimodo.training.smoke_fixture_cli import create_smoke_fixture
-from kimodo.training.stats_cli import compute_stats
 
 
 def _motion_rep(training_fixture):
@@ -518,6 +518,7 @@ def test_stats_excludes_the_same_known_short_temporal_spans(training_fixture, tm
 def test_tiny_smoke_fixture_is_self_generated(tmp_path):
     fixture = create_smoke_fixture(tmp_path / "smoke")
     assert fixture["manifest"].is_file()
+    assert (fixture["stats"] / "stats.metadata.json").is_file()
     dataset = MotionManifestDataset(
         fixture["manifest"],
         "train",

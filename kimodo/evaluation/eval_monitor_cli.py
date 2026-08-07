@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .checkpoint import atomic_text_write
+from kimodo.training.checkpoint import atomic_text_write
 
 _EXPORT_NAME = re.compile(r"^step-(\d{9})$")
 

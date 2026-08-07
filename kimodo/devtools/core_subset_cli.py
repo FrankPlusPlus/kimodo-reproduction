@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from .file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
 
 SCHEMA_VERSION = 1
 _PATH_FIELDS = ("motion", "text_embedding", "text_embedding_metadata")
@@ -329,7 +329,7 @@ def build_core_subset(args) -> dict:
             "tag_coverage": len(tag_selected),
         },
         "producer": {
-            "path": "kimodo/training/core_subset_cli.py",
+            "path": "kimodo/devtools/core_subset_cli.py",
             "sha256": _sha256(Path(__file__).resolve()),
         },
         "output": {

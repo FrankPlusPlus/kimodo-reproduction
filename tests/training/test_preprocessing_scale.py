@@ -12,8 +12,8 @@ import numpy as np
 import pytest
 import torch
 
+from kimodo.data_pipeline import stats_cli, text_cache_cli
 from kimodo.model.llm2vec.llm2vec import LLM2Vec
-from kimodo.training import stats_cli, text_cache_cli
 
 
 class _FakeEncoder:

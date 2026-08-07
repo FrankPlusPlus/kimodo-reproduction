@@ -13,9 +13,12 @@ storage_root="${KIMODO_STORAGE_ROOT:-/mnt/kimodo}"
 default_training_config="${project_root}/configs/training/kimodo_soma_seed_v2_1m_16h200.yaml"
 export KIMODO_TRAINING_CONFIG="${KIMODO_TRAINING_CONFIG:-${default_training_config}}"
 export KIMODO_TRAINING_OVERLAY=""
-export KIMODO_DATA_ROOT="${KIMODO_DATA_ROOT:-${storage_root}/data/benchmark-v2-soma30-v2.2}"
+export KIMODO_DATA_ROOT="${KIMODO_DATA_ROOT:-${storage_root}/benchmark-v2-soma30-v2.2}"
 export KIMODO_RUN_ROOT="${KIMODO_RUN_ROOT:-${storage_root}/runs}"
-export KIMODO_PATHS_CONFIG="${KIMODO_PATHS_CONFIG:-${storage_root}/config/repro.paths.yaml}"
+# The portable V2 archive carries an environment-relative paths overlay. Using
+# it directly keeps the company contract to one archive extraction; a separate
+# prepare/bind Job is optional rather than a hidden prerequisite.
+export KIMODO_PATHS_CONFIG="${KIMODO_PATHS_CONFIG:-${KIMODO_DATA_ROOT}/repro.paths.yaml}"
 export KIMODO_NNODES="${KIMODO_NNODES:-${NNODES:-2}}"
 export KIMODO_NPROC_PER_NODE="${KIMODO_NPROC_PER_NODE:-${NPROC_PER_NODE:-8}}"
 export KIMODO_EXPECTED_GPU_PATTERN="${KIMODO_EXPECTED_GPU_PATTERN:-H200}"

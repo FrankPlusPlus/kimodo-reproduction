@@ -9,14 +9,14 @@ import numpy as np
 import pytest
 import torch
 
+from kimodo.data_pipeline.manifest_cli import build_manifest
+from kimodo.data_pipeline.stats_cli import _covering_windows, compute_stats
 from kimodo.exports.motion_io import resample_motion_dict_to_kimodo_fps
 from kimodo.motion_rep.reps.kimodo_motionrep import KimodoMotionRep
 from kimodo.skeleton.registry import build_skeleton
 from kimodo.training.config import CurriculumConfig
 from kimodo.training.constraints import ConstraintCurriculumSampler
 from kimodo.training.data import MotionManifestDataset
-from kimodo.training.manifest_cli import build_manifest
-from kimodo.training.stats_cli import _covering_windows, compute_stats
 
 
 def _identity_motion(frames: int, joints: int = 30) -> dict[str, torch.Tensor]:

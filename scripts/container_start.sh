@@ -44,7 +44,9 @@ case "${mode}" in
     python_bin="${KIMODO_PYTHON:-python}"
     config_path="${KIMODO_TRAINING_CONFIG:-${project_root}/configs/training/kimodo_soma_seed_v2_1m_16h200.yaml}"
     storage_root="${KIMODO_STORAGE_ROOT:-/mnt/kimodo}"
-    paths_path="${KIMODO_PATHS_CONFIG:-${storage_root}/config/repro.paths.yaml}"
+    export KIMODO_DATA_ROOT="${KIMODO_DATA_ROOT:-${storage_root}/benchmark-v2-soma30-v2.2}"
+    export KIMODO_RUN_ROOT="${KIMODO_RUN_ROOT:-${storage_root}/runs}"
+    paths_path="${KIMODO_PATHS_CONFIG:-${KIMODO_DATA_ROOT}/repro.paths.yaml}"
     exec "${python_bin}" -m kimodo.training.cli \
       --config "${config_path}" --paths "${paths_path}" --preflight "$@"
     ;;

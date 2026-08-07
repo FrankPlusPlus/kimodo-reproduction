@@ -10,7 +10,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from .file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
 
 
 def _sha256(path: Path) -> str:

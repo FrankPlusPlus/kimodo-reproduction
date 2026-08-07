@@ -23,6 +23,24 @@ def create_smoke_fixture(output: str | Path) -> dict[str, Path]:
         folder.mkdir(parents=True, exist_ok=False)
         np.save(folder / "mean.npy", np.zeros(width, dtype=np.float32))
         np.save(folder / "std.npy", np.ones(width, dtype=np.float32))
+    (stats / "stats.metadata.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "builder": "kimodo.devtools.smoke_fixture_cli",
+                "purpose": "deterministic two-step training smoke fixture",
+                "groups": {
+                    "global_root": 5,
+                    "local_root": 4,
+                    "body": 364,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     frames, joints = 8, 30
     rotations = np.broadcast_to(
@@ -57,7 +75,13 @@ def create_smoke_fixture(output: str | Path) -> dict[str, Path]:
         "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
         encoding="utf-8",
     )
-    result = {"root": root, "stats": stats, "motion": motion, "embedding": embedding, "manifest": manifest}
+    result = {
+        "root": root,
+        "stats": stats,
+        "motion": motion,
+        "embedding": embedding,
+        "manifest": manifest,
+    }
     print(json.dumps({name: str(path) for name, path in result.items()}, indent=2, sort_keys=True))
     return result
 

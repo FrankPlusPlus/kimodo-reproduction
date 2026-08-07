@@ -4,8 +4,8 @@ import hashlib
 import json
 from argparse import Namespace
 
-from kimodo.training import semantic_count_repair_cli as count_repair
-from kimodo.training.llm_quality_cli import _count_signatures
+from kimodo.data_pipeline.v2 import semantic_count_repair_cli as count_repair
+from kimodo.data_pipeline.v2.llm_quality_cli import _count_signatures
 
 
 class _FakeClient:

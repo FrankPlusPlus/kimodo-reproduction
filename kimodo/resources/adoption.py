@@ -13,12 +13,12 @@ from pathlib import Path
 
 import numpy as np
 
-from kimodo.sanitize import sanitize_texts
-from kimodo.training.reference_inventory import (
+from kimodo.data_pipeline.reference_inventory import (
     build_reference_inventory,
     load_inventory_summary,
     verify_reference_inventory_full,
 )
+from kimodo.sanitize import sanitize_texts
 
 from .pipeline import PipelineError, _atomic_json, _atomic_yaml, _validate_stats_bundle
 

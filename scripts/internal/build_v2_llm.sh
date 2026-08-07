@@ -24,7 +24,7 @@ case "${stage}" in
       echo "${stage} requires a finalized response selection: ${response_selection}" >&2
       exit 3
     }
-    selected_responses="$("${python_bin}" -m kimodo.training.response_selection_cli resolve \
+    selected_responses="$("${python_bin}" -m kimodo.data_pipeline.v2.response_selection_cli resolve \
       --selection "${response_selection}" --requests "${requests}")"
     if [[ -n "${KIMODO_LLM_RESPONSES:-}" ]] \
       && [[ "$(realpath -e -- "${KIMODO_LLM_RESPONSES}")" != "${selected_responses}" ]]; then
@@ -73,7 +73,7 @@ case "${stage}" in
       printf '  %s\n' "${outputs[@]}" >&2
       exit 3
     fi
-    "${python_bin}" -m kimodo.training.timeline_multi_cli \
+    "${python_bin}" -m kimodo.data_pipeline.v2.timeline_multi_cli \
       --source-manifest "${source_manifest}" \
       --train-split "${train_split}" \
       --output-plan "${plan}" \
@@ -81,7 +81,7 @@ case "${stage}" in
     ;;
   pilot)
     require_api_key
-    "${python_bin}" -m kimodo.training.llm_api_augmentation_cli \
+    "${python_bin}" -m kimodo.data_pipeline.v2.llm_api_augmentation_cli \
       --requests "${requests}" \
       --base-url "${base_url}" \
       --model "${model}" --judge-model "${model}" \
@@ -93,7 +93,7 @@ case "${stage}" in
     ;;
   generate)
     require_api_key
-    "${python_bin}" -m kimodo.training.llm_api_augmentation_cli \
+    "${python_bin}" -m kimodo.data_pipeline.v2.llm_api_augmentation_cli \
       --requests "${requests}" \
       --base-url "${base_url}" \
       --model "${model}" --judge-model "${model}" \
@@ -103,7 +103,7 @@ case "${stage}" in
       --output "${provenance_root}/mimo.responses.v2.2.jsonl"
     ;;
   audit-pilot)
-    "${python_bin}" -m kimodo.training.llm_quality_cli \
+    "${python_bin}" -m kimodo.data_pipeline.v2.llm_quality_cli \
       --requests "${requests}" \
       --responses "${provenance_root}/mimo.responses.pilot.jsonl" \
       --allow-partial --report-only \
@@ -111,7 +111,7 @@ case "${stage}" in
       --review-sample "${provenance_root}/mimo.review.pilot.jsonl"
     ;;
   audit)
-    "${python_bin}" -m kimodo.training.llm_quality_cli \
+    "${python_bin}" -m kimodo.data_pipeline.v2.llm_quality_cli \
       --requests "${requests}" \
       --responses "${responses}" \
       --plan "${plan}" \
@@ -120,7 +120,7 @@ case "${stage}" in
       --review-sample "${review_sample}"
     ;;
   manifest)
-    "${python_bin}" -m kimodo.training.v2_manifest_cli \
+    "${python_bin}" -m kimodo.data_pipeline.v2.v2_manifest_cli \
       --source-manifest "${source_manifest}" \
       --plan "${plan}" \
       --responses "${responses}" \

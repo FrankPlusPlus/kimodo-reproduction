@@ -4,11 +4,10 @@ import argparse
 import json
 from pathlib import Path
 
-from kimodo.training.independent_review_remediation_cli import (
+from kimodo.data_pipeline.v2.independent_review_remediation_cli import (
     _policy,
     prepare_supplement,
 )
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 POLICY = (

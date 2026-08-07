@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-import kimodo.training.reference_inventory as inventory_module
-from kimodo.training.reference_inventory import (
+import kimodo.data_pipeline.reference_inventory as inventory_module
+from kimodo.data_pipeline.reference_inventory import (
     build_reference_inventory,
     load_inventory_summary,
     verify_reference_inventory_full,

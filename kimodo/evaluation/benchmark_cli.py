@@ -280,7 +280,7 @@ class _ObservedDataLoader:
 
 def _annotate_two_stage_forward(trainer, observer: EndToEndWindowObserver) -> None:
     """Add benchmark-only root/body ranges without changing module outputs."""
-    from .modeling import unwrap_model
+    from kimodo.training.modeling import unwrap_model
 
     bare = unwrap_model(trainer.model)
     for name, module in (
@@ -297,7 +297,7 @@ def _annotate_two_stage_forward(trainer, observer: EndToEndWindowObserver) -> No
 
 
 def run_benchmark(args) -> None:
-    from .config import load_training_config
+    from kimodo.training.config import load_training_config
 
     setup_started = time.perf_counter()
     fixture = Path(args.fixture).expanduser().resolve()
@@ -340,7 +340,7 @@ def run_benchmark(args) -> None:
     )
 
     # Imported only after CUDA visibility is fixed by the outer process.
-    from . import engine as engine_module
+    import kimodo.training.engine as engine_module
 
     project_root = Path(__file__).resolve().parents[2]
     trainer = engine_module.KimodoTrainer(config, project_root, step_observer=observer)

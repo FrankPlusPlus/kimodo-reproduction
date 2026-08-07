@@ -20,9 +20,9 @@ from collections import Counter
 from pathlib import Path
 from types import SimpleNamespace
 
+from kimodo.common.file_permissions import publish_file
 from kimodo.resources.pipeline import _atomic_json
 
-from .file_permissions import publish_file
 from .qwen_augmentation_cli import _source_preserving_fallback
 from .response_selection_cli import resolve as resolve_selection
 from .timeline_multi_cli import validate_description
@@ -191,7 +191,7 @@ def finalize(args) -> dict:
         verdicts=source_verdicts,
         report=source_report,
     )
-    request_rows, request_by_id = _load_rows(requests)
+    _request_rows, request_by_id = _load_rows(requests)
     source_rows, source_by_id = _load_rows(source)
     if set(request_by_id) != set(source_by_id):
         raise ValueError("request and source response coverage differs")
@@ -459,7 +459,7 @@ def adjudicate(args) -> dict:
         raise ValueError("supplemental review used a different Qwen reviewer contract")
 
     new_rows, new_by_id = _load_rows(sample)
-    old_rows, old_by_id = _load_rows(source_sample)
+    _old_rows, old_by_id = _load_rows(source_sample)
     _, old_verdict_by_id = _load_rows(source_verdicts)
     _, supplemental_by_id = _load_rows(supplemental_verdicts)
     ledger_rows, ledger_by_id = _load_rows(ledger)

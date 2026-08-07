@@ -12,7 +12,7 @@ from collections import Counter, defaultdict
 from itertools import pairwise
 from pathlib import Path
 
-from .file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
 
 PROMPT_VERSION = "kimodo-benchmark-multi-v2.2"
 SYSTEM_PROMPT = """You rewrite ordered motion annotations into one natural English motion description.

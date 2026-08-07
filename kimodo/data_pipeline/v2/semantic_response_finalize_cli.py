@@ -11,7 +11,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
+
 from .llm_api_augmentation_cli import (
     BATCH_JUDGE_PROMPT,
     _canonical_sha256,

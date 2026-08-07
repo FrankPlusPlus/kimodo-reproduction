@@ -11,17 +11,17 @@ import numpy as np
 import pytest
 from omegaconf.errors import ConfigKeyError
 
-from kimodo.training import text_cache_cli
-from kimodo.training.config import load_training_config
-from kimodo.training.data import load_manifest
-from kimodo.training.manifest_cli import build_manifest
-from kimodo.training.reference_inventory import (
+from kimodo.data_pipeline import text_cache_cli
+from kimodo.data_pipeline.manifest_cli import build_manifest
+from kimodo.data_pipeline.reference_inventory import (
     build_reference_inventory,
     inventory_metadata_path,
     load_inventory_summary,
     sha256_file,
     verify_reference_inventory_full,
 )
+from kimodo.training.config import load_training_config
+from kimodo.training.data import load_manifest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

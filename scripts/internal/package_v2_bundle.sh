@@ -51,7 +51,7 @@ esac
 exec 8>"${bundle}/.bundle-build.lock"
 flock -s 8
 
-"${python_bin}" -m kimodo.training.v2_resource_state_cli verify \
+"${python_bin}" -m kimodo.data_pipeline.v2.v2_resource_state_cli verify \
   --root "${bundle}" >/dev/null
 
 "${python_bin}" - "${bundle}" <<'PY'
@@ -109,7 +109,7 @@ with (root / "train.cached.references.jsonl").open(encoding="utf-8") as handle:
 PY
 
 echo "[package] fully verifying the source bundle reference inventory"
-"${python_bin}" -m kimodo.training.reference_inventory_cli verify \
+"${python_bin}" -m kimodo.data_pipeline.reference_inventory_cli verify \
   --manifest "${bundle}/train.cached.jsonl" \
   --inventory "${bundle}/train.cached.references.jsonl"
 
@@ -168,12 +168,12 @@ extracted="${verify_root}/${bundle_name}"
 [[ -d "${extracted}" ]] || { echo "archive did not extract the expected bundle root" >&2; exit 3; }
 
 echo "[package] fully verifying inventory after relocation"
-"${python_bin}" -m kimodo.training.reference_inventory_cli verify \
+"${python_bin}" -m kimodo.data_pipeline.reference_inventory_cli verify \
   --manifest "${extracted}/train.cached.jsonl" \
   --inventory "${extracted}/train.cached.references.jsonl"
 
 echo "[package] verifying every resource-state output after relocation"
-"${python_bin}" -m kimodo.training.v2_resource_state_cli verify \
+"${python_bin}" -m kimodo.data_pipeline.v2.v2_resource_state_cli verify \
   --root "${extracted}" >/dev/null
 
 echo "[package] running a real batch from the relocated copy"

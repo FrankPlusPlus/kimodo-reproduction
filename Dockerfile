@@ -39,6 +39,8 @@ RUN rm -f /usr/local/bin/cmake || true
 # from pyproject.toml are installed (kimodo_gen, kimodo_demo, kimodo_textencoder).
 # SKIP_MOTION_CORRECTION_IN_SETUP=1 so setup.py does not bundle motion_correction; it is
 # installed separately from ./MotionCorrection in the requirements file (non-editable).
+# The interactive demo's optional kimodo-viser dependency is intentionally not
+# part of this train/eval image.
 COPY docker_requirements.txt /workspace/docker_requirements.txt
 COPY setup.py /workspace/setup.py
 COPY pyproject.toml /workspace/pyproject.toml
@@ -61,6 +63,14 @@ COPY resources /workspace/resources
 COPY scripts /workspace/scripts
 COPY benchmark /workspace/benchmark
 RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} +
+
+# Fail the image build if the post-migration training/evaluation entry points
+# or the real two-step trainer path are broken. The generated fixture, logs and
+# checkpoints live only on a BuildKit tmpfs and are not retained in the image.
+RUN python -m kimodo.evaluation.eval_monitor_cli --help >/dev/null \
+ && python -m kimodo.resources.cli --help >/dev/null
+RUN --mount=type=tmpfs,target=/tmp \
+    KIMODO_PYTHON=python /workspace/scripts/smoke_train.sh
 
 # Use the docker-entrypoint script, to allow the docker to run as the actual user instead of root
 COPY kimodo/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint

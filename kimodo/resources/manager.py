@@ -13,7 +13,7 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from kimodo.training.file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
 
 from .config import PathBinding, ResourceCatalog, ResourceFile, ResourcePaths, ResourceSpec
 

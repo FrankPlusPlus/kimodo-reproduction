@@ -13,7 +13,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from .file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
 
 SCHEMA_VERSION = 1
 _SOURCE_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
@@ -194,7 +194,7 @@ def build_overlay_manifest(args) -> dict:
                 _source_record(overlay, output.parent, args.overlay_name),
             ],
             "producer": {
-                "path": "kimodo/training/manifest_overlay_cli.py",
+                "path": "kimodo/data_pipeline/manifest_overlay_cli.py",
                 "sha256": _sha256(Path(__file__).resolve()),
             },
             "output": {

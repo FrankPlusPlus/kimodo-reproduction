@@ -10,15 +10,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from kimodo.training.reference_inventory import build_reference_inventory
-from kimodo.training.response_selection_cli import select as select_response
-from kimodo.training.v2_bundle_publish_cli import (
+from kimodo.data_pipeline.reference_inventory import build_reference_inventory
+from kimodo.data_pipeline.v2.response_selection_cli import select as select_response
+from kimodo.data_pipeline.v2.v2_bundle_publish_cli import (
     _validate_preflight,
     _validate_stats,
     publish,
 )
-from kimodo.training.v2_lineage_cli import validate_lineage
-from kimodo.training.v2_resource_state_cli import verify_resource_state
+from kimodo.data_pipeline.v2.v2_lineage_cli import validate_lineage
+from kimodo.data_pipeline.v2.v2_resource_state_cli import verify_resource_state
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = PROJECT_ROOT / "scripts/internal/build_v2_bundle.sh"

@@ -29,7 +29,7 @@ if [[ "${command_name}" == "all" ]]; then
     echo "V2 construction requires a finalized response selection: ${response_selection}" >&2
     exit 3
   }
-  selected_responses="$("${python_bin}" -m kimodo.training.response_selection_cli resolve \
+  selected_responses="$("${python_bin}" -m kimodo.data_pipeline.v2.response_selection_cli resolve \
     --selection "${response_selection}" --requests "${requests}")"
   if [[ -n "${KIMODO_LLM_RESPONSES:-}" ]] \
     && [[ "$(realpath -e -- "${KIMODO_LLM_RESPONSES}")" != "${selected_responses}" ]]; then
@@ -38,7 +38,7 @@ if [[ "${command_name}" == "all" ]]; then
   fi
   responses="${selected_responses}"
 elif [[ -f "${response_selection}" ]]; then
-  responses="$("${python_bin}" -m kimodo.training.response_selection_cli resolve \
+  responses="$("${python_bin}" -m kimodo.data_pipeline.v2.response_selection_cli resolve \
     --selection "${response_selection}" --requests "${requests}")"
 else
   responses="${KIMODO_LLM_RESPONSES:-${raw_responses}}"
@@ -337,7 +337,7 @@ if [[ ! -f "${expert_review}" ]]; then
   [[ -d "${expert_model}" ]] || { echo "independent expert model is missing: ${expert_model}" >&2; exit 5; }
   wait_for_text_gpu
   stage "independently reviewing 1,200 weighted/risk-stratified samples with local Qwen3-32B"
-  TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1 "${python_bin}" -m kimodo.training.expert_review_cli \
+  TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1 "${python_bin}" -m kimodo.data_pipeline.v2.expert_review_cli \
     --review-sample "${review_sample}" \
     --responses "${responses}" --quality-report "${quality_report}" \
     --model "${expert_model}" --device "${text_device}" \
@@ -353,16 +353,16 @@ if [[ ! -f "${raw_manifest}" ]]; then
   "${script_dir}/build_v2_llm.sh" manifest 2>&1 | tee -a "${log_file}"
 fi
 verify_pair "${raw_manifest}" "${expected_entries}"
-"${python_bin}" -m kimodo.training.v2_lineage_cli \
+"${python_bin}" -m kimodo.data_pipeline.v2.v2_lineage_cli \
   --building-root "${v2_root}" --responses "${responses}" --through raw >/dev/null
 
 if [[ ! -f "${llm_raw_manifest}" ]]; then
   stage "extracting the V2 LLM lane"
-  "${python_bin}" -m kimodo.training.v2_cached_manifest_cli extract \
+  "${python_bin}" -m kimodo.data_pipeline.v2.v2_cached_manifest_cli extract \
     --v2-raw-manifest "${raw_manifest}" --output "${llm_raw_manifest}" 2>&1 | tee -a "${log_file}"
 fi
 verify_pair "${llm_raw_manifest}"
-"${python_bin}" -m kimodo.training.v2_lineage_cli \
+"${python_bin}" -m kimodo.data_pipeline.v2.v2_lineage_cli \
   --building-root "${v2_root}" --responses "${responses}" --through llm_raw >/dev/null
 
 if [[ ! -f "${llm_cached_manifest}" ]]; then
@@ -371,7 +371,7 @@ if [[ ! -f "${llm_cached_manifest}" ]]; then
   done
   wait_for_text_gpu
   stage "encoding new V2 texts with pinned local LLM2Vec on ${text_device}"
-  TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1 "${python_bin}" -m kimodo.training.text_cache_cli \
+  TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1 "${python_bin}" -m kimodo.data_pipeline.text_cache_cli \
     --manifest "${llm_raw_manifest}" \
     --output-manifest "${llm_cached_manifest}" \
     --cache-dir "${v2_root}/text-cache-v2-llm" \
@@ -384,7 +384,7 @@ if [[ ! -f "${llm_cached_manifest}" ]]; then
     2>&1 | tee -a "${log_file}"
 fi
 verify_pair "${llm_cached_manifest}" "$(wc -l < "${llm_raw_manifest}")"
-"${python_bin}" -m kimodo.training.v2_lineage_cli \
+"${python_bin}" -m kimodo.data_pipeline.v2.v2_lineage_cli \
   --building-root "${v2_root}" --responses "${responses}" --through llm_cached >/dev/null
 [[ -f "${embedding_canary}" ]] || {
   echo "V1/V2 embedding numerical canary is missing: ${embedding_canary}" >&2
@@ -393,7 +393,7 @@ verify_pair "${llm_cached_manifest}" "$(wc -l < "${llm_raw_manifest}")"
 
 if [[ ! -f "${cached_manifest}" ]]; then
   stage "composing V1 cache and V2 LLM cache"
-  "${python_bin}" -m kimodo.training.v2_cached_manifest_cli compose \
+  "${python_bin}" -m kimodo.data_pipeline.v2.v2_cached_manifest_cli compose \
     --v2-raw-manifest "${raw_manifest}" \
     --v1-cached-manifest "${v1_root}/train.cached.jsonl" \
     --llm-cached-manifest "${llm_cached_manifest}" \
@@ -401,7 +401,7 @@ if [[ ! -f "${cached_manifest}" ]]; then
     --output "${cached_manifest}" 2>&1 | tee -a "${log_file}"
 fi
 verify_pair "${cached_manifest}" "${expected_entries}"
-"${python_bin}" -m kimodo.training.v2_lineage_cli \
+"${python_bin}" -m kimodo.data_pipeline.v2.v2_lineage_cli \
   --building-root "${v2_root}" --responses "${responses}" --through cached >/dev/null
 
 if [[ ! -d "${stats_root}" ]]; then
@@ -411,7 +411,7 @@ if [[ ! -d "${stats_root}" ]]; then
     exit 6
   fi
   stage "fitting V2 normalization statistics with ${stats_workers} workers"
-  "${python_bin}" -m kimodo.training.stats_cli \
+  "${python_bin}" -m kimodo.data_pipeline.stats_cli \
     --manifest "${cached_manifest}" --output "${stats_building}" --split train \
     --skeleton-joints 30 --fps 30 --max-seconds 10 --min-frames 2 --seed 1234 \
     --num-workers "${stats_workers}" 2>&1 | tee -a "${log_file}"
@@ -421,7 +421,7 @@ verify_stats
 
 if [[ ! -f "${inventory}" ]]; then
   stage "building the full reference inventory"
-  "${python_bin}" -m kimodo.training.reference_inventory_cli build \
+  "${python_bin}" -m kimodo.data_pipeline.reference_inventory_cli build \
     --manifest "${cached_manifest}" --output "${inventory}" 2>&1 | tee -a "${log_file}"
 fi
 
@@ -449,7 +449,7 @@ fi
 
 rm -f -- "${preflight_paths}"
 stage "verifying every inventory reference and atomically publishing"
-"${python_bin}" -m kimodo.training.v2_bundle_publish_cli \
+"${python_bin}" -m kimodo.data_pipeline.v2.v2_bundle_publish_cli \
   --building-root "${v2_root}" --final-root "${v2_final}" \
   --manifest "${cached_manifest}" --inventory "${inventory}" --stats "${stats_root}" \
   --quality-report "${quality_report}" --responses "${responses}" \

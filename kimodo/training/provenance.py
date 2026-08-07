@@ -15,8 +15,10 @@ from pathlib import Path
 import torch
 
 from kimodo.assets import SKELETONS_ROOT
-
-from .reference_inventory import load_inventory_summary, manifest_reference_paths
+from kimodo.data_pipeline.reference_inventory import (
+    load_inventory_summary,
+    manifest_reference_paths,
+)
 
 
 def sha256_file(path: str | Path) -> str:

@@ -39,6 +39,23 @@ def test_company_launcher_accepts_multiple_sixteen_rank_pod_topologies(tmp_path)
         )
 
 
+def test_company_launcher_defaults_to_the_extracted_portable_v2_bundle(tmp_path):
+    storage_root = tmp_path / "storage"
+    data_root = storage_root / "benchmark-v2-soma30-v2.2"
+    data_root.mkdir(parents=True)
+    (data_root / "repro.paths.yaml").write_text("schema_version: 1\n", encoding="utf-8")
+    environment = _environment(tmp_path, pods=2, gpus_per_pod=8)
+    environment.pop("KIMODO_PATHS_CONFIG")
+    environment["KIMODO_STORAGE_ROOT"] = str(storage_root)
+    subprocess.run(
+        [str(LAUNCHER)],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        check=True,
+        timeout=10,
+    )
+
+
 def test_company_launcher_rejects_a_non_sixteen_rank_topology(tmp_path):
     result = subprocess.run(
         [str(LAUNCHER)],

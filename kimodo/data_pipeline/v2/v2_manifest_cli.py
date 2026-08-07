@@ -12,7 +12,8 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
-from .file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
+
 from .qwen_augmentation_cli import JUDGE_PROMPT
 from .timeline_multi_cli import (
     SYSTEM_PROMPT,

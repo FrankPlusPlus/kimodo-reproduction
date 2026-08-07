@@ -48,11 +48,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_data_preflight(config) -> dict:
+    from kimodo.data_pipeline.reference_inventory import load_inventory_summary
     from kimodo.motion_rep.reps.kimodo_motionrep import KimodoMotionRep
     from kimodo.skeleton.registry import build_skeleton
 
     from .data import MotionManifestDataset, collate_motion_batch
-    from .reference_inventory import load_inventory_summary
 
     if config.model.checkpoint_dir is not None and not config.model.stats_path:
         raise ValueError(

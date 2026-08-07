@@ -4,19 +4,19 @@ import hashlib
 import json
 from argparse import Namespace
 
-from kimodo.training import llm_api_augmentation_cli as llm_api
-from kimodo.training.llm_quality_cli import (
+from kimodo.data_pipeline.v2 import llm_api_augmentation_cli as llm_api
+from kimodo.data_pipeline.v2.llm_quality_cli import (
     _semantic_risk_flags,
     audit,
     missing_explicit_count_groups,
 )
-from kimodo.training.qwen_augmentation_cli import _source_preserving_fallback
-from kimodo.training.timeline_multi_cli import (
+from kimodo.data_pipeline.v2.qwen_augmentation_cli import _source_preserving_fallback
+from kimodo.data_pipeline.v2.timeline_multi_cli import (
     SYSTEM_PROMPT,
     description_word_limit,
     validate_description,
 )
-from kimodo.training.v2_manifest_cli import _load_responses
+from kimodo.data_pipeline.v2.v2_manifest_cli import _load_responses
 
 
 def _requests(tmp_path):

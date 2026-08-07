@@ -43,7 +43,7 @@ EOF
       exit 2
     fi
     python_bin="${KIMODO_PYTHON:-${repo_root}/.venv/bin/python}"
-    exec "${python_bin}" -m kimodo.training.v2_resource_state_cli \
+    exec "${python_bin}" -m kimodo.data_pipeline.v2.v2_resource_state_cli \
       verify --root "${final_root}" "$@"
     ;;
   review-gate|REVIEW-GATE)

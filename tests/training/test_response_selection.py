@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from kimodo.training.response_selection_cli import resolve, select
+from kimodo.data_pipeline.v2.response_selection_cli import resolve, select
 
 
 def _sha(path):

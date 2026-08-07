@@ -182,19 +182,19 @@ def test_prepare_pipeline_orchestrates_every_stage_and_publishes_receipt(
                 ),
                 encoding="utf-8",
             )
-        elif module == "kimodo.training.manifest_cli":
+        elif module == "kimodo.data_pipeline.manifest_cli":
             output = option(argv, "--output")
             output.write_text('{}\n', encoding="utf-8")
             output.with_suffix(".jsonl.metadata.json").write_text("{}\n", encoding="utf-8")
-        elif module == "kimodo.training.text_cache_cli":
+        elif module == "kimodo.data_pipeline.text_cache_cli":
             output = option(argv, "--output-manifest")
             output.write_text('{}\n', encoding="utf-8")
             output.with_suffix(".jsonl.metadata.json").write_text("{}\n", encoding="utf-8")
-        elif module == "kimodo.training.stats_cli":
+        elif module == "kimodo.data_pipeline.stats_cli":
             output = option(argv, "--output")
             output.mkdir(parents=True)
             (output / "stats.metadata.json").write_text("{}\n", encoding="utf-8")
-        elif module == "kimodo.training.reference_inventory_cli" and "build" in argv:
+        elif module == "kimodo.data_pipeline.reference_inventory_cli" and "build" in argv:
             output = option(argv, "--output")
             output.write_text("{}\n", encoding="utf-8")
             output.with_suffix(".jsonl.metadata.json").write_text("{}\n", encoding="utf-8")
@@ -204,11 +204,11 @@ def test_prepare_pipeline_orchestrates_every_stage_and_publishes_receipt(
     assert result["status"] == "repro_train_ready"
     assert modules == [
         "kimodo.resources.bones",
-        "kimodo.training.manifest_cli",
-        "kimodo.training.text_cache_cli",
-        "kimodo.training.stats_cli",
-        "kimodo.training.reference_inventory_cli",
-        "kimodo.training.reference_inventory_cli",
+        "kimodo.data_pipeline.manifest_cli",
+        "kimodo.data_pipeline.text_cache_cli",
+        "kimodo.data_pipeline.stats_cli",
+        "kimodo.data_pipeline.reference_inventory_cli",
+        "kimodo.data_pipeline.reference_inventory_cli",
         "kimodo.training.cli",
     ]
     receipt = json.loads((pipeline.prepared_root / "resource-state.json").read_text())

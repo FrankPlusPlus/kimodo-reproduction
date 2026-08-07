@@ -22,7 +22,7 @@ import numpy as np
 import yaml
 from filelock import FileLock, Timeout
 
-from kimodo.training.file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
 
 from .bones import motion_converter_identity
 from .config import PipelinePaths, ResourceCatalog, ResourcePaths
@@ -233,8 +233,8 @@ def _python_producer_identity(
 
 
 def _manifest_producer_identity() -> dict[str, Any]:
-    source = Path(__file__).resolve().parents[1] / "training" / "manifest_cli.py"
-    return _python_producer_identity("kimodo.training.manifest_cli", [source])
+    source = Path(__file__).resolve().parents[1] / "data_pipeline" / "manifest_cli.py"
+    return _python_producer_identity("kimodo.data_pipeline.manifest_cli", [source])
 
 
 def _stats_producer_identity() -> dict[str, Any]:
@@ -243,7 +243,7 @@ def _stats_producer_identity() -> dict[str, Any]:
         project_root / "kimodo" / "assets.py",
         project_root / "kimodo" / "geometry.py",
         project_root / "kimodo" / "tools.py",
-        project_root / "kimodo" / "training" / "stats_cli.py",
+        project_root / "kimodo" / "data_pipeline" / "stats_cli.py",
     ]
     files.append(project_root / "kimodo" / "training" / "data.py")
     files.extend((project_root / "kimodo" / "motion_rep").rglob("*.py"))
@@ -254,7 +254,7 @@ def _stats_producer_identity() -> dict[str, Any]:
         if path.is_file()
     )
     return _python_producer_identity(
-        "kimodo.training.stats_cli",
+        "kimodo.data_pipeline.stats_cli",
         files,
         dependencies=("numpy", "scipy", "torch", "bvhio"),
     )
@@ -275,7 +275,7 @@ def _text_cache_reuse_binding(
     pipeline: PipelinePaths,
     raw_manifest: Path,
 ) -> dict[str, Any]:
-    from kimodo.training import text_cache_cli
+    from kimodo.data_pipeline import text_cache_cli
 
     args = SimpleNamespace(
         provider="local",
@@ -679,7 +679,7 @@ def prepare_pipeline(
                 [
                     sys.executable,
                     "-m",
-                    "kimodo.training.manifest_cli",
+                    "kimodo.data_pipeline.manifest_cli",
                     "--metadata",
                     str(metadata),
                     "--temporal-labels",
@@ -716,7 +716,7 @@ def prepare_pipeline(
                 [
                     sys.executable,
                     "-m",
-                    "kimodo.training.text_cache_cli",
+                    "kimodo.data_pipeline.text_cache_cli",
                     "--manifest",
                     str(raw),
                     "--output-manifest",
@@ -764,7 +764,7 @@ def prepare_pipeline(
                 [
                     sys.executable,
                     "-m",
-                    "kimodo.training.stats_cli",
+                    "kimodo.data_pipeline.stats_cli",
                     "--manifest",
                     str(cached),
                     "--output",
@@ -800,7 +800,7 @@ def prepare_pipeline(
                 [
                     sys.executable,
                     "-m",
-                    "kimodo.training.reference_inventory_cli",
+                    "kimodo.data_pipeline.reference_inventory_cli",
                     "build",
                     "--manifest",
                     str(cached),
@@ -812,7 +812,7 @@ def prepare_pipeline(
                 [
                     sys.executable,
                     "-m",
-                    "kimodo.training.reference_inventory_cli",
+                    "kimodo.data_pipeline.reference_inventory_cli",
                     "verify",
                     "--manifest",
                     str(cached),
@@ -821,7 +821,7 @@ def prepare_pipeline(
                 ]
             )
         else:
-            from kimodo.training.reference_inventory import verify_reference_inventory_full
+            from kimodo.data_pipeline.reference_inventory import verify_reference_inventory_full
 
             # A train-ready receipt is a full content claim. Re-hash derived
             # motion/text assets on reuse instead of trusting only sidecar identity.

@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from kimodo.training.data import load_manifest
-from kimodo.training.manifest_overlay_cli import build_overlay_manifest
-from kimodo.training.reference_inventory import (
+from kimodo.data_pipeline.manifest_overlay_cli import build_overlay_manifest
+from kimodo.data_pipeline.reference_inventory import (
     build_reference_inventory,
     verify_reference_inventory_full,
 )
+from kimodo.training.data import load_manifest
 
 
 def _write_manifest(path: Path, fixture: dict[str, Path], prefix: str, count: int) -> Path:

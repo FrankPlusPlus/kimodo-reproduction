@@ -8,9 +8,9 @@ from unittest.mock import MagicMock, call, patch
 
 import torch
 
+from kimodo.data_pipeline import text_cache_cli
 from kimodo.model.llm2vec.llm2vec import LLM2Vec
 from kimodo.model.llm2vec.llm2vec_wrapper import LLM2VecEncoder
-from kimodo.training import text_cache_cli
 
 
 class _DummyTokenizer:

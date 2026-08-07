@@ -14,9 +14,9 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from kimodo.data_pipeline.reference_inventory import verify_reference_inventory_full
 from kimodo.resources.pipeline import _atomic_json, _atomic_yaml
 
-from .reference_inventory import verify_reference_inventory_full
 from .response_selection_cli import resolve as resolve_response_selection
 from .v2_lineage_cli import validate_lineage
 

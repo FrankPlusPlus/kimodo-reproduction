@@ -3,10 +3,9 @@ from __future__ import annotations
 import json
 
 import numpy as np
-
 import pytest
 
-from kimodo.training.benchmark_cli import _count_periodic_updates, create_fixture
+from kimodo.evaluation.benchmark_cli import _count_periodic_updates, create_fixture
 
 
 def test_benchmark_fixture_has_production_shapes(tmp_path):

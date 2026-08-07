@@ -5,7 +5,7 @@ import csv
 import json
 from pathlib import Path
 
-from kimodo.training.core_subset_cli import build_core_subset
+from kimodo.devtools.core_subset_cli import build_core_subset
 
 
 def test_core_subset_is_zero_copy_stratified_and_take_grouped(tmp_path: Path):

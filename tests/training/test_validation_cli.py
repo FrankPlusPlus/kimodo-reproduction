@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from kimodo.training.validation_cli import _parameter_delta
+from kimodo.evaluation.validation_cli import _parameter_delta
 
 
 def test_parameter_delta_reports_changed_tensor_and_relative_norm():

@@ -23,5 +23,8 @@ fi
 if [[ "${KIMODO_EVAL_PAPER_PROTOCOL:-0}" == 1 ]]; then
   args+=(--paper-protocol)
 fi
+if [[ "${KIMODO_EVAL_TEXT_ENCODER_FP32:-0}" == 1 ]]; then
+  args+=(--text-encoder-fp32)
+fi
 
-exec python -m kimodo.training.eval_monitor_cli "${args[@]}" "$@"
+exec python -m kimodo.evaluation.eval_monitor_cli "${args[@]}" "$@"

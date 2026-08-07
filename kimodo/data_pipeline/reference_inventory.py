@@ -16,7 +16,7 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from .file_permissions import publish_file
+from kimodo.common.file_permissions import publish_file
 
 SCHEMA_VERSION = 2
 SUPPORTED_SCHEMA_VERSIONS = frozenset({1, 2})

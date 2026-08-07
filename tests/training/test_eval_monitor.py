@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from kimodo.training.eval_monitor_cli import (
+from kimodo.evaluation.eval_monitor_cli import (
     benchmark_inventory_sha256,
     discover_exports,
     resolve_benchmark_inventory_sha256,

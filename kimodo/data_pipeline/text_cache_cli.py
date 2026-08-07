@@ -21,9 +21,8 @@ from pathlib import Path
 
 import numpy as np
 
+from kimodo.common.file_permissions import publish_file
 from kimodo.sanitize import sanitize_texts
-
-from .file_permissions import publish_file
 
 TEXT_CACHE_METADATA_SCHEMA_VERSION = 5
 SUPPORTED_TEXT_CACHE_METADATA_SCHEMAS = frozenset({3, 4, 5})
@@ -310,7 +309,7 @@ def _cache_provenance(args) -> dict:
     project_root = Path(__file__).resolve().parents[2]
     implementation_files = {
         "kimodo/sanitize.py": project_root / "kimodo" / "sanitize.py",
-        "kimodo/training/text_cache_cli.py": Path(__file__).resolve(),
+        "kimodo/data_pipeline/text_cache_cli.py": Path(__file__).resolve(),
     }
     for path in sorted((project_root / "kimodo" / "model" / "llm2vec").rglob("*.py")):
         implementation_files[str(path.relative_to(project_root))] = path

@@ -9,19 +9,19 @@ from collections import Counter
 import numpy as np
 import torch
 
+from kimodo.data_pipeline.v2.qwen_augmentation_cli import (
+    JUDGE_PROMPT,
+    _parse_judge,
+    _source_preserving_fallback,
+)
+from kimodo.data_pipeline.v2.timeline_multi_cli import SYSTEM_PROMPT, prepare, validate_description
+from kimodo.data_pipeline.v2.v2_cached_manifest_cli import compose
+from kimodo.data_pipeline.v2.v2_manifest_cli import build
 from kimodo.motion_rep.reps.kimodo_motionrep import KimodoMotionRep
 from kimodo.skeleton.registry import build_skeleton
 from kimodo.training.config import CurriculumConfig
 from kimodo.training.constraints import ConstraintCurriculumSampler
 from kimodo.training.data import load_manifest
-from kimodo.training.qwen_augmentation_cli import (
-    JUDGE_PROMPT,
-    _parse_judge,
-    _source_preserving_fallback,
-)
-from kimodo.training.timeline_multi_cli import SYSTEM_PROMPT, prepare, validate_description
-from kimodo.training.v2_cached_manifest_cli import compose
-from kimodo.training.v2_manifest_cli import build
 
 
 def _write_v1_fixture(tmp_path):

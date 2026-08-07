@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from kimodo.training.expert_review_cli import (
+from kimodo.data_pipeline.v2.expert_review_cli import (
     _parse_verdict,
     _validate_bindings,
 )

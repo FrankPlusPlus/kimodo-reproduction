@@ -17,8 +17,7 @@ import torch
 
 from kimodo.motion_rep.reps.kimodo_motionrep import KimodoMotionRep
 from kimodo.skeleton.registry import build_skeleton
-
-from .data import (
+from kimodo.training.data import (
     _convert_rotations_to_model_skeleton,
     _load_training_motion_file,
     load_manifest,

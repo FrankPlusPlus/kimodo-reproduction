@@ -11,8 +11,8 @@
   └─ 创建数据 Job 和训练 Job，本身不参加计算
 
 共享持久化存储（PVC/NFS/Lustre/并行文件系统）
-  ├─ prepared/：manifest、motion、text cache、stats（训练时只读）
-  ├─ config/repro.paths.yaml（训练时只读）
+  ├─ benchmark-v2-soma30-v2.2/：manifest、motion、text cache、stats、repro.paths.yaml（训练时只读）
+  ├─ yezitao-kimodo-eval-v1/：固定 benchmark proxy 与官方基线（可稍后上传）
   └─ runs/：日志、checkpoint、export（rank 0 可写）
 
 Pod/launcher group 0..N-1
@@ -76,10 +76,15 @@ KIMODO_STORAGE_ROOT=/mnt/kimodo \
 /workspace/scripts/prepare_container.sh
 ```
 
-首次执行会初始化资源路径、下载并校验固定 revision 的资源、转换 motion、生成离线文本 embedding、
-manifest、stats、inventory 和 `/mnt/kimodo/config/repro.paths.yaml`。如果已经把 train-ready prepared
-bundle 搬到共享盘，设置 `KIMODO_PREPARED_ROOT=/mnt/source/prepared-bundle`，脚本只验证并绑定，不重跑
+从原始资源首次执行时，会初始化资源路径、下载并校验固定 revision 的资源、转换 motion、生成离线文本
+embedding、manifest、stats、inventory 和 `/mnt/kimodo/config/repro.paths.yaml`。接入其他 train-ready
+prepared bundle 时，设置 `KIMODO_PREPARED_ROOT=/mnt/source/prepared-bundle`，脚本只验证并绑定，不重跑
 LLM2Vec。
+
+本项目交付的 `benchmark-v2-soma30-v2.2.tar.zst` 已经是 train-ready portable bundle，并自带使用
+`KIMODO_DATA_ROOT`/`KIMODO_RUN_ROOT` 的 `repro.paths.yaml`。把它直接解压到
+`${KIMODO_STORAGE_ROOT}/benchmark-v2-soma30-v2.2` 后，公司训练入口会直接使用包内 paths 文件；不需要再跑
+prepare Job。prepare/bind 流程只用于从原始资源重建数据或接入其他 prepared bundle。
 
 实践中的作业顺序应是：
 
@@ -110,9 +115,10 @@ KIMODO_CONTAINER_MODE=train-company
 ```text
 KIMODO_NNODES=2
 KIMODO_NPROC_PER_NODE=8
-KIMODO_STORAGE_ROOT=/mnt/kimodo
-KIMODO_PATHS_CONFIG=/mnt/kimodo/config/repro.paths.yaml
-KIMODO_RUN_DIR=/mnt/kimodo/runs/v2-1m-production
+KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction
+KIMODO_DATA_ROOT=/home/share/yezitao-kimodo-reproduction/benchmark-v2-soma30-v2.2
+KIMODO_PATHS_CONFIG=/home/share/yezitao-kimodo-reproduction/benchmark-v2-soma30-v2.2/repro.paths.yaml
+KIMODO_RUN_DIR=/home/share/yezitao-kimodo-reproduction/runs/v2-1m-production
 MASTER_ADDR=<node-rank-0 的稳定 Pod DNS 或 IP>
 MASTER_PORT=29500
 ```
@@ -135,8 +141,8 @@ runtime 已经替你执行 `torchrun` 并直接注入每个训练进程的 `RANK
 ```bash
 python -m kimodo.training.cli \
   --config /workspace/configs/training/kimodo_soma_seed_v2_1m_16h200.yaml \
-  --paths /mnt/kimodo/config/repro.paths.yaml \
-  --set runtime.output_dir=/mnt/kimodo/runs/v2-1m-production
+  --paths /home/share/yezitao-kimodo-reproduction/benchmark-v2-soma30-v2.2/repro.paths.yaml \
+  --set runtime.output_dir=/home/share/yezitao-kimodo-reproduction/runs/v2-1m-production
 ```
 
 这是上线前必须向平台管理员确认的第一件事：平台是“一 Pod 一节点，由镜像内部 torchrun”，还是“平台
