@@ -41,9 +41,10 @@ elif [[ -f "${response_selection}" ]]; then
 else
   responses="${KIMODO_LLM_RESPONSES:-${raw_responses}}"
 fi
-quality_report="${provenance_root}/mimo.quality.v2.2.json"
-expert_review="${provenance_root}/mimo.expert-review.v2.2.json"
-expert_verdicts="${provenance_root}/mimo.expert-verdicts.v2.2.jsonl"
+quality_report="${KIMODO_LLM_QUALITY_REPORT:-${provenance_root}/mimo.quality.v2.2.json}"
+review_sample="${KIMODO_LLM_REVIEW_SAMPLE:-${provenance_root}/mimo.review.v2.2.jsonl}"
+expert_review="${KIMODO_EXPERT_REVIEW:-${provenance_root}/mimo.expert-review.v2.2.json}"
+expert_verdicts="${KIMODO_EXPERT_VERDICTS:-${provenance_root}/mimo.expert-verdicts.v2.2.jsonl}"
 embedding_canary="${provenance_root}/llm2vec-v1-numerical-canary.v2.2.json"
 raw_manifest="${v2_root}/train.raw.jsonl"
 llm_raw_manifest="${v2_root}/train.llm.raw.jsonl"
@@ -68,6 +69,7 @@ text_device="${KIMODO_TEXT_DEVICE:-cuda:0}"
 stats_workers="${KIMODO_STATS_WORKERS:-16}"
 gpu_idle_memory_mib="${KIMODO_GPU_IDLE_MEMORY_MIB:-10000}"
 gpu_idle_utilization="${KIMODO_GPU_IDLE_UTILIZATION:-10}"
+gpu_min_total_memory_mib="${KIMODO_TEXT_GPU_MIN_TOTAL_MEMORY_MIB:-70000}"
 
 timestamp() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 stage() { echo "[$(timestamp)] V2 stage: $*" | tee -a "${log_file}"; }
@@ -81,7 +83,9 @@ wait_for_text_gpu() {
     echo "KIMODO_TEXT_DEVICE must be cpu or cuda:<integer>: ${text_device}" >&2
     exit 2
   }
-  [[ "${gpu_idle_memory_mib}" =~ ^[0-9]+$ && "${gpu_idle_utilization}" =~ ^[0-9]+$ ]] || {
+  [[ "${gpu_idle_memory_mib}" =~ ^[0-9]+$ \
+    && "${gpu_idle_utilization}" =~ ^[0-9]+$ \
+    && "${gpu_min_total_memory_mib}" =~ ^[0-9]+$ ]] || {
     echo "GPU idle thresholds must be non-negative integers" >&2
     exit 2
   }
@@ -102,22 +106,30 @@ index = int(sys.argv[1])
 if index < 0 or index >= torch.cuda.device_count():
     raise SystemExit(f"CUDA device index is unavailable: {index}")
 value = str(torch.cuda.get_device_properties(index).uuid)
-print(value if value.startswith("GPU-") else f"GPU-{value}")
+if value.startswith(("GPU-", "MIG-")):
+    print(value)
+else:
+    print(f"GPU-{value}")
 PY
   )"
-  [[ "${gpu_uuid}" == GPU-* ]] || {
+  [[ "${gpu_uuid}" == GPU-* || "${gpu_uuid}" == MIG-* ]] || {
     echo "failed to resolve physical GPU UUID for ${text_device}" >&2
     exit 2
   }
   stage "resolved ${text_device} to physical GPU ${gpu_uuid}"
 
   while true; do
-    local observation memory utilization
-    observation="$(nvidia-smi --query-gpu=memory.used,utilization.gpu \
+    local observation memory utilization total_memory
+    observation="$(nvidia-smi --query-gpu=memory.used,utilization.gpu,memory.total \
       --format=csv,noheader,nounits -i "${gpu_uuid}" | head -n 1)"
-    IFS=',' read -r memory utilization <<<"${observation}"
+    IFS=',' read -r memory utilization total_memory <<<"${observation}"
     memory="${memory//[[:space:]]/}"
     utilization="${utilization//[[:space:]]/}"
+    total_memory="${total_memory//[[:space:]]/}"
+    if [[ ! "${total_memory}" =~ ^[0-9]+$ ]] || (( total_memory < gpu_min_total_memory_mib )); then
+      echo "text GPU ${gpu_uuid} has insufficient or unknown total memory: ${total_memory:-unknown} MiB < ${gpu_min_total_memory_mib} MiB" >&2
+      exit 2
+    fi
     if [[ "${memory}" =~ ^[0-9]+$ && "${utilization}" =~ ^[0-9]+$ ]] \
       && (( memory <= gpu_idle_memory_mib && utilization <= gpu_idle_utilization )); then
       stage "text GPU ${gpu_index} is idle (${memory} MiB, ${utilization}% utilization)"
@@ -317,14 +329,14 @@ if [[ ! -f "${quality_report}" ]]; then
   stage "auditing complete LLM output"
   "${repo_root}/scripts/build_v2_llm.sh" audit 2>&1 | tee -a "${log_file}"
 fi
-verify_quality_gate "${quality_report}" "${responses}" "${provenance_root}/mimo.review.v2.2.jsonl"
+verify_quality_gate "${quality_report}" "${responses}" "${review_sample}"
 
 if [[ ! -f "${expert_review}" ]]; then
   [[ -d "${expert_model}" ]] || { echo "independent expert model is missing: ${expert_model}" >&2; exit 5; }
   wait_for_text_gpu
   stage "independently reviewing 1,200 weighted/risk-stratified samples with local Qwen3-32B"
   TRANSFORMERS_OFFLINE=1 HF_HUB_OFFLINE=1 "${python_bin}" -m kimodo.training.expert_review_cli \
-    --review-sample "${provenance_root}/mimo.review.v2.2.jsonl" \
+    --review-sample "${review_sample}" \
     --responses "${responses}" --quality-report "${quality_report}" \
     --model "${expert_model}" --device "${text_device}" \
     --batch-size "${KIMODO_EXPERT_BATCH_SIZE:-8}" \
@@ -332,7 +344,7 @@ if [[ ! -f "${expert_review}" ]]; then
     2>&1 | tee -a "${log_file}"
 fi
 verify_expert_gate "${expert_review}" "${expert_verdicts}" "${responses}" \
-  "${quality_report}" "${provenance_root}/mimo.review.v2.2.jsonl"
+  "${quality_report}" "${review_sample}"
 
 if [[ ! -f "${raw_manifest}" ]]; then
   stage "building V2 raw manifest"

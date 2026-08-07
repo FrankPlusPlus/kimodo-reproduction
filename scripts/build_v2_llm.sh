@@ -36,6 +36,8 @@ case "${stage}" in
     ;;
 esac
 plan="${KIMODO_V2_PLAN:-${provenance_root}/timeline.selected.v2.2.jsonl}"
+quality_report="${KIMODO_LLM_QUALITY_REPORT:-${provenance_root}/mimo.quality.v2.2.json}"
+review_sample="${KIMODO_LLM_REVIEW_SAMPLE:-${provenance_root}/mimo.review.v2.2.jsonl}"
 train_split="${KIMODO_TRAIN_SPLIT:-${repo_root}/artifacts/benchmark-metadata/splits/train_split_paths.txt}"
 source_manifest="${KIMODO_V1_RAW_MANIFEST:-${v1_root}/train.raw.jsonl}"
 model="${PRODUCT_GRAPH_LLM_MODEL:-mimo-v2.5-pro}"
@@ -88,8 +90,8 @@ case "${stage}" in
       --responses "${responses}" \
       --plan "${plan}" \
       --sample-per-event-count 100 --max-risk-samples 400 --max-high-reuse-samples 400 \
-      --report "${provenance_root}/mimo.quality.v2.2.json" \
-      --review-sample "${provenance_root}/mimo.review.v2.2.jsonl"
+      --report "${quality_report}" \
+      --review-sample "${review_sample}"
     ;;
   manifest)
     "${python_bin}" -m kimodo.training.v2_manifest_cli \

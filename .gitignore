@@ -157,7 +157,12 @@ nohup.out
 
 # Downloaded models, datasets, generated manifests/caches, and local runs.
 # Keep these on server/shared storage rather than in Git.
-/artifacts/
+/artifacts/*
+!/artifacts/benchmark-metadata/
+/artifacts/benchmark-metadata/*
+!/artifacts/benchmark-metadata/v2/
+/artifacts/benchmark-metadata/v2/*
+!/artifacts/benchmark-metadata/v2/expert-semantic-adjudication.v2.2.json
 /data/
 /datasets/
 /runs/

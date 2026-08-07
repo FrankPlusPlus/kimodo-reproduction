@@ -1,0 +1,156 @@
+{
+  "schema_version": 1,
+  "policy_id": "kimodo-v2.2-motion-caption-adjudication-2026-08-07",
+  "reviewed_at": "2026-08-07T00:00:00Z",
+  "reviewer_identity": {
+    "name": "kimodo-v2-multi-expert-review",
+    "role": "independent semantic adjudication",
+    "version": "1"
+  },
+  "decisions": [
+    {
+      "request_id": "03db8f9d08e79cd39edcedfe80ca7fc5c58a4cf95b3ed076a2941516c80f4871",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_adjacent_state_merge"],
+      "evidence": "Toe rise, upward gaze, forward bend, head turns, heel lowering, and relaxed final stance remain in source order; adjacent toe-standing states are only compressed."
+    },
+    {
+      "request_id": "0450793362a80da8a4713f75ea9534f806ef6dbb779e18340c42649d96732485",
+      "adjudication": "false_positive",
+      "issue_codes": ["judge_order_false_positive", "exact_source_preserving_template"],
+      "evidence": "The candidate is the deterministic source-preserving template and reproduces source segment one before source segment two."
+    },
+    {
+      "request_id": "06871da9abed569cf8cc725d1fe86b6a695499f021c097e0ed78326245ccf102",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_progressive_action_merge"],
+      "evidence": "Swaying, leaning down, extending the right arm, grasping, lifting, straightening, and stepping all remain in order; progressive bending is concisely merged."
+    },
+    {
+      "request_id": "0da5f6c2be2e0d605a9dcfde51e1817a9b27b3d9a6a45e50b628a7fd311277b1",
+      "adjudication": "false_positive",
+      "issue_codes": ["judge_repetition_false_positive"],
+      "evidence": "The source contains two left-shoulder turns and the candidate contains exactly two; jogging, stopping, and final standing chronology is preserved."
+    },
+    {
+      "request_id": "0e611b318abbcc82fde20a42de3a15307249d6a7600e570f5c38a53fd56475c9",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_onset_continuation_merge"],
+      "evidence": "Starts walking and the immediately following normal-pace continuation are legally expressed as starts walking at a normal pace, followed by stopping."
+    },
+    {
+      "request_id": "161ff6f28173f69c9a1737810f5bbeb8f4e56d853fa741ca188d364fbae9a13f",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_onset_continuation_merge"],
+      "evidence": "The onset and immediately following fast walking phase are combined without dropping the lowering-arms or final right-shoulder turn and step."
+    },
+    {
+      "request_id": "19b6286cca8c9cd8c490b26e62ab33a05f05f9d3cdcd6f6b63155e5ee22bd14e",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_repetition", "dropped_intermediate_posture"],
+      "evidence": "The candidate drops the bent-elbow/head-down intermediate state and the second soup-eating left-arm raise."
+    },
+    {
+      "request_id": "1addd4db42a83e86544ee1992a1d6b3bf0ad0f10504e2460e14f8e3913a3f491",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_onset_continuation_merge"],
+      "evidence": "Standing, walking onset and continuation, rightward sideways jogging, and the right-hand leftward wave all remain in chronological order."
+    },
+    {
+      "request_id": "1c4c2daa4901c7ed6b537f8d2ba6a9ebe5bbf32633fbcf10fb712346cb4387a5",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_repetition", "dropped_intermediate_states"],
+      "evidence": "Two distinct hotdog-eating events and intervening raised-arm holding states are compressed into one eating event."
+    },
+    {
+      "request_id": "266107cf5c44dd6edb7beafb8a4c8b181172d39d69d36051203947970ac8edda",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_onset_continuation_merge"],
+      "evidence": "Walking onset and fast continuation are combined while the initial arm lowering and final left-shoulder turn and step are retained."
+    },
+    {
+      "request_id": "32967cbea2e78f4ca4a156f8bc49062279165183c19d8e941dc93c8835f01d5a",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_adjacent_action_merge"],
+      "evidence": "Initial leash stance, dog pull with left-foot step, bent three-step pull, and return to standing with momentary movement are all retained."
+    },
+    {
+      "request_id": "38f02fec4024eefc331803136bdd3e6d472a0b834cd2250042f989252aaf298e",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_final_state"],
+      "evidence": "The final return to right-leaning balance on the injured left leg is omitted."
+    },
+    {
+      "request_id": "3a99bfd15783d144046ffeb20f5959f0997292eb3b0d98027300dcb8e93798e7",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_turn_walk_merge"],
+      "evidence": "The right-back turn to start walking and its forward continuation are legally merged; the later left-shoulder turn and walk remain separate and ordered."
+    },
+    {
+      "request_id": "3cfa9e48f048fe345dcff19ffe4985d323e8fe76f1c01be862bbaea63f4c0e8a",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_adjacent_action_merge"],
+      "evidence": "Both one-leg hops, bending, picking up the item, rising while gazing, and left-hand holding are all explicitly retained in order."
+    },
+    {
+      "request_id": "451e80c3b99397bb9fcc770c87db49056c6d1b1c53fb8e596b41e294adf2c8f6",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_repetition"],
+      "evidence": "The second post-eating body sway and left-to-right gaze shift is omitted."
+    },
+    {
+      "request_id": "52e6319d8bf7f3d6527dc058ecd32b875a2e4ae142c8f0c1aec271f236258a4e",
+      "adjudication": "true_major",
+      "issue_codes": ["merged_distinct_turns"],
+      "evidence": "The initial rightward turn and the later right-shoulder turn from a right-facing stance are collapsed into one turn."
+    },
+    {
+      "request_id": "55387ce34aa3eb91384f153ff005eb163110a2fc31570556b9feeb4afadeb31f",
+      "adjudication": "false_positive",
+      "issue_codes": ["legal_turn_walk_merge"],
+      "evidence": "The right-back turn into steady forward walking is concisely merged, while steady pace, arm swing, later left-shoulder turn, and subsequent walking remain represented."
+    },
+    {
+      "request_id": "64cf09f5ea8c2546846b73acd3660c99856d62d44408c2284e8608f8c1fb0c6f",
+      "adjudication": "false_positive",
+      "issue_codes": ["judge_order_false_positive", "exact_source_preserving_template"],
+      "evidence": "The candidate is the deterministic source-preserving template and reproduces all four source segments in their supplied order."
+    },
+    {
+      "request_id": "86b2aeb66432a2a824c7369ef4075be0a1a91b1349b0e7863ce6a491af40bde8",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_body_part", "dropped_final_state"],
+      "evidence": "The candidate omits both-hands grasping and the final independent upright idle state."
+    },
+    {
+      "request_id": "9281b1b49de18be41b398ef392e492ffc3fc5d6ac75a8f52a1f7f8896f0d9b0a",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_repetition", "dropped_intermediate_posture"],
+      "evidence": "Two right-arm soup-eating raises are collapsed into one and the bent-elbow posture is not preserved."
+    },
+    {
+      "request_id": "a4f534c604042f0312a5b1decefa2215bb8f9aebcd8c1c97e66f912209f10b9b",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_action", "direction_change"],
+      "evidence": "The moderate forward walking phase and later rightward turn are omitted, while the sequence is reduced to turning and walking backward."
+    },
+    {
+      "request_id": "c15365bb0679b225c96f2d9c4a6f340fb1a41053630919a22b93132dab393c09",
+      "adjudication": "false_positive",
+      "issue_codes": ["valid_continuous_sequence"],
+      "evidence": "The supplied ordered segments describe the same sequence: leftward collision and left turn, followed by standing, swearing, and hand gestures."
+    },
+    {
+      "request_id": "cb788aca2f2909d38adde9183f72870f7e5cdbba807043d2e13dd37b64ed0dd5",
+      "adjudication": "true_major",
+      "issue_codes": ["dropped_repetition"],
+      "evidence": "Two independent medium-pace backward-walking segments are collapsed into one."
+    },
+    {
+      "request_id": "ed8d6d77c3a9a1343618c708af9ceb203a7601f26b42413ad1c7af5b5eef9d6b",
+      "adjudication": "false_positive",
+      "issue_codes": ["judge_repetition_false_positive"],
+      "evidence": "The first standing phrase is the transition from cross-legged sitting; the second describes the following standing arm-sway state and invents no extra stand-up event."
+    }
+  ]
+}

@@ -39,14 +39,107 @@ def _request_ids(path: Path) -> set[str]:
     return result
 
 
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _validate_independent_review_remediation(
+    responses: Path, metadata: dict
+) -> dict:
+    remediation = metadata.get("independent_review_remediation")
+    if not isinstance(remediation, dict):
+        raise ValueError("remediated response metadata lacks its review contract")
+    expected_counts = {
+        "original_major_count": 24,
+        "true_major_fallback_rows": 9,
+        "false_positive_retained_rows": 15,
+        "resolved_original_major_rows": 24,
+        "remaining_unresolved_original_major_rows": 0,
+    }
+    if any(remediation.get(key) != value for key, value in expected_counts.items()):
+        raise ValueError("independent-review remediation counts are invalid")
+    ledger_record = remediation.get("adjudication_ledger")
+    if not isinstance(ledger_record, dict) or ledger_record.get("entries") != 24:
+        raise ValueError("independent-review remediation ledger record is invalid")
+    ledger = (responses.parent / str(ledger_record.get("path", ""))).resolve()
+    ledger_metadata = (
+        responses.parent / str(ledger_record.get("metadata_path", ""))
+    ).resolve()
+    if (
+        not ledger.is_file()
+        or not ledger_metadata.is_file()
+        or ledger_record.get("sha256") != _sha256(ledger)
+        or ledger_record.get("metadata_sha256") != _sha256(ledger_metadata)
+    ):
+        raise ValueError("independent-review remediation ledger is missing or stale")
+    ledger_meta = json.loads(ledger_metadata.read_text(encoding="utf-8"))
+    if (
+        ledger_meta.get("ledger_sha256") != _sha256(ledger)
+        or ledger_meta.get("entries") != 24
+        or ledger_meta.get("true_major_count") != 9
+        or ledger_meta.get("false_positive_count") != 15
+    ):
+        raise ValueError("independent-review remediation ledger metadata is invalid")
+    rows = []
+    with ledger.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                rows.append(json.loads(line))
+    ids = [str(row["request_id"]) for row in rows]
+    true_major = {
+        str(row["request_id"])
+        for row in rows
+        if row.get("adjudication") == "true_major"
+    }
+    false_positive = {
+        str(row["request_id"])
+        for row in rows
+        if row.get("adjudication") == "false_positive"
+    }
+    if (
+        len(ids) != 24
+        or len(set(ids)) != 24
+        or len(true_major) != 9
+        or len(false_positive) != 15
+        or true_major & false_positive
+        or true_major | false_positive != set(ids)
+    ):
+        raise ValueError("adjudication ledger does not partition 24 unique requests")
+    checks = {
+        "true_major_ids_sha256": _canonical_sha256(sorted(true_major)),
+        "false_positive_ids_sha256": _canonical_sha256(sorted(false_positive)),
+    }
+    if any(remediation.get(key) != value for key, value in checks.items()):
+        raise ValueError("response remediation ID hashes disagree with its ledger")
+    if metadata.get("producer_identity", {}).get("kind") != (
+        "composite_independent_review_remediation"
+    ):
+        raise ValueError("unexpected independent-review producer identity")
+    return {
+        **expected_counts,
+        "adjudication_ledger_sha256": _sha256(ledger),
+        **checks,
+    }
+
+
 def _validate_response(requests: Path, responses: Path) -> tuple[dict, dict]:
     metadata_path = responses.with_suffix(responses.suffix + ".metadata.json")
     if not requests.is_file() or not responses.is_file() or not metadata_path.is_file():
         raise FileNotFoundError("requests, responses, and response metadata must all exist")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    if metadata.get("schema_version") != 4 or metadata.get("generator") != (
-        "kimodo.training.semantic_response_finalize_cli"
-    ):
+    schema_version = metadata.get("schema_version")
+    generator = metadata.get("generator")
+    valid_generator = (
+        schema_version == 4
+        and generator == "kimodo.training.semantic_response_finalize_cli"
+    ) or (
+        schema_version == 5
+        and generator == "kimodo.training.independent_review_remediation_cli"
+    )
+    if not valid_generator:
         raise ValueError("selected response metadata is not a finalized V2 response")
     output = metadata.get("output", {})
     response_sha = _sha256(responses)
@@ -67,6 +160,8 @@ def _validate_response(requests: Path, responses: Path) -> tuple[dict, dict]:
         raise ValueError("semantic finalization is bound to different requests")
     if metadata.get("quality", {}).get("invalid_published") != 0:
         raise ValueError("selected responses contain an invalid published row")
+    if schema_version == 5:
+        _validate_independent_review_remediation(responses, metadata)
     producer_identity = metadata.get("producer_identity")
     if not isinstance(producer_identity, dict):
         raise ValueError("selected responses lack a producer identity")
@@ -116,6 +211,10 @@ def select(args) -> dict:
         "producer_identity_sha256": metadata.get("producer_identity_sha256"),
         "semantic_finalization": metadata["semantic_finalization"],
     }
+    if metadata.get("schema_version") == 5:
+        record["independent_review_remediation"] = (
+            _validate_independent_review_remediation(responses, metadata)
+        )
     temporary = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -156,6 +255,12 @@ def resolve(args) -> Path:
         "producer_identity_sha256"
     ):
         raise ValueError("selected producer identity changed")
+    if metadata.get("schema_version") == 5:
+        expected_remediation = _validate_independent_review_remediation(
+            responses, metadata
+        )
+        if record.get("independent_review_remediation") != expected_remediation:
+            raise ValueError("selected independent-review remediation changed")
     return responses
 
 
