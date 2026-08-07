@@ -24,7 +24,7 @@ def test_dockerfile_uses_generic_storage_root_and_can_extract_v2_archive():
     assert "KIMODO_DATA_ROOT=" not in source
     assert "KIMODO_RUN_ROOT=" not in source
     assert "/home/share/" not in source
-    assert "      zstd \\\n" in source
+    assert "zstd openssh-server" in source
 
 
 def test_image_keeps_a_writable_git_worktree_for_pod_updates():
@@ -39,6 +39,18 @@ def test_image_keeps_a_writable_git_worktree_for_pod_updates():
     assert "COPY . /workspace" in source
     assert "git config --system --add safe.directory /workspace" in source
     assert "chmod -R a+rwX /workspace" in source
+
+
+def test_image_provides_public_key_only_ssh_for_remote_pod_development():
+    source = DOCKERFILE.read_text(encoding="utf-8")
+    entrypoint = (PROJECT_ROOT / "kimodo/scripts/docker-entrypoint.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "openssh-server" in source
+    assert "PasswordAuthentication no" in source
+    assert "PermitRootLogin prohibit-password" in source
+    assert "KIMODO_SSH_PUBLIC_KEY" in entrypoint
+    assert "/usr/sbin/sshd" in entrypoint
 
 
 def test_container_dispatcher_help_lists_reviewed_modes():

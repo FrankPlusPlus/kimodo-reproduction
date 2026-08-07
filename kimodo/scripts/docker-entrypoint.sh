@@ -5,11 +5,33 @@ HOST_UID="${HOST_UID:-}"
 HOST_GID="${HOST_GID:-}"
 HOST_USER="${HOST_USER:-user}"
 
+start_sshd() {
+  [[ "${KIMODO_SSH_ENABLED:-1}" == "1" ]] || return 0
+  command -v sshd >/dev/null 2>&1 || return 0
+  [[ "$(id -u)" == 0 ]] || {
+    echo "Kimodo SSH server not started: the container is not running as root." >&2
+    return 0
+  }
+
+  install -d -m 0755 /run/sshd
+  ssh-keygen -A >/dev/null 2>&1
+
+  if [[ -n "${KIMODO_SSH_PUBLIC_KEY:-}" ]]; then
+    install -d -m 0700 /root/.ssh
+    printf '%s\n' "${KIMODO_SSH_PUBLIC_KEY}" > /root/.ssh/authorized_keys
+    chmod 0600 /root/.ssh/authorized_keys
+  fi
+
+  /usr/sbin/sshd
+}
+
 # Kubernetes commonly sets runAsUser. A non-root process cannot and need not
 # edit /etc/passwd; preserve the scheduler identity and execute directly.
 if [[ "$(id -u)" != 0 ]]; then
   exec "$@"
 fi
+
+start_sshd
 
 if [[ -z "${HOST_UID}" || -z "${HOST_GID}" ]]; then
   if [[ -d /workspace ]]; then

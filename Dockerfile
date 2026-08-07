@@ -23,9 +23,9 @@ WORKDIR /workspace
 RUN if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
       command -v git && command -v curl && command -v cmake && command -v gosu \
       && command -v ibv_devices \
-      && if ! command -v zstd >/dev/null 2>&1; then \
+      && if ! command -v zstd >/dev/null 2>&1 || ! command -v sshd >/dev/null 2>&1; then \
            apt-get update \
-           && apt-get install -y --no-install-recommends zstd \
+           && apt-get install -y --no-install-recommends zstd openssh-server \
            && rm -rf /var/lib/apt/lists/*; \
          fi; \
     else \
@@ -34,11 +34,26 @@ RUN if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
         git curl ca-certificates \
         cmake build-essential \
         gosu \
-        zstd \
+        zstd openssh-server \
         libibverbs1 ibverbs-providers rdma-core \
         infiniband-diags perftest ibutils ibverbs-utils \
       && rm -rf /var/lib/apt/lists/*; \
     fi
+
+# The company SSH gateway forwards an authenticated connection to port 22 in
+# the Pod. Keep password login disabled; the platform may mount authorized_keys,
+# or KIMODO_SSH_PUBLIC_KEY can provide the public key at runtime.
+RUN mkdir -p /run/sshd /etc/ssh/sshd_config.d \
+ && rm -f /etc/ssh/ssh_host_* \
+ && printf '%s\n' \
+      'PasswordAuthentication no' \
+      'KbdInteractiveAuthentication no' \
+      'PubkeyAuthentication yes' \
+      'PermitRootLogin prohibit-password' \
+      'AllowTcpForwarding yes' \
+      > /etc/ssh/sshd_config.d/kimodo.conf
+
+EXPOSE 22
 
 # Some base images ship a broken `/usr/local/bin/cmake` shim (from a partial pip install),
 # which shadows `/usr/bin/cmake` and breaks builds that invoke `cmake` (e.g. MotionCorrection).
