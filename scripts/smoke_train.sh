@@ -5,9 +5,18 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 python_bin="${KIMODO_PYTHON:-${project_root}/.venv/bin/python}"
 
-if [[ ! -x "${python_bin}" ]]; then
-  echo "Python environment is missing: ${python_bin}" >&2
-  exit 2
+if [[ "${python_bin}" == */* ]]; then
+  if [[ ! -x "${python_bin}" ]]; then
+    echo "Python environment is missing: ${python_bin}" >&2
+    exit 2
+  fi
+else
+  resolved_python="$(command -v "${python_bin}" || true)"
+  if [[ -z "${resolved_python}" ]]; then
+    echo "Python command is missing from PATH: ${python_bin}" >&2
+    exit 2
+  fi
+  python_bin="${resolved_python}"
 fi
 
 if [[ -n "${KIMODO_SMOKE_ROOT:-}" ]]; then
