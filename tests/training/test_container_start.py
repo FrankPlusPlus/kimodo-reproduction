@@ -7,6 +7,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RUNNER = PROJECT_ROOT / "scripts/container_start.sh"
 DOCKERFILE = PROJECT_ROOT / "Dockerfile"
+DOCKERIGNORE = PROJECT_ROOT / ".dockerignore"
 
 
 def test_dockerfile_uses_hardware_neutral_dispatcher():
@@ -24,6 +25,20 @@ def test_dockerfile_uses_generic_storage_root_and_can_extract_v2_archive():
     assert "KIMODO_RUN_ROOT=" not in source
     assert "/home/share/" not in source
     assert "      zstd \\\n" in source
+
+
+def test_image_keeps_a_writable_git_worktree_for_pod_updates():
+    source = DOCKERFILE.read_text(encoding="utf-8")
+    ignored = {
+        line.strip()
+        for line in DOCKERIGNORE.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+    assert ".git" not in ignored
+    assert ".github" not in ignored
+    assert "COPY . /workspace" in source
+    assert "git config --system --add safe.directory /workspace" in source
+    assert "chmod -R a+rwX /workspace" in source
 
 
 def test_container_dispatcher_help_lists_reviewed_modes():

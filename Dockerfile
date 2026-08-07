@@ -5,9 +5,9 @@
 ARG KIMODO_PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:24.10-py3
 FROM ${KIMODO_PYTORCH_IMAGE}
 
-ARG KIMODO_GIT_COMMIT=unknown
-LABEL org.opencontainers.image.revision=${KIMODO_GIT_COMMIT}
-ENV KIMODO_IMAGE_GIT_COMMIT=${KIMODO_GIT_COMMIT}
+# Company rebuilds may layer a source-only update on the already validated v2
+# image. The default remains a clean NGC bootstrap for independent CI builds.
+ARG KIMODO_REUSE_BASE_ENV=0
 
 # Avoid some interactive prompts + make pip quieter/reproducible-ish
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -20,14 +20,25 @@ ENV DEBIAN_FRONTEND=noninteractive \
 WORKDIR /workspace
 
 # System deps
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      git curl ca-certificates \
-      cmake build-essential \
-      gosu \
-      zstd \
-      libibverbs1 ibverbs-providers rdma-core \
-      infiniband-diags perftest ibutils ibverbs-utils \
-    && rm -rf /var/lib/apt/lists/*
+RUN if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
+      command -v git && command -v curl && command -v cmake && command -v gosu \
+      && command -v ibv_devices \
+      && if ! command -v zstd >/dev/null 2>&1; then \
+           apt-get update \
+           && apt-get install -y --no-install-recommends zstd \
+           && rm -rf /var/lib/apt/lists/*; \
+         fi; \
+    else \
+      apt-get update \
+      && apt-get install -y --no-install-recommends \
+        git curl ca-certificates \
+        cmake build-essential \
+        gosu \
+        zstd \
+        libibverbs1 ibverbs-providers rdma-core \
+        infiniband-diags perftest ibutils ibverbs-utils \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 # Some base images ship a broken `/usr/local/bin/cmake` shim (from a partial pip install),
 # which shadows `/usr/bin/cmake` and breaks builds that invoke `cmake` (e.g. MotionCorrection).
@@ -49,20 +60,27 @@ COPY kimodo /workspace/kimodo
 COPY MotionCorrection /workspace/MotionCorrection
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    python -m pip install --upgrade pip \
- && SKIP_MOTION_CORRECTION_IN_SETUP=1 python -m pip install -r docker_requirements.txt \
- && python -m pip check \
- && python -c "import kimodo, torch; print('kimodo image smoke:', torch.__version__, torch.version.cuda)"
+    if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
+      python -c "import kimodo, torch, wandb; print('reusing validated environment:', torch.__version__, wandb.__version__)"; \
+    else \
+      PIP_NO_CACHE_DIR=0 python -m pip install --upgrade "pip==24.2" \
+      && PIP_NO_CACHE_DIR=0 SKIP_MOTION_CORRECTION_IN_SETUP=1 python -m pip install -r docker_requirements.txt; \
+    fi
 
-# Training method/config files and operational launchers are runtime inputs.
-# Datasets, prepared caches, and checkpoints deliberately stay outside the
-# image. Mount the PVC at KIMODO_STORAGE_ROOT (default: /mnt/kimodo), or set
-# that environment variable to the platform-specific mount path at runtime.
-COPY configs /workspace/configs
-COPY resources /workspace/resources
-COPY scripts /workspace/scripts
-COPY benchmark /workspace/benchmark
-RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} +
+# NGC 24.10 contains a legacy two-field wheel tag that makes `pip check`
+# crash while scanning platform compatibility. Check missing/version conflicts
+# directly and skip only that broken tag scan.
+RUN python -c "from pip._internal.operations.check import create_package_set_from_installed, check_package_set; package_set, parsing_problems = create_package_set_from_installed(); missing, conflicting = check_package_set(package_set, should_ignore=lambda _name: False); print('dependency check:', len(missing), 'missing,', len(conflicting), 'conflicting'); assert not parsing_problems and not missing and not conflicting, (parsing_problems, missing, conflicting)" \
+ && python -c "import kimodo, torch, wandb; print('kimodo image smoke:', torch.__version__, torch.version.cuda, 'wandb', wandb.__version__)"
+
+# Copy the complete Git working tree after the dependency layer. Keeping
+# /workspace/.git makes the running Pod useful for reviewed `git fetch/pull`
+# workflows; runtime datasets, checkpoints, caches and secrets remain excluded
+# by .dockerignore and belong on the PVC.
+COPY . /workspace
+RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} + \
+ && git config --system --add safe.directory /workspace \
+ && chmod -R a+rwX /workspace
 
 # Fail the image build if the post-migration training/evaluation entry points
 # or the real two-step trainer path are broken. The generated fixture, logs and
@@ -75,6 +93,12 @@ RUN --mount=type=tmpfs,target=/tmp \
 # Use the docker-entrypoint script, to allow the docker to run as the actual user instead of root
 COPY kimodo/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint
+
+# Keep source revision metadata late in the file so changing only the Git
+# commit does not invalidate apt and Python dependency layers.
+ARG KIMODO_GIT_COMMIT=unknown
+LABEL org.opencontainers.image.revision=${KIMODO_GIT_COMMIT}
+ENV KIMODO_IMAGE_GIT_COMMIT=${KIMODO_GIT_COMMIT}
 
 # Keep the image hardware-neutral by default.  The dispatcher stays alive in
 # idle mode, while Kubernetes can either override the command with a concrete

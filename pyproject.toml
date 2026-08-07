@@ -40,6 +40,9 @@ train = [
   "pytest>=8.0",
   "pyyaml>=6.0",
 ]
+monitoring = [
+  "wandb>=0.19,<1",
+]
 demo = [
   "viser @ git+https://github.com/nv-tlabs/kimodo-viser.git",
 ]

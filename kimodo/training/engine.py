@@ -21,6 +21,7 @@ from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DataLoader, DistributedSampler
 
 from kimodo.model.diffusion import Diffusion
+from kimodo.monitoring import WandbMonitor
 
 from .checkpoint import (
     CheckpointManager,
@@ -130,9 +131,10 @@ def _reduce_scalar(value: torch.Tensor, context: DistributedContext) -> float:
 
 
 class JsonlLogger:
-    def __init__(self, path: Path, enabled: bool) -> None:
+    def __init__(self, path: Path, enabled: bool, monitor: WandbMonitor | None = None) -> None:
         self.path = path
         self.enabled = enabled
+        self.monitor = monitor
         if enabled:
             path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -142,6 +144,8 @@ class JsonlLogger:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
         print(json.dumps(record, sort_keys=True), flush=True)
+        if self.monitor is not None:
+            self.monitor.log(record, step=record.get("global_step"))
 
 
 def build_training_dataset(config, motion_rep):
@@ -411,16 +415,31 @@ class KimodoTrainer:
             lock_error = payload[0]
         if lock_error is not None:
             raise FileExistsError(lock_error)
+        self.wandb_monitor = WandbMonitor()
         if self.context.is_main:
             try:
                 from .config import save_resolved_config
 
                 save_resolved_config(config, self.output_dir / "config.resolved.yaml")
                 save_provenance(self.provenance, self.output_dir / "provenance.json")
+                self.wandb_monitor = WandbMonitor.from_env(
+                    "train",
+                    output_dir=self.output_dir / ".wandb",
+                    identity_root=self.output_dir,
+                    config=config.to_dict(),
+                    metadata={
+                        "kimodo/image_git_commit": self.provenance.get("image_git_commit"),
+                        "kimodo/git_commit": self.provenance.get("git_commit"),
+                        "kimodo/world_size": self.context.world_size,
+                        "kimodo/output_dir": str(self.output_dir),
+                    },
+                )
             except Exception:
                 self.run_lock.release()
                 raise
-        self.logger = JsonlLogger(self.output_dir / "train.jsonl", self.context.is_main)
+        self.logger = JsonlLogger(
+            self.output_dir / "train.jsonl", self.context.is_main, self.wandb_monitor
+        )
 
     def _observed_section(self, name: str):
         """Return an optional benchmark-only profiling range."""
@@ -430,6 +449,7 @@ class KimodoTrainer:
 
     def _export_current_inference_bundle_if_missing(self) -> None:
         destination = self.output_dir / "exports" / f"step-{self.global_step:09d}"
+        published = False
         if self.context.is_main and not destination.is_dir():
             export_inference_bundle(
                 self.model,
@@ -437,6 +457,15 @@ class KimodoTrainer:
                 self.output_dir,
                 self.global_step,
                 self.config,
+            )
+            published = True
+        if published:
+            self.wandb_monitor.log(
+                {
+                    "lifecycle/ema_export_published": 1,
+                    "lifecycle/ema_export_path": str(destination),
+                },
+                step=self.global_step,
             )
         if self.context.world_size > 1:
             dist.barrier()
@@ -494,15 +523,42 @@ class KimodoTrainer:
             diagnostic_reason=diagnostic_reason,
         )
         if diagnostic_reason is not None:
-            return self.checkpoints.save_diagnostic(state, diagnostic_reason)
+            saved = self.checkpoints.save_diagnostic(state, diagnostic_reason)
+            self.wandb_monitor.log(
+                {
+                    "lifecycle/diagnostic_checkpoint_saved": 1,
+                    "lifecycle/diagnostic_reason": diagnostic_reason,
+                    "lifecycle/checkpoint_path": str(saved),
+                },
+                step=self.global_step,
+            )
+            return saved
         saved = self.checkpoints.save(state)
         self._last_saved_position = position
+        self.wandb_monitor.log(
+            {
+                "lifecycle/checkpoint_saved": 1,
+                "lifecycle/checkpoint_path": str(saved),
+            },
+            step=self.global_step,
+        )
         return saved
 
     def train(self) -> None:
+        exit_code = 0
         try:
             self._train_impl()
+            self.wandb_monitor.summary(
+                {"kimodo/status": "completed", "kimodo/final_global_step": self.global_step}
+            )
+        except BaseException:
+            exit_code = 1
+            self.wandb_monitor.summary(
+                {"kimodo/status": "failed", "kimodo/final_global_step": self.global_step}
+            )
+            raise
         finally:
+            self.wandb_monitor.finish(exit_code=exit_code)
             if self.run_lock is not None:
                 self.run_lock.release()
 

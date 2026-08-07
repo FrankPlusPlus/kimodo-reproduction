@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from kimodo.evaluation.eval_monitor_cli import (
+    benchmark_wandb_metrics,
     benchmark_inventory_sha256,
     discover_exports,
     resolve_benchmark_inventory_sha256,
@@ -89,3 +90,20 @@ def test_trend_alert_requires_two_consecutive_significant_regressions():
         "End-Effector Pos (gen, cm)",
     }
     assert trend_alerts(history[:2]) == []
+
+
+def test_benchmark_wandb_metrics_are_flattened_and_step_agnostic():
+    metrics = benchmark_wandb_metrics(
+        {
+            "summary": {"content": {"FID": 1.25, "R@3": 82.0}},
+            "alerts": [{"metric": "content/FID"}],
+            "diffusion_steps": 100,
+            "generation_batch_size": 1,
+            "bundle_model_sha256": "abc123",
+        }
+    )
+    assert metrics["benchmark/content/FID"] == 1.25
+    assert metrics["benchmark/content/R@3"] == 82.0
+    assert metrics["benchmark/alerts"] == 1
+    assert metrics["benchmark/complete"] == 1
+    assert "global_step" not in metrics

@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from kimodo.monitoring import WandbMonitor
 from kimodo.training.checkpoint import atomic_text_write
 
 _EXPORT_NAME = re.compile(r"^step-(\d{9})$")
@@ -175,6 +176,24 @@ def trend_alerts(summaries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return alerts
 
 
+def benchmark_wandb_metrics(record: dict[str, Any]) -> dict[str, Any]:
+    """Flatten one completed benchmark record into W&B chart metrics."""
+    metrics = {
+        f"benchmark/{name}": value
+        for name, value in _flatten_numbers(record.get("summary", {})).items()
+    }
+    metrics.update(
+        {
+            "benchmark/alerts": len(record.get("alerts", [])),
+            "benchmark/diffusion_steps": record["diffusion_steps"],
+            "benchmark/generation_batch_size": record["generation_batch_size"],
+            "benchmark/complete": 1,
+            "benchmark/bundle_model_sha256": record["bundle_model_sha256"],
+        }
+    )
+    return metrics
+
+
 def _run(command: list[str], *, cwd: Path, log_path: Path) -> None:
     with log_path.open("a", encoding="utf-8") as log:
         log.write("$ " + " ".join(command) + "\n")
@@ -189,7 +208,12 @@ def _load_completed(output_root: Path) -> list[dict[str, Any]]:
     return completed
 
 
-def evaluate_export(args: argparse.Namespace, step: int, bundle: Path) -> Path | None:
+def evaluate_export(
+    args: argparse.Namespace,
+    step: int,
+    bundle: Path,
+    monitor: WandbMonitor | None = None,
+) -> Path | None:
     output_root = Path(args.output_root).expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
     final = output_root / f"step-{step:09d}"
@@ -325,6 +349,14 @@ def evaluate_export(args: argparse.Namespace, step: int, bundle: Path) -> Path |
             json.dumps(history_record, indent=2, sort_keys=True) + "\n",
             output_root / "latest.json",
         )
+        if monitor is not None:
+            monitor.log(benchmark_wandb_metrics(record), step=step)
+            monitor.summary(
+                {
+                    "kimodo/latest_benchmark_step": step,
+                    "kimodo/latest_benchmark_alerts": len(record["alerts"]),
+                }
+            )
         return final
     except Exception as error:
         failure = {
@@ -333,9 +365,27 @@ def evaluate_export(args: argparse.Namespace, step: int, bundle: Path) -> Path |
             "error_type": type(error).__name__,
             "error": str(error),
         }
-        atomic_text_write(json.dumps(failure, indent=2) + "\n", building / "failed.json")
-        failed = output_root / f"failed-step-{step:09d}-{int(time.time())}"
-        os.replace(building, failed)
+        if building.is_dir():
+            atomic_text_write(json.dumps(failure, indent=2) + "\n", building / "failed.json")
+            failed = output_root / f"failed-step-{step:09d}-{int(time.time())}"
+            os.replace(building, failed)
+        else:
+            # Local evaluation may already be atomically complete when a
+            # required remote-monitoring operation fails. Preserve the valid
+            # result and record the monitoring failure beside it.
+            atomic_text_write(
+                json.dumps(failure, indent=2) + "\n",
+                output_root / f"failed-monitor-step-{step:09d}-{int(time.time())}.json",
+            )
+        if monitor is not None:
+            monitor.log(
+                {
+                    "benchmark/failed": 1,
+                    "benchmark/error_type": type(error).__name__,
+                    "benchmark/error": str(error),
+                },
+                step=step,
+            )
         raise
     finally:
         shutil.rmtree(claim, ignore_errors=True)
@@ -366,24 +416,47 @@ def main() -> None:
         raise SystemExit("poll-seconds, batch-size and diffusion-steps must be positive")
     run_dir = Path(args.run_dir).expanduser().resolve()
     output_root = Path(args.output_root).expanduser().resolve()
-    while True:
-        completed_steps = {
-            int(path.parent.name.removeprefix("step-"))
-            for path in output_root.glob("step-*/complete.json")
-        }
-        for step, bundle in discover_exports(run_dir, args.minimum_step):
-            if step not in completed_steps:
-                result = evaluate_export(args, step, bundle)
-                if result is not None:
-                    print(
-                        json.dumps(
-                            {"event": "benchmark_complete", "step": step, "path": str(result)}
-                        ),
-                        flush=True,
-                    )
-        if args.once:
-            return
-        time.sleep(args.poll_seconds)
+    monitor = WandbMonitor.from_env(
+        "benchmark",
+        output_dir=output_root / ".wandb",
+        identity_root=run_dir,
+        config={
+            "run_dir": str(run_dir),
+            "benchmark": str(Path(args.benchmark).expanduser().resolve()),
+            "output_root": str(output_root),
+            "diffusion_steps": args.diffusion_steps,
+            "batch_size": args.batch_size,
+            "num_workers": args.num_workers,
+            "paper_protocol": bool(args.paper_protocol),
+            "text_encoder_fp32": bool(args.text_encoder_fp32),
+        },
+        metadata={"kimodo/monitor_scope": "benchmark"},
+    )
+    exit_code = 0
+    try:
+        while True:
+            completed_steps = {
+                int(path.parent.name.removeprefix("step-"))
+                for path in output_root.glob("step-*/complete.json")
+            }
+            for step, bundle in discover_exports(run_dir, args.minimum_step):
+                if step not in completed_steps:
+                    result = evaluate_export(args, step, bundle, monitor=monitor)
+                    if result is not None:
+                        print(
+                            json.dumps(
+                                {"event": "benchmark_complete", "step": step, "path": str(result)}
+                            ),
+                            flush=True,
+                        )
+            if args.once:
+                return
+            time.sleep(args.poll_seconds)
+    except BaseException:
+        exit_code = 1
+        raise
+    finally:
+        monitor.finish(exit_code=exit_code)
 
 
 if __name__ == "__main__":

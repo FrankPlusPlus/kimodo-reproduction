@@ -1,5 +1,3 @@
-.git
-.github
 .venv
 .venv.*
 venv
@@ -12,7 +10,6 @@ __pycache__
 .mypy_cache
 
 # Runtime data belongs on mounted storage, never in an image layer/build context.
-artifacts
 data
 datasets
 runs
@@ -31,9 +28,7 @@ configs/paths/*.yaml
 *.safetensors
 .DS_Store
 
-# Development-only material not referenced by the Dockerfile.
-tests
-docs
+# Local-only material not needed by the runtime repository snapshot.
 *.log
 core
 core.*

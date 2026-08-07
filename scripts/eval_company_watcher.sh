@@ -5,8 +5,8 @@ set -euo pipefail
 # the training PV and never imports or mutates the live DDP trainer.
 storage_root="${KIMODO_STORAGE_ROOT:-/mnt/kimodo}"
 run_dir="${KIMODO_RUN_DIR:-${storage_root}/runs/v2-1m-production}"
-benchmark_root="${KIMODO_BENCHMARK_ROOT:?set KIMODO_BENCHMARK_ROOT to the fixed public proxy}"
-output_root="${KIMODO_EVAL_ROOT:?set KIMODO_EVAL_ROOT to a separate eval volume}"
+benchmark_root="${KIMODO_BENCHMARK_ROOT:-${storage_root}/eval/benchmark/proxy}"
+output_root="${KIMODO_EVAL_ROOT:-${storage_root}/eval/v2-1m}"
 
 args=(
   --run-dir "${run_dir}"

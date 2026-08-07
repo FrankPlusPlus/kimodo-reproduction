@@ -215,6 +215,10 @@ pillow==12.1.1
     #   kimodo
     #   scenepic
     #   trimesh
+platformdirs==4.11.0
+    # via wandb
+protobuf==7.35.1
+    # via wandb
 psutil==7.2.2
     # via
     #   accelerate
@@ -291,6 +295,8 @@ scipy==1.15.3
     #   trimesh
 semantic-version==2.10.0
     # via gradio
+sentry-sdk==2.66.1
+    # via wandb
 shapely==2.1.2
     # via trimesh
 shellingham==1.5.4
@@ -367,6 +373,8 @@ uvicorn==0.41.0
     # via gradio
 vhacdx==0.0.10
     # via trimesh
+wandb==0.28.1
+    # via -r docker_requirements.in
 websockets==15.0.1
     # via viser
 xxhash==3.6.0

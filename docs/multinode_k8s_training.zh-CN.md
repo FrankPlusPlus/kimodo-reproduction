@@ -44,6 +44,9 @@ RDMA、ring all-reduce 或梯度发送。
 Hugging Face token、运行日志或 checkpoint。当前 Dockerfile 已复制 `configs/`、`resources/`、
 `scripts/`。镜像还包含 RDMA userspace 与诊断工具。镜像默认进入硬件无关的 `idle` 模式，因此普通
 CPU/GPU 节点、数据检查 Pod 和调试 Pod 不会因为缺少 16 张 H200、RDMA 或生产 PVC 而立即退出。
+镜像同时保存完整 `/workspace/.git` 和 Git 跟踪工作树，容器内已配置 `safe.directory` 与可写权限，
+因此联网且凭据可用时可在 `/workspace` 执行 `git fetch`/`git pull`。Pod 容器层的修改在 Pod 重建后
+仍会丢失；需要长期保留的分支或实验代码应推回远端仓库，或把独立 checkout 放在 PVC。
 正式作业必须由 Kubernetes 显式覆盖命令，或设置受支持的 `KIMODO_CONTAINER_MODE`：
 
 ```text
@@ -116,12 +119,19 @@ KIMODO_CONTAINER_MODE=train-company
 KIMODO_NNODES=2
 KIMODO_NPROC_PER_NODE=8
 KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction
-KIMODO_DATA_ROOT=/home/share/yezitao-kimodo-reproduction/benchmark-v2-soma30-v2.2
-KIMODO_PATHS_CONFIG=/home/share/yezitao-kimodo-reproduction/benchmark-v2-soma30-v2.2/repro.paths.yaml
-KIMODO_RUN_DIR=/home/share/yezitao-kimodo-reproduction/runs/v2-1m-production
 MASTER_ADDR=<node-rank-0 的稳定 Pod DNS 或 IP>
 MASTER_PORT=29500
+WANDB_API_KEY=<由平台 Secret 注入>
 ```
+
+标准布局下，company launcher 会从 `KIMODO_STORAGE_ROOT` 自动推导 data、paths、run、
+benchmark proxy 和 eval 输出目录；只有实际目录布局不同时才覆盖对应变量。W&B project、group、
+train/benchmark run ID 同样有稳定默认值，通常不需要填写。
+
+`WANDB_API_KEY` 必须由平台 Secret/环境变量注入，不写入 Dockerfile、Git、PVC 明文配置或
+启动脚本。训练所有 Pod 可以接收相同 W&B 环境变量，但代码只允许 global rank 0 初始化和
+上报。benchmark eval Pod 使用同一 group、不同的
+`KIMODO_WANDB_BENCHMARK_RUN_ID`，详见 `training_benchmark_monitor.zh-CN.md`。
 
 每 Pod 唯一环境：
 

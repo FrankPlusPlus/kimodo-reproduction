@@ -65,3 +65,36 @@ R@3 每次下降超过 2 个百分点、contact 每次下降超过 0.005，位�
 `--paper-protocol` 的完整集合 retrieval/FID 与旧版 group 内聚合是两套口径，结果会
 分别记录，不能合并成同一条曲线。V1/V2 的训练 manifest 不同，但导出的 SOMA bundle
 接口相同，因此可共用同一个 proxy 和监控器。
+
+## W&B 统一监控
+
+W&B 在没有 Key 时默认关闭；注入 `WANDB_API_KEY` 后自动启用。只有训练 global rank 0 建立 `train` run，独立 eval Pod 建立
+`benchmark` run。两个 run 使用同一 project/group，并以训练 `global_step` 对齐曲线。
+原有 `train.jsonl`、`history.jsonl`、Pod 日志和 checkpoint 不依赖 W&B，网络故障默认只会
+停用远端上报，不会停止训练。若要求 W&B 不可用时必须终止任务，可额外设置
+`KIMODO_WANDB_REQUIRED=1`。
+
+在线模式下，训练和 eval Pod 最少只需注入同一个 Secret：
+
+```text
+WANDB_API_KEY=<由平台 Secret 注入，不写入镜像或启动脚本>
+```
+
+默认 project 是 `kimodo-reproduction`；group 根据 `KIMODO_RUN_DIR` 自动生成，训练和
+benchmark 的 run ID/name 也会分别稳定生成为 `...-train` 和 `...-benchmark`，Pod 重启后自动
+续接。因此下面这些都只是可选覆盖项：
+
+```text
+WANDB_PROJECT=kimodo-production
+WANDB_ENTITY=<团队或组织名>
+KIMODO_WANDB_GROUP=v2-1m-20260807
+KIMODO_WANDB_TRAIN_RUN_ID=v2-1m-20260807-train
+KIMODO_WANDB_TRAIN_RUN_NAME=v2-1m-train
+KIMODO_WANDB_BENCHMARK_RUN_ID=v2-1m-20260807-benchmark
+KIMODO_WANDB_BENCHMARK_RUN_NAME=v2-1m-benchmark
+```
+
+训练 run 上报 loss、加权 loss、学习率、梯度、吞吐、显存、conditioning/data 分布、
+checkpoint 与 EMA export 事件；benchmark run 上报扁平化的公开指标、告警数、评测协议和
+成功/失败状态。默认不上传约 1 GB 的模型/checkpoint artifact，避免阻塞训练和占用 W&B 存储。
+无外网环境只设置 `WANDB_MODE=offline` 也会启用本地记录，之后从持久卷中的 `.wandb` 目录同步。
