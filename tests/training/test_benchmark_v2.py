@@ -346,6 +346,7 @@ def test_v2_cached_composer_reuses_base_and_qwen_producers(tmp_path):
     qwen_row = dict(v1_rows[2])
     qwen_row.update(
         id="v2multi:fixture", sample_kind="timeline_multi_qwen",
+        event_count=2,
         text="The person first walks left and then waves with the right hand.",
         text_embedding="text-cache-v2-qwen/qwen.npy",
         text_embedding_metadata="text-cache-v2-qwen/qwen.npy.metadata.json",

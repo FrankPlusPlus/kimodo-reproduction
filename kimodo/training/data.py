@@ -33,6 +33,7 @@ class ManifestEntry:
     end_time: float | None = None
     sample_kind: str = "full"
     mixture_source: str = "base"
+    event_count: int | None = None
     # Portable schema-5 manifests bind the source length so dataset filtering
     # and the train-ready gate never have to discover a too-short full clip in
     # a DataLoader worker.  Legacy manifests may omit it.
@@ -327,6 +328,20 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                     f"{manifest_path}:{line_number} has invalid mixture_source={mixture_source!r}"
                 )
             frame_count = raw.get("frame_count")
+            event_count = raw.get("event_count")
+            sample_kind = str(raw.get("sample_kind", "full"))
+            if event_count is not None and (
+                isinstance(event_count, bool)
+                or not isinstance(event_count, int)
+                or event_count < 1
+            ):
+                raise ValueError(
+                    f"{manifest_path}:{line_number} has invalid event_count={event_count!r}"
+                )
+            if sample_kind in {"timeline_multi_qwen", "timeline_multi_llm"} and event_count not in range(2, 6):
+                raise ValueError(
+                    f"{manifest_path}:{line_number} timeline row requires event_count in [2, 5]"
+                )
             if requires_semantic_identity and (
                 isinstance(frame_count, bool)
                 or not isinstance(frame_count, int)
@@ -353,8 +368,9 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                     text_embedding_path=embedding_path,
                     start_time=float(raw["start_time"]) if raw.get("start_time") is not None else None,
                     end_time=float(raw["end_time"]) if raw.get("end_time") is not None else None,
-                    sample_kind=str(raw.get("sample_kind", "full")),
+                    sample_kind=sample_kind,
                     mixture_source=mixture_source,
+                    event_count=event_count,
                     frame_count=frame_count,
                 )
             )
@@ -542,6 +558,8 @@ class MotionManifestDataset(Dataset):
             "text_features": text_features,
             "text_length": text_length,
             "mixture_source": entry.mixture_source,
+            "sample_kind": entry.sample_kind,
+            "event_count": entry.event_count,
         }
 
 

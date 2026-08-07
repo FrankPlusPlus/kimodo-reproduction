@@ -241,9 +241,17 @@ def compose(args) -> dict:
         "v2_recipe": raw_metadata.get("v2_recipe"),
         "leakage_gate": raw_metadata.get("leakage_gate"),
         "sources": {
-            "v2_raw": {"path": v2_raw.name, "sha256": _sha256(v2_raw)},
+            "v2_raw": {
+                "path": v2_raw.name,
+                "sha256": _sha256(v2_raw),
+                "metadata_sha256": _sha256(raw_metadata_path),
+            },
             "v1_cached": {"path": str(base), "sha256": _sha256(base)},
-            "llm_cached": {"path": llm.name, "sha256": _sha256(llm)},
+            "llm_cached": {
+                "path": llm.name,
+                "sha256": _sha256(llm),
+                "metadata_sha256": _sha256(llm_metadata_path),
+            },
         },
         "counts": dict(sorted(counts.items())),
         "output": {"path": destination.name, "sha256": digest, "entries": count},

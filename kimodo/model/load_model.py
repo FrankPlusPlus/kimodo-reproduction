@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Load Kimodo diffusion models from local checkpoints or Hugging Face."""
 
+import copy
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -71,9 +73,27 @@ def _build_local_text_encoder_conf(text_encoder_fp32: bool = False) -> dict:
         available = ", ".join(sorted(TEXT_ENCODER_PRESETS))
         raise ValueError(f"Unknown TEXT_ENCODER='{text_encoder_name}'. Available: {available}")
 
-    preset = TEXT_ENCODER_PRESETS[text_encoder_name]
+    preset = copy.deepcopy(TEXT_ENCODER_PRESETS[text_encoder_name])
     if text_encoder_fp32:
         preset["kwargs"]["dtype"] = "float32"
+    local_paths = {
+        "foundation_model_name_or_path": os.environ.get("KIMODO_LLM2VEC_FOUNDATION"),
+        "base_model_name_or_path": os.environ.get("KIMODO_LLM2VEC_MNTP"),
+        "peft_model_name_or_path": os.environ.get("KIMODO_LLM2VEC_SUPERVISED"),
+    }
+    configured = {name: value for name, value in local_paths.items() if value}
+    if configured and len(configured) != len(local_paths):
+        missing = sorted(set(local_paths) - set(configured))
+        raise ValueError(
+            "Local LLM2Vec inference requires all three path variables; missing: "
+            + ", ".join(missing)
+        )
+    if configured:
+        for name, value in configured.items():
+            path = Path(value).expanduser().resolve()
+            if not path.is_dir():
+                raise FileNotFoundError(f"Local LLM2Vec path does not exist for {name}: {path}")
+            preset["kwargs"][name] = str(path)
     return {
         "_target_": preset["target"],
         **preset["kwargs"],

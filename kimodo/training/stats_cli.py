@@ -8,6 +8,7 @@ import argparse
 import concurrent.futures
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 
@@ -316,7 +317,10 @@ def compute_stats(args) -> None:
     manifest = Path(args.manifest).expanduser().resolve()
     metadata = {
         "schema_version": 3,
-        "manifest": str(manifest),
+        # Keep the binding valid when a complete prepared bundle is moved or
+        # when a ``.building`` directory is atomically published under its
+        # final name.  The digest remains the authoritative content binding.
+        "manifest": Path(os.path.relpath(manifest, output)).as_posix(),
         "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
         "split": args.split,
         "skeleton_joints": args.skeleton_joints,

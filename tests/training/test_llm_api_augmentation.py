@@ -5,7 +5,11 @@ import json
 from argparse import Namespace
 
 from kimodo.training import llm_api_augmentation_cli as llm_api
-from kimodo.training.llm_quality_cli import audit
+from kimodo.training.llm_quality_cli import (
+    _semantic_risk_flags,
+    audit,
+    missing_explicit_count_groups,
+)
 from kimodo.training.qwen_augmentation_cli import _source_preserving_fallback
 from kimodo.training.timeline_multi_cli import (
     SYSTEM_PROMPT,
@@ -174,6 +178,45 @@ def test_description_limit_expands_only_for_information_dense_sources():
     long = [" ".join(["moves forward"] * 35), " ".join(["turns right"] * 25)]
     assert description_word_limit(long) == 150
     validate_description(long, _source_preserving_fallback(long))
+
+
+def test_quality_review_semantic_risk_strata_cover_known_failure_modes():
+    flags = _semantic_risk_flags(
+        [
+            "the person picks up a box with the left hand twice",
+            "the person turns clockwise",
+            "the person picks up a box with the left hand twice",
+            "the person walks forward",
+        ]
+    )
+    assert set(flags) == {
+        "semantic_direction",
+        "semantic_repetition",
+        "semantic_explicit_count",
+        "semantic_body_part",
+        "semantic_object_interaction",
+        "semantic_long_sequence",
+    }
+    assert missing_explicit_count_groups(
+        ["the person takes 3 steps and turns once"],
+        "The person takes several steps and then turns.",
+    ) == ["1:times", "3:steps"]
+    assert missing_explicit_count_groups(
+        ["the person takes 3 steps and turns once"],
+        "The person takes three steps and then turns one time.",
+    ) == []
+    assert missing_explicit_count_groups(
+        ["the person holds an object with two hands and then turns"],
+        "The person holds the object with both hands and turns.",
+    ) == []
+    assert missing_explicit_count_groups(
+        ["Once the object is placed, the person turns"],
+        "After placing the object, the person turns.",
+    ) == []
+    assert missing_explicit_count_groups(
+        ["the person jumps onto a 2-meter obstacle"],
+        "The person jumps onto a 2m obstacle.",
+    ) == []
 
 
 def test_rejected_candidate_gets_repaired_and_rejudged():

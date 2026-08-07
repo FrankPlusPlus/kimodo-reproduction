@@ -19,7 +19,7 @@ from tqdm.auto import tqdm
 
 from kimodo.constraints import load_constraints_lst
 from kimodo.meta import parse_prompts_from_meta
-from kimodo.model import DEFAULT_MODEL, load_checkpoint_bundle, load_model
+from kimodo.model.load_model import DEFAULT_MODEL, load_checkpoint_bundle, load_model
 from kimodo.tools import load_json, seed_everything
 
 

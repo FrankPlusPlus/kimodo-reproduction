@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -57,8 +58,11 @@ def _run_data_preflight(config) -> dict:
         raise ValueError(
             "data-only preflight requires model.stats_path; point it at the official bundle stats"
         )
+    inventory_summary = None
     if config.data.reference_verification == "inventory":
-        load_inventory_summary(config.data.manifest, config.data.reference_inventory)
+        inventory_summary = load_inventory_summary(
+            config.data.manifest, config.data.reference_inventory
+        )
     motion_rep = KimodoMotionRep(
         skeleton=build_skeleton(config.model.skeleton_joints),
         fps=config.model.fps,
@@ -77,11 +81,51 @@ def _run_data_preflight(config) -> dict:
         augment=True,
     )
     sample_count = min(config.runtime.batch_size, len(dataset))
-    batch = collate_motion_batch([dataset[index] for index in range(sample_count)])
+    # Produced manifests are lane-contiguous (all V1 rows precede all V2 rows),
+    # so taking only the first batch does not exercise new embeddings. Select
+    # one deterministic representative for every mixture/kind/event-count
+    # stratum first, then fill the remainder in manifest order.
+    representative_indices = {}
+    for index, entry in enumerate(dataset.entries):
+        key = (entry.mixture_source, entry.sample_kind, entry.event_count)
+        representative_indices.setdefault(key, index)
+    representative_set = set(representative_indices.values())
+    selected_indices = list(representative_indices.values())[:sample_count]
+    selected_set = set(selected_indices)
+    selected_indices.extend(
+        index
+        for index in range(len(dataset))
+        if index not in selected_set and len(selected_indices) < sample_count
+    )
+    samples = [dataset[index] for index in selected_indices]
+    batch = collate_motion_batch(samples)
     if batch["text_features"] is None:
         raise ValueError("preflight requires cached text embeddings")
     if int(batch["text_features"].shape[-1]) != config.model.llm_dim:
         raise ValueError("preflight text embedding width does not match model.llm_dim")
+    manifest_path = Path(config.data.manifest).expanduser().resolve()
+    stats_metadata_path = (
+        Path(config.model.stats_path).expanduser().resolve() / "stats.metadata.json"
+    )
+
+    def sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
+
+    bindings = {
+        "manifest_sha256": sha256(manifest_path),
+        "stats_metadata_sha256": sha256(stats_metadata_path),
+    }
+    if inventory_summary is not None:
+        bindings.update(
+            {
+                "inventory_sha256": inventory_summary["sha256"],
+                "inventory_metadata_sha256": inventory_summary["metadata_sha256"],
+            }
+        )
     return {
         "event": "kimodo_full_data_preflight_passed",
         "manifest_entries_validated": dataset.manifest_entries,
@@ -90,9 +134,19 @@ def _run_data_preflight(config) -> dict:
         "excluded_short_temporal_entries": dataset.excluded_short_temporal_entries,
         "excluded_short_full_entries": dataset.excluded_short_full_entries,
         "sampled_entries": sample_count,
+        "sampled_coverage": [
+            {
+                "mixture_source": sample["mixture_source"],
+                "sample_kind": sample["sample_kind"],
+                "event_count": sample["event_count"],
+            }
+            for index, sample in zip(selected_indices, samples, strict=True)
+            if index in representative_set
+        ],
         "motion_shape": list(batch["clean_motion"].shape),
         "text_shape": list(batch["text_features"].shape),
         "mixture_sources": list(dataset.mixture_sources),
+        "bindings": bindings,
     }
 
 

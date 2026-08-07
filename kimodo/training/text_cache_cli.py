@@ -405,6 +405,97 @@ def _build_encoder(args):
     return encoder, _functional_encoder_identity(args)
 
 
+def _run_numerical_canary(
+    encoder,
+    manifest: Path,
+    report_path: Path,
+    *,
+    count: int,
+    encoder_identity: str,
+) -> dict:
+    """Prove the current encoder numerically matches already accepted V1 cache rows."""
+    manifest = manifest.expanduser().resolve()
+    report_path = report_path.expanduser().resolve()
+    manifest_sha256 = _sha256_file(manifest)
+    identity_sha256 = hashlib.sha256(encoder_identity.encode("utf-8")).hexdigest()
+    if report_path.is_file():
+        existing = json.loads(report_path.read_text(encoding="utf-8"))
+        if (
+            existing.get("passed") is True
+            and existing.get("manifest_sha256") == manifest_sha256
+            and existing.get("encoder_identity_sha256") == identity_sha256
+            and existing.get("sample_count", 0) >= count
+        ):
+            return existing
+        raise ValueError("existing embedding canary report is stale or failed")
+
+    candidates = []
+    seen_texts = set()
+    with manifest.open(encoding="utf-8") as handle:
+        for line_number, line in enumerate(handle, start=1):
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            sanitized = sanitize_texts([str(row["text"])])[0]
+            if sanitized in seen_texts:
+                continue
+            embedding = Path(str(row["text_embedding"])).expanduser()
+            if not embedding.is_absolute():
+                embedding = manifest.parent / embedding
+            candidates.append((str(row.get("id", line_number)), sanitized, embedding.resolve()))
+            seen_texts.add(sanitized)
+            if len(candidates) >= count:
+                break
+    if len(candidates) != count:
+        raise ValueError(f"embedding canary found {len(candidates)} unique rows, expected {count}")
+
+    features, lengths = encoder([row[1] for row in candidates])
+    actual = features.detach().float().cpu().numpy()
+    if actual.shape != (count, 1, 4096) or list(map(int, lengths)) != [1] * count:
+        raise ValueError(f"embedding canary returned an unexpected shape: {actual.shape}")
+    max_abs_errors = []
+    cosine_similarities = []
+    rows = []
+    for index, (sample_id, _text, expected_path) in enumerate(candidates):
+        expected = np.load(expected_path, allow_pickle=False)
+        if expected.dtype != np.float32 or expected.shape != (1, 4096):
+            raise ValueError(f"V1 canary embedding has invalid shape/dtype: {expected_path}")
+        predicted = actual[index]
+        max_abs_error = float(np.max(np.abs(predicted - expected)))
+        denominator = float(np.linalg.norm(predicted) * np.linalg.norm(expected))
+        cosine = float(np.sum(predicted * expected) / denominator) if denominator else 0.0
+        max_abs_errors.append(max_abs_error)
+        cosine_similarities.append(cosine)
+        rows.append(
+            {
+                "id": sample_id,
+                "expected_sha256": _sha256_file(expected_path),
+                "max_abs_error": max_abs_error,
+                "cosine_similarity": cosine,
+            }
+        )
+    passed = max(max_abs_errors) <= 1e-4 and min(cosine_similarities) >= 0.999999
+    report = {
+        "schema_version": 1,
+        "passed": passed,
+        "manifest_sha256": manifest_sha256,
+        "encoder_identity_sha256": identity_sha256,
+        "sample_count": count,
+        "thresholds": {"max_abs_error": 1e-4, "min_cosine_similarity": 0.999999},
+        "observed": {
+            "max_abs_error": max(max_abs_errors),
+            "min_cosine_similarity": min(cosine_similarities),
+        },
+        "rows": rows,
+    }
+    _atomic_write_json(report_path, report)
+    if not passed:
+        raise ValueError(
+            "current LLM2Vec encoder is not numerically compatible with the V1 cache"
+        )
+    return report
+
+
 def _encoder_artifacts(args) -> dict[str, dict] | None:
     if args.provider != "local":
         return None
@@ -493,6 +584,26 @@ def _run_locked(args) -> None:
     }
     if encoder_artifacts is not None:
         metadata["encoder_artifacts"] = encoder_artifacts
+    canary_manifest_value = getattr(args, "canary_manifest", None)
+    if canary_manifest_value:
+        canary_report_value = getattr(args, "canary_report", None)
+        if not canary_report_value:
+            raise ValueError("--canary-report is required with --canary-manifest")
+        canary = _run_numerical_canary(
+            get_encoder(),
+            Path(canary_manifest_value),
+            Path(canary_report_value),
+            count=int(getattr(args, "canary_count", 16)),
+            encoder_identity=identity,
+        )
+        metadata["numerical_v1_canary"] = {
+            "report_path": _serialized_path(
+                Path(canary_report_value), destination.parent, path_mode
+            ),
+            "report_sha256": _sha256_file(Path(canary_report_value)),
+            "sample_count": canary["sample_count"],
+            "passed": canary["passed"],
+        }
     source_metadata = source.with_suffix(source.suffix + ".metadata.json")
     if source_metadata.is_file():
         source_metadata_payload = json.loads(source_metadata.read_text(encoding="utf-8"))
@@ -658,6 +769,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=("local", "api"), default="local")
     parser.add_argument("--api-url", default="http://127.0.0.1:9550/")
     parser.add_argument("--device", default="auto")
+    parser.add_argument(
+        "--canary-manifest",
+        help="Existing cached manifest whose embeddings must match this encoder numerically",
+    )
+    parser.add_argument("--canary-report", help="Atomic JSON report for --canary-manifest")
+    parser.add_argument("--canary-count", type=int, default=16)
     parser.add_argument(
         "--path-mode",
         choices=("relative", "absolute"),

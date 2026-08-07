@@ -321,9 +321,23 @@ def build(args) -> dict:
             },
             "sources": {
                 "v1_raw_manifest": {"path": str(source), "sha256": _sha256_file(source)},
-                "timeline_plan": {"path": str(plan_path), "sha256": _sha256_file(plan_path)},
+                "timeline_plan": {
+                    "path": Path(os.path.relpath(plan_path, destination.parent)).as_posix(),
+                    "sha256": _sha256_file(plan_path),
+                },
                 "official_train_split": {"path": str(split), "sha256": _sha256_file(split)},
-                "llm_responses": response_sources,
+                "llm_responses": [
+                    {
+                        **record,
+                        "path": Path(
+                            os.path.relpath(record["path"], destination.parent)
+                        ).as_posix(),
+                        "metadata_path": Path(
+                            os.path.relpath(record["metadata_path"], destination.parent)
+                        ).as_posix(),
+                    }
+                    for record in response_sources
+                ],
             },
             "counts": dict(sorted(counts.items())),
             "output": {
