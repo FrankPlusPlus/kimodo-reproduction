@@ -16,6 +16,9 @@
 | 合成数据两步 smoke | `scripts/smoke_train.sh` |
 | 训练导出评测 | `scripts/eval_company_watcher.sh` |
 | 官方 baseline 评测 | `scripts/eval_official_baseline.sh` |
+| 分层 10% benchmark 构建 | `scripts/build_benchmark_stratified_proxy.sh` |
+| A1 stratified 重跑 | `scripts/core10_stratified_benchmark_pipeline.sh` |
+| Official 子集 vs NVIDIA 全量表 | `scripts/compare_official_subset_to_nvidia_full.py` |
 
 Docker/Kubernetes 用户通常只需要以上入口。Python CLI 仍可用于测试、故障恢复和精确重放某一阶段，
 但不再要求用户手工记住整条调用链。
