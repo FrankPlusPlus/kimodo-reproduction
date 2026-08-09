@@ -1,0 +1,18 @@
+# Connectivity smoke for 2 launcher pods x 3 H200 GPUs (6 ranks).
+# Validates multi-node DDP/NCCL before the formal 2x8 / 16-rank run.
+data:
+  num_workers: 2
+
+runtime:
+  batch_size: 8
+  gradient_accumulation_steps: 1
+  precision: bf16
+  distributed: auto
+  expected_world_size: 6
+  expected_global_batch: 48
+  enforce_paper_scale: false
+  log_every: 1
+  checkpoint_every: 5
+  milestone_every: 0
+  keep_last_checkpoints: 1
+  max_steps_override: 5

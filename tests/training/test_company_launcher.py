@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-LAUNCHER = PROJECT_ROOT / "scripts/train_company_16h200.sh"
+LAUNCHER = PROJECT_ROOT / "scripts/train_company.sh"
 
 
 def _environment(tmp_path: Path, *, pods: int, gpus_per_pod: int) -> dict[str, str]:
@@ -56,7 +56,7 @@ def test_company_launcher_defaults_to_the_extracted_portable_v2_bundle(tmp_path)
     )
 
 
-def test_company_launcher_rejects_a_non_sixteen_rank_topology(tmp_path):
+def test_company_launcher_rejects_topology_that_misses_expected_world_size(tmp_path):
     result = subprocess.run(
         [str(LAUNCHER)],
         cwd=PROJECT_ROOT,
@@ -67,7 +67,21 @@ def test_company_launcher_rejects_a_non_sixteen_rank_topology(tmp_path):
         timeout=10,
     )
     assert result.returncode == 2
-    assert "exactly 16 total ranks" in result.stderr
+    assert "expected 16 total ranks" in result.stderr
+
+
+def test_company_launcher_accepts_non_sixteen_when_env_contract_matches(tmp_path):
+    environment = _environment(tmp_path, pods=2, gpus_per_pod=3)
+    environment["KIMODO_EXPECTED_WORLD_SIZE"] = "6"
+    environment["KIMODO_BATCH_SIZE"] = "8"
+    environment["KIMODO_MAX_STEPS"] = "5"
+    subprocess.run(
+        [str(LAUNCHER)],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        check=True,
+        timeout=10,
+    )
 
 
 def test_company_launcher_accepts_explicit_v1_or_v2_config_with_separate_run_dir(tmp_path):

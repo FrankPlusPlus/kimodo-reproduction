@@ -11,7 +11,7 @@
 | V2 数据构建 | `scripts/v2_pipeline.sh` |
 | 本地环境和资源初始化 | `scripts/bootstrap_training.sh` |
 | 通用单机/多机训练 | `scripts/train_distributed.sh` |
-| 公司 16-rank 训练合同 | `scripts/train_company_16h200.sh` |
+| 公司训练（环境变量控制拓扑，默认 16-rank） | `scripts/train_company.sh` |
 | 数据准备或绑定 | `scripts/prepare_container.sh` |
 | 合成数据两步 smoke | `scripts/smoke_train.sh` |
 | 训练导出评测 | `scripts/eval_company_watcher.sh` |

@@ -10,20 +10,31 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 project_root="$(cd -- "${script_dir}/.." && pwd)"
 python_bin="${KIMODO_PYTHON:-python}"
 config_path="${KIMODO_TRAINING_CONFIG:-${project_root}/configs/training/kimodo_soma_seed_public.yaml}"
-storage_root="${KIMODO_STORAGE_ROOT:-/mnt/kimodo}"
+storage_root="${KIMODO_STORAGE_ROOT:-/home/share/yezitao-kimodo-reproduction}"
 paths_path="${KIMODO_PATHS_CONFIG:-${storage_root}/config/repro.paths.yaml}"
 overlay_path="${KIMODO_TRAINING_OVERLAY:-}"
 
-nnodes="${KIMODO_NNODES:-${NNODES:-1}}"
-nproc_per_node="${KIMODO_NPROC_PER_NODE:-${NPROC_PER_NODE:-8}}"
-node_rank="${KIMODO_NODE_RANK:-${NODE_RANK:-${JOB_COMPLETION_INDEX:-0}}}"
-master_addr="${MASTER_ADDR:-}"
-master_port="${MASTER_PORT:-29500}"
+# Company platforms (e.g. Hanhai/Kingsoft) often inject PET_* for torchrun.
+# Prefer explicit KIMODO_* / classic names, then fall back to PET_*.
+nnodes="${KIMODO_NNODES:-${NNODES:-${PET_NNODES:-1}}}"
+nproc_per_node="${KIMODO_NPROC_PER_NODE:-${NPROC_PER_NODE:-${PET_NPROC_PER_NODE:-8}}}"
+# Platform may pass nproc_per_node=auto; resolve from visible GPUs later if needed.
+node_rank="${KIMODO_NODE_RANK:-${NODE_RANK:-${PET_NODE_RANK:-${JOB_COMPLETION_INDEX:-0}}}}"
+master_addr="${MASTER_ADDR:-${PET_MASTER_ADDR:-}}"
+master_port="${MASTER_PORT:-${PET_MASTER_PORT:-29500}}"
 
 die() {
   echo "kimodo distributed launcher: $*" >&2
   exit 2
 }
+
+if [[ "${nproc_per_node}" == "auto" ]]; then
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    nproc_per_node="$(nvidia-smi -L 2>/dev/null | wc -l | tr -d ' ')"
+  else
+    nproc_per_node=8
+  fi
+fi
 
 for value_name in nnodes nproc_per_node node_rank master_port; do
   value="${!value_name}"

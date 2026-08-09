@@ -13,17 +13,22 @@ DOCKERIGNORE = PROJECT_ROOT / ".dockerignore"
 def test_dockerfile_uses_hardware_neutral_dispatcher():
     source = DOCKERFILE.read_text(encoding="utf-8")
     assert 'CMD ["/workspace/scripts/container_start.sh"]' in source
+    assert 'CMD ["/workspace/scripts/train_company.sh"]' not in source
     assert 'CMD ["/workspace/scripts/train_company_16h200.sh"]' not in source
+    assert "KIMODO_CODE_ROOT=/workspace" in source
     assert "KIMODO_PYTHON=python /workspace/scripts/smoke_train.sh" in source
 
 
-def test_dockerfile_uses_generic_storage_root_and_can_extract_v2_archive():
+def test_dockerfile_defaults_to_company_share_pvc_paths():
     source = DOCKERFILE.read_text(encoding="utf-8")
-    namespace = "/mnt/kimodo"
-    assert f"KIMODO_STORAGE_ROOT={namespace}" in source
+    assert (
+        "KIMODO_CODE_ROOT=/home/share/yzt/kimodo-reproduction" in source
+    )
+    assert (
+        "KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction" in source
+    )
     assert "KIMODO_DATA_ROOT=" not in source
     assert "KIMODO_RUN_ROOT=" not in source
-    assert "/home/share/" not in source
     assert "zstd openssh-server" in source
 
 
@@ -39,6 +44,9 @@ def test_image_keeps_a_writable_git_worktree_for_pod_updates():
     assert "COPY . /workspace" in source
     assert "git config --system --add safe.directory /workspace" in source
     assert "chmod -R a+rwX /workspace" in source
+    runner = (PROJECT_ROOT / "scripts/container_start.sh").read_text(encoding="utf-8")
+    assert 'DEFAULT_CODE_ROOT="/home/share/yzt/kimodo-reproduction"' in runner
+    assert "PYTHONPATH=" in runner
 
 
 def test_image_provides_public_key_only_ssh_for_remote_pod_development():
@@ -120,6 +128,70 @@ def test_container_preflight_defaults_to_the_extracted_portable_v2_bundle(tmp_pa
         check=True,
         timeout=5,
     )
+
+
+def test_load_kimodo_env_fills_only_unset_variables(tmp_path, monkeypatch):
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "WANDB_API_KEY=from-file\n"
+        "PRODUCT_GRAPH_LLM_API_KEY=mimo-from-file\n"
+        "ALREADY_SET=from-file\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("KIMODO_CODE_ROOT", str(tmp_path))
+    monkeypatch.setenv("KIMODO_STORAGE_ROOT", str(tmp_path / "storage"))
+    monkeypatch.setenv("ALREADY_SET", "from-process")
+    monkeypatch.delenv("WANDB_API_KEY", raising=False)
+    monkeypatch.delenv("PRODUCT_GRAPH_LLM_API_KEY", raising=False)
+    script = PROJECT_ROOT / "scripts/load_kimodo_env.sh"
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            f"source '{script}' && kimodo_load_env_files && "
+            'printf "%s\\n%s\\n%s\\n" "$WANDB_API_KEY" "$PRODUCT_GRAPH_LLM_API_KEY" "$ALREADY_SET"',
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        env=dict(os.environ),
+    )
+    assert result.stdout.strip().splitlines() == [
+        "from-file",
+        "mimo-from-file",
+        "from-process",
+    ]
+
+
+def test_container_dispatcher_prefers_pvc_code_root(tmp_path):
+    code_root = tmp_path / "kimodo-reproduction"
+    (code_root / "kimodo").mkdir(parents=True)
+    scripts = code_root / "scripts"
+    scripts.mkdir()
+    marker = tmp_path / "ran-from-pvc"
+    launcher = scripts / "train_company.sh"
+    launcher.write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf 'ok' > '{marker}'\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    environment = dict(os.environ)
+    environment.update(
+        {
+            "KIMODO_CONTAINER_MODE": "train-company",
+            "KIMODO_CODE_ROOT": str(code_root),
+        }
+    )
+    subprocess.run(
+        [str(RUNNER)],
+        cwd=PROJECT_ROOT,
+        env=environment,
+        check=True,
+        timeout=5,
+    )
+    assert marker.read_text(encoding="utf-8") == "ok"
 
 
 def test_container_dispatcher_default_is_a_long_running_idle_process():

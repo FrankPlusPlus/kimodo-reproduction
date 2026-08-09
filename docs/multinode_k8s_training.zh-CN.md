@@ -10,10 +10,12 @@
 提交端/跳板机
   └─ 创建数据 Job 和训练 Job，本身不参加计算
 
-共享持久化存储（PVC/NFS/Lustre/并行文件系统）
-  ├─ benchmark-v2-soma30-v2.2/：manifest、motion、text cache、stats、repro.paths.yaml（训练时只读）
-  ├─ yezitao-kimodo-eval-v1/：固定 benchmark proxy 与官方基线（可稍后上传）
-  └─ runs/：日志、checkpoint、export（rank 0 可写）
+共享持久化存储（PVC 挂到容器 /home/share）
+  ├─ yzt/kimodo-reproduction/：常驻代码（KIMODO_CODE_ROOT，训练从此处启动）
+  └─ yezitao-kimodo-reproduction/
+      ├─ benchmark-v2-soma30-v2.2/：manifest、motion、text cache、stats、repro.paths.yaml
+      ├─ yezitao-kimodo-eval-v1/：固定 benchmark proxy 与官方基线
+      └─ runs/：日志、checkpoint、export（rank 0 可写）
 
 Pod/launcher group 0..N-1
   └─ 每 Pod 启动 M 个 local ranks；N × M 必须等于 16
@@ -40,18 +42,23 @@ RDMA、ring all-reduce 或梯度发送。
 
 ## 3. 镜像中放什么
 
-镜像应包含代码、Python/CUDA/NCCL 运行时、依赖、训练 YAML 和启动脚本；不要包含数百 GB 数据、
-Hugging Face token、运行日志或 checkpoint。当前 Dockerfile 已复制 `configs/`、`resources/`、
-`scripts/`。镜像还包含 RDMA userspace 与诊断工具。镜像默认进入硬件无关的 `idle` 模式，因此普通
-CPU/GPU 节点、数据检查 Pod 和调试 Pod 不会因为缺少 16 张 H200、RDMA 或生产 PVC 而立即退出。
-镜像同时保存完整 `/workspace/.git` 和 Git 跟踪工作树，容器内已配置 `safe.directory` 与可写权限，
-因此联网且凭据可用时可在 `/workspace` 执行 `git fetch`/`git pull`。Pod 容器层的修改在 Pod 重建后
-仍会丢失；需要长期保留的分支或实验代码应推回远端仓库，或把独立 checkout 放在 PVC。
-正式作业必须由 Kubernetes 显式覆盖命令，或设置受支持的 `KIMODO_CONTAINER_MODE`：
+镜像提供 Python/CUDA/NCCL 运行时、依赖、RDMA 工具，以及 `/workspace/scripts/container_start.sh`
+启动器。公司训练默认从共享盘代码目录启动，而不是改镜像内 `/workspace`：
+
+```text
+KIMODO_CODE_ROOT=/home/share/yzt/kimodo-reproduction
+KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction
+```
+
+构建时仍会把仓库复制进 `/workspace` 以便安装依赖和 smoke test；运行时若 PVC 代码存在，
+launcher 会设置 `PYTHONPATH` 并 exec `$KIMODO_CODE_ROOT/scripts/...`。日常改代码只更新 PVC；
+只有依赖/系统环境变化才重打镜像。不要把数百 GB 数据、token、checkpoint 打进镜像。
+镜像默认 `idle`，创建 Pod 不必立刻具备 16 张 H200 或 RDMA。
+正式作业设置受支持的 `KIMODO_CONTAINER_MODE`，或覆盖容器命令：
 
 ```text
 idle           默认保活，不训练
-train-company  两机/多 Pod、总计 16 rank 的正式训练
+train-company  公司训练；拓扑由环境变量控制（默认 2x8 / 16 rank）
 train-local    实验室两卡训练
 prepare        PVC 数据准备或绑定
 preflight      只读取并验证一个真实 batch
@@ -59,7 +66,9 @@ eval-watch     监控训练导出并运行 benchmark
 eval-official  生成固定官方 baseline
 ```
 
-显式 Pod `command` 的优先级最高；例如直接调用 `scripts/train_company_16h200.sh` 时无需设置 mode。
+显式 Pod `command` 的优先级最高；例如直接调用 `scripts/train_company.sh` 时无需设置 mode。
+拓扑与短跑用环境变量控制，例如 2x3 冒烟：`KIMODO_NNODES=2` `KIMODO_NPROC_PER_NODE=3`
+`KIMODO_EXPECTED_WORLD_SIZE=6` `KIMODO_BATCH_SIZE=8` `KIMODO_MAX_STEPS=5`。
 
 ```bash
 docker build -t REGISTRY/yezitao-kimodo-train:GIT_SHA .
@@ -104,7 +113,7 @@ prepare Job。prepare/bind 流程只用于从原始资源重建数据或接入�
 所有 Pod 使用同一个不可变镜像和相同命令：
 
 ```bash
-/workspace/scripts/train_company_16h200.sh
+/workspace/scripts/train_company.sh
 ```
 
 如果公司平台不允许覆盖容器命令、只允许注入环境变量，则设置：
@@ -118,26 +127,38 @@ KIMODO_CONTAINER_MODE=train-company
 ```text
 KIMODO_NNODES=2
 KIMODO_NPROC_PER_NODE=8
+KIMODO_CODE_ROOT=/home/share/yzt/kimodo-reproduction
 KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction
+KIMODO_NODE_RANK=0|1
 MASTER_ADDR=<node-rank-0 的稳定 Pod DNS 或 IP>
 MASTER_PORT=29500
-WANDB_API_KEY=<由平台 Secret 注入>
 ```
+
+分布式三件套含义：
+
+- `KIMODO_NODE_RANK`：当前 Pod 是第几台训练机（0 或 1）。两机各不相同。
+- `MASTER_ADDR`：rank0 那台机的地址（Pod DNS/IP），所有 Pod 填同一个，用来会合。
+- `MASTER_PORT`：会合端口，默认 `29500`，两机相同且网络要通。
+
+所有训练 Pod 把同一块共享 PVC 挂到 `/home/share`。代码在 `yzt/kimodo-reproduction`，
+数据在 `yezitao-kimodo-reproduction`。
 
 标准布局下，company launcher 会从 `KIMODO_STORAGE_ROOT` 自动推导 data、paths、run、
 benchmark proxy 和 eval 输出目录；只有实际目录布局不同时才覆盖对应变量。W&B project、group、
 train/benchmark run ID 同样有稳定默认值，通常不需要填写。
 
-`WANDB_API_KEY` 必须由平台 Secret/环境变量注入，不写入 Dockerfile、Git、PVC 明文配置或
-启动脚本。训练所有 Pod 可以接收相同 W&B 环境变量，但代码只允许 global rank 0 初始化和
-上报。benchmark eval Pod 使用同一 group、不同的
-`KIMODO_WANDB_BENCHMARK_RUN_ID`，详见 `training_benchmark_monitor.zh-CN.md`。
+密钥（`WANDB_API_KEY`、洗数据用的 `PRODUCT_GRAPH_LLM_API_KEY`）优先由平台 Secret 注入。
+若平台不便注入，可把 gitignored 的 `.env` 放在 PVC 代码根（见仓库 `.env.example`）：
 
-每 Pod 唯一环境：
-
-```text
-Pod 0..N-1: KIMODO_NODE_RANK=0..N-1
+```bash
+cp .env.example /home/share/yzt/kimodo-reproduction/.env
+chmod 600 /home/share/yzt/kimodo-reproduction/.env
+# 编辑填入 key；勿提交 Git
 ```
+
+`container_start.sh` / `train_company.sh` 会自动加载该文件中**尚未设置**的变量。
+共享盘上的明文 key 对有 share 权限的人可见，能走平台 Secret 仍更安全。训练 Pod 与
+eval-watch Pod 可共用同一 `.env`；只有 global rank 0 / eval Pod 会上报 W&B。
 
 若平台采用每物理节点两个 4-GPU Pod，则设置 `KIMODO_NNODES=4`、
 `KIMODO_NPROC_PER_NODE=4` 和四个唯一 node rank。这里的 `KIMODO_NNODES` 是 launcher/Pod 数，
@@ -210,7 +231,7 @@ NCCL_DEBUG_SUBSYS=INIT,NET
 ```bash
 KIMODO_RUN_DIR=/mnt/kimodo/runs/ddp16-smoke-001 \
 KIMODO_AUTO_RESUME=0 \
-/workspace/scripts/train_company_16h200.sh \
+/workspace/scripts/train_company.sh \
   --set runtime.max_steps_override=200 \
   --set runtime.checkpoint_every=100 \
   --set runtime.log_every=1

@@ -14,9 +14,11 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    KIMODO_STORAGE_ROOT=/mnt/kimodo
+    KIMODO_CODE_ROOT=/home/share/yzt/kimodo-reproduction \
+    KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction
 
-# Where your code will live inside the container
+# Build/install workdir. At runtime, reviewed modes prefer KIMODO_CODE_ROOT on
+# the share PVC; /workspace remains the image-local fallback for idle/smoke.
 WORKDIR /workspace
 
 # System deps
@@ -113,10 +115,11 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN python -c "from pip._internal.operations.check import create_package_set_from_installed, check_package_set; package_set, parsing_problems = create_package_set_from_installed(); missing, conflicting = check_package_set(package_set, should_ignore=lambda _name: False); print('dependency check:', len(missing), 'missing,', len(conflicting), 'conflicting'); assert not parsing_problems and not missing and not conflicting, (parsing_problems, missing, conflicting)" \
  && python -c "import kimodo, torch, wandb; print('kimodo image smoke:', torch.__version__, torch.version.cuda, 'wandb', wandb.__version__)"
 
-# Copy the complete Git working tree after the dependency layer. Keeping
-# /workspace/.git makes the running Pod useful for reviewed `git fetch/pull`
-# workflows; runtime datasets, checkpoints, caches and secrets remain excluded
-# by .dockerignore and belong on the PVC.
+# Copy the complete Git working tree after the dependency layer. The image still
+# carries /workspace for dependency install, smoke tests, and idle fallback.
+# Company training reads code from KIMODO_CODE_ROOT on the share PVC
+# (/home/share/yzt/kimodo-reproduction). Datasets/checkpoints stay on
+# KIMODO_STORAGE_ROOT and are excluded by .dockerignore.
 RUN find /workspace -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 COPY . /workspace
 RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} + \
@@ -129,6 +132,8 @@ RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} + \
 RUN python -m kimodo.evaluation.eval_monitor_cli --help >/dev/null \
  && python -m kimodo.resources.cli --help >/dev/null
 RUN --mount=type=tmpfs,target=/tmp \
+    KIMODO_CODE_ROOT=/workspace \
+    KIMODO_STORAGE_ROOT=/tmp/kimodo-smoke-storage \
     KIMODO_PYTHON=python /workspace/scripts/smoke_train.sh
 
 # Use the docker-entrypoint script, to allow the docker to run as the actual user instead of root
@@ -143,7 +148,8 @@ ENV KIMODO_IMAGE_GIT_COMMIT=${KIMODO_GIT_COMMIT}
 
 # Keep the image hardware-neutral by default.  The dispatcher stays alive in
 # idle mode, while Kubernetes can either override the command with a concrete
-# launcher or select an explicit KIMODO_CONTAINER_MODE.  Importantly, merely
-# creating a Pod must not require 16 H200s, RDMA, or a mounted production PVC.
+# launcher or select an explicit KIMODO_CONTAINER_MODE.  Merely creating a Pod
+# must not require 16 H200s or RDMA; train modes expect the share PVC at
+# /home/share with code under KIMODO_CODE_ROOT.
 ENTRYPOINT ["docker-entrypoint"]
 CMD ["/workspace/scripts/container_start.sh"]
