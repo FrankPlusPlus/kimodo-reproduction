@@ -42,6 +42,10 @@ RDMA、ring all-reduce 或梯度发送。
 
 ## 3. 镜像中放什么
 
+历史 tag、digest、推荐用法见 [`docs/docker_images.zh-CN.md`](./docker_images.zh-CN.md)
+（PVC：`/home/share/yzt/kimodo-reproduction/docs/docker_images.zh-CN.md`）。当前训练推荐
+`hub.inner.ai.kingsoft.com/hh-678395/kimodo-reproduction:v7`（`:pvc-train` 同 digest）。
+
 镜像提供 Python/CUDA/NCCL 运行时、依赖、RDMA 工具，以及 `/workspace/scripts/container_start.sh`
 启动器。公司训练默认从共享盘代码目录启动，而不是改镜像内 `/workspace`：
 

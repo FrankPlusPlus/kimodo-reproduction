@@ -7,6 +7,7 @@
 
 | 任务 | 入口 |
 |---|---|
+| 公司镜像 tag / digest / 用法说明 | `docs/docker_images.zh-CN.md` |
 | 容器模式选择 | `scripts/container_start.sh` |
 | V2 数据构建 | `scripts/v2_pipeline.sh` |
 | 本地环境和资源初始化 | `scripts/bootstrap_training.sh` |
