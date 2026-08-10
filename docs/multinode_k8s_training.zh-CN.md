@@ -44,7 +44,7 @@ RDMA、ring all-reduce 或梯度发送。
 
 历史 tag、digest、推荐用法见 [`docs/docker_images.zh-CN.md`](./docker_images.zh-CN.md)
 （PVC：`/home/share/yzt/kimodo-reproduction/docs/docker_images.zh-CN.md`）。当前训练推荐
-`hub.inner.ai.kingsoft.com/hh-678395/kimodo-reproduction:v7`（`:pvc-train` 同 digest）。
+`hub.inner.ai.kingsoft.com/hh-678395/kimodo-reproduction:v8`（`:pvc-train` 同内容）。
 
 镜像提供 Python/CUDA/NCCL 运行时、依赖、RDMA 工具，以及 `/workspace/scripts/container_start.sh`
 启动器。公司训练默认从共享盘代码目录启动，而不是改镜像内 `/workspace`：
@@ -209,16 +209,33 @@ DDP 会在每张卡保留完整模型、optimizer 和 EMA。16 卡提升数据�
 - RoCE 集群还要由网络管理员配置 PFC/ECN、GID/traffic class 等；这些不能从训练代码猜；
 - 如使用 GPUDirect RDMA，IOMMU、DMA-BUF/peer memory、容器权限和拓扑也要满足平台要求。
 
-不要在仓库中盲目硬编码 `NCCL_SOCKET_IFNAME=eth0`、`NCCL_IB_HCA=mlx5_0` 或
-`NCCL_IB_GID_INDEX`；不同集群名称和 RoCE 配置不同。先让 NCCL 自动探测，首个 smoke job 临时设置：
+公司启动器通过 `scripts/nccl_rdma_env.sh` 配置 NCCL/RDMA。默认 `KIMODO_NCCL_ENV_MODE=respect`：
+平台已注入的 `NCCL_IB_*` 不覆盖，只在未设置时补 `NCCL_IB_HCA=mlx5`。
+
+若日志出现 `ibv_modify_qp ... errno 19`（平台常注入 `NCCL_IB_GID_INDEX=3` 且为
+`::ffff:` IPv4-mapped GID），在启动脚本里改用强制模式（**无需重打镜像**）：
+
+```bash
+export KIMODO_NCCL_ENV_MODE=force-auto   # 用 sysfs 猜 RoCEv2 GID + rail HCA
+# 或扫 index：export KIMODO_NCCL_ENV_MODE=force-gid=0   # 再试 1..7
+unset NCCL_IB_DISABLE
+export KIMODO_NCCL_DEBUG=1
+```
+
+完整粘贴模板见 `scripts/company_start_ib_trials.sh`。Pod 内也可先跑
+`bash scripts/probe_rdma_gids.sh` 看 GID 表。同事 VeRL 0.8 镜像栈（CUDA13 +
+`libibverbs*`/`rdma-core`）与当前 `:v8` 对齐；差异通常在平台注入的 GID/HCA，不在缺包。
+
+首个 smoke 可临时打开：
 
 ```text
+KIMODO_NCCL_DEBUG=1
 NCCL_DEBUG=INFO
 NCCL_DEBUG_SUBSYS=INIT,NET
 ```
 
-日志应明确出现 IB/verbs 或平台的 NCCL network plugin；如果只出现 Socket，代码仍能跑，但机间通信
-大概率退化到了 TCP。确认后将调试日志关闭，永久调优参数交给集群级 NCCL 配置或平台模板。
+日志应明确出现 IB/verbs；如果只出现 Socket，机间通信大概率退化到了 TCP。`NCCL_IB_DISABLE=1`
+仅作分界，不要当正式长训方案。
 
 ## 8. 推荐上线顺序
 

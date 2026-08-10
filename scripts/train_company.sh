@@ -33,6 +33,9 @@ export PYTHONPATH="${KIMODO_CODE_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
 # shellcheck disable=SC1091
 source "${script_dir}/load_kimodo_env.sh"
 kimodo_load_env_files
+# shellcheck disable=SC1091
+source "${script_dir}/nccl_rdma_env.sh"
+kimodo_nccl_rdma_env
 
 default_training_config="${project_root}/configs/training/kimodo_soma_seed_v2_1m_16h200.yaml"
 export KIMODO_TRAINING_CONFIG="${KIMODO_TRAINING_CONFIG:-${default_training_config}}"

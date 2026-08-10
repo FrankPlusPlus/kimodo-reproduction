@@ -10,7 +10,7 @@ PVC 同步路径：`/home/share/yzt/kimodo-reproduction/docs/docker_images.zh-CN
 |---|---|
 | Registry | `hub.inner.ai.kingsoft.com/hh-678395/kimodo-reproduction` |
 | 平台架构 | `linux/amd64` |
-| **当前训练推荐 tag** | **`:v7`**（与 `:pvc-train` 同 digest） |
+| **当前训练推荐 tag** | **`:v8`**（多机 RDMA 修复；旧任务可用 `:v7`） |
 | 镜像职责 | CUDA / PyTorch / NCCL / RDMA 工具 / 依赖 / 可选 sshd |
 | 代码职责 | **PVC** `/home/share/yzt/kimodo-reproduction`（热更新，不靠重打镜像） |
 | 数据职责 | **PVC** `/home/share/yezitao-kimodo-reproduction`（含 V2 bundle、`runs/`） |
@@ -24,12 +24,13 @@ PVC 同步路径：`/home/share/yzt/kimodo-reproduction/docs/docker_images.zh-CN
 3. 训练 Job 必须挂载 share PVC 到 `/home/share`。
 4. 启动命令应 `exec` PVC 上的 `train_company.sh`，并设置 `PYTHONPATH` 指向 PVC 代码。
 5. 密钥走 PVC `.env`（`KIMODO_CODE_ROOT/.env`），由 `load_kimodo_env.sh` 加载；**不要**打进镜像。
-6. 卡数不绑死在镜像里；`:v7` 可跑 6/16/32 卡，但要用环境变量改 `KIMODO_EXPECTED_WORLD_SIZE` / batch 等。
+6. 卡数不绑死在镜像里；`:v8` 可跑 6/16/32 卡，但要用环境变量改 `KIMODO_EXPECTED_WORLD_SIZE` / batch 等。
 
 ### 正式 2×8 启动脚本（平台「训练启动脚本」粘贴）
 
 ```bash
-set -euo pipefail
+# 平台用 /bin/sh 执行本框，不要写 set -o pipefail（dash 不支持）。
+# 真正训练入口由下面 exec bash 进入 bash。
 export KIMODO_CODE_ROOT=/home/share/yzt/kimodo-reproduction
 export KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction
 export PYTHONPATH="${KIMODO_CODE_ROOT}${PYTHONPATH:+:${PYTHONPATH}}"
@@ -65,8 +66,9 @@ export KIMODO_RUN_DIR=/home/share/yezitao-kimodo-reproduction/runs/v2-2x3-smoke
 
 | Tag | 状态 | Digest（已知） | 说明 |
 |---|---|---|---|
-| **v7** | **推荐（训练）** | `sha256:7afa9c63634e772e7a2ed46ac9f9d5c8489a67f5d3167fbb85bac19ec7ac136e` | PVC-first 公司训练镜像；默认 `KIMODO_CODE_ROOT` / `STORAGE_ROOT` 指向 share；基于 v6 reuse 构建 |
-| **pvc-train** | 别名 | **与 v7 同 digest** | 语义别名，内容完全相同；平台填 `:v7` 或 `:pvc-train` 均可 |
+| **v8** | **推荐（训练）** | 已推送（2026-08-10；平台拉 `:v8`） | CUDA 13.0.2 + Torch 2.11 cu130 + RDMA/compat + 默认 `NCCL_IB_HCA=mlx5`，针对 `ibv_modify_qp errno 19` |
+| **v7** | 可用（旧） | `sha256:7afa9c63634e772e7a2ed46ac9f9d5c8489a67f5d3167fbb85bac19ec7ac136e` | PVC-first；CUDA12.6 栈，多机 NCCL 可能卡在 IB |
+| **pvc-train** | 别名 | **与 v8 同内容（已重推）** | 语义别名；平台填 `:v8` 或 `:pvc-train` 均可 |
 | v6 | 可用（开发机 SSH 修复版） | `sha256:73a81106142a950aa3954900aba4492634ffd936fc922414f80837d08532696b` | 修好 jovyan 解锁 + `authorized_keys` 安全路径；本地验证 jovyan/root 公钥登录 |
 | v5 | 过渡 | （未记录 digest） | 尝试解锁 jovyan；仍有 authorized_keys 路径问题 → 被 v6 取代 |
 | v4 | 过时 | `sha256:917f9876b891dcd4dc40036a09c9fcc852d058153ae2ee0833615afb5cf179ce` | 增加 jovyan/sshd 约定；仍有账号锁定与 `/tmp` keys 问题，**勿用于登录** |
@@ -79,7 +81,18 @@ export KIMODO_RUN_DIR=/home/share/yezitao-kimodo-reproduction/runs/v2-2x3-smoke
 
 ## 3. 各版本变更摘要
 
-### v7 / pvc-train（2026-08-08 推送，当前训练用）
+### v8（多机 NCCL/RDMA 修复，2026-08-10 推送）
+
+- **构建方式：** `FROM nvidia/cuda:13.0.2-devel-ubuntu24.04`（linux/amd64），`KIMODO_REUSE_BASE_ENV=0`；Torch **2.11 + cu130**；`LD_LIBRARY_PATH` 优先 `/usr/local/cuda/compat`（对齐同事 H200 R575 栈）。
+- **相对 v7：**
+  - 离开 NGC CUDA12.6，改为 CUDA13 / NCCL cu130
+  - 安装 `libibverbs-dev` / `librdmacm-dev` / `libnuma-dev` 等 RDMA 用户态
+  - `scripts/nccl_rdma_env.sh`：默认 `NCCL_IB_HCA=mlx5`（平台已设置则不覆盖）
+  - 缓解 NCCL `ibv_modify_qp ... No such device`
+- **用途：** 瀚海多机训练推荐；平台镜像填 `:v8` 或 `:pvc-train`。
+- **若仍失败：** 核对 Pod 内 `ibv_devices` / 平台 RDMA 挂载；可试 `NCCL_IB_GID_INDEX` 或临时 `NCCL_IB_DISABLE=1` 分界。
+
+### v7 / pvc-train（2026-08-08 推送）
 
 - **构建方式：** `KIMODO_REUSE_BASE_ENV=1`，base=`...:v6`，platform=`linux/amd64`。
 - **相对 v6 的关键变化：**
@@ -88,6 +101,7 @@ export KIMODO_RUN_DIR=/home/share/yezitao-kimodo-reproduction/runs/v2-2x3-smoke
   - `container_start.sh` 优先解析 PVC 代码根，设置 `PYTHONPATH`，加载 `.env`
   - 训练契约面向公司 share PVC + `train_company` 入口（后续脚本在 PVC 上继续演进）
 - **用途：** 瀚海**训练 Job**（多机多卡）。不依赖镜像内 `/workspace` 热更新代码。
+- **已知问题：** 多机 NCCL 可能卡在 IB QP；请改用 `:v8`。
 - **不解决：** 自定义 Notebook 在 Istio 下 SSH（需平台 `excludeInboundPorts: "22"`）；开发请用官方 Notebook + PVC。
 
 ### v6（SSH 可用修复）
@@ -137,8 +151,8 @@ export KIMODO_RUN_DIR=/home/share/yezitao-kimodo-reproduction/runs/v2-2x3-smoke
 
 并记住：
 
-- 训练镜像用 **`hub.inner.ai.kingsoft.com/hh-678395/kimodo-reproduction:v7`**
-- `:pvc-train` ≡ `:v7`
+- 训练镜像用 **`hub.inner.ai.kingsoft.com/hh-678395/kimodo-reproduction:v8`**
+- `:pvc-train` ≡ `:v8`
 - 代码和数据在 PVC，不在镜像层里“最新”
 
 ---

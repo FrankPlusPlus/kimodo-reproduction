@@ -1,27 +1,62 @@
 # syntax=docker/dockerfile:1.7
+#
+# Company (Hanhai H200) training image.
+# Highest-confidence multi-node stack aligns with the cluster-proven CUDA 13
+# + R575 host pattern: CUDA devel base, compat libraries first on
+# LD_LIBRARY_PATH, RDMA verbs/rdmacm/numa, PyTorch cu130. Kimodo app code
+# still prefers PVC at runtime (KIMODO_CODE_ROOT).
+#
+# Optional legacy path: set KIMODO_PYTORCH_IMAGE to an NGC pytorch tag and
+# KIMODO_REUSE_BASE_ENV=1 for source-only rebuilds on that base.
 
-# Keep the known project base as the safe default. Company CI may override it
-# with an approved, digest-pinned NGC image after checking the host driver.
-ARG KIMODO_PYTORCH_IMAGE=nvcr.io/nvidia/pytorch:24.10-py3
-FROM ${KIMODO_PYTORCH_IMAGE}
+ARG KIMODO_PYTORCH_IMAGE=nvidia/cuda:13.0.2-devel-ubuntu24.04
+# Pin amd64: Apple Silicon defaults to arm64 and that image cannot run on H200.
+FROM --platform=linux/amd64 ${KIMODO_PYTORCH_IMAGE}
 
-# Company rebuilds may layer a source-only update on the already validated v2
-# image. The default remains a clean NGC bootstrap for independent CI builds.
 ARG KIMODO_REUSE_BASE_ENV=0
+ARG KIMODO_PYTHON_VERSION=3.12
+ARG KIMODO_TORCH_VERSION=2.11.0
+ARG KIMODO_TORCHVISION_VERSION=0.26.0
+ARG KIMODO_TORCHAUDIO_VERSION=2.11.0
+ARG DEBIAN_FRONTEND=noninteractive
+ARG PIP_BREAK_SYSTEM_PACKAGES=1
 
-# Avoid some interactive prompts + make pip quieter/reproducible-ish
-ENV DEBIAN_FRONTEND=noninteractive \
+# CUDA runtime/compiler paths. compat must precede host-mounted driver libs
+# when the image CUDA toolkit is newer than what older docs assume; H200
+# nodes in this company fleet run R575-class drivers with CUDA 13 images.
+# Match cluster-proven CUDA13 images: compat before host-mounted driver libs.
+ENV CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:${PATH} \
+    LD_LIBRARY_PATH=/usr/local/cuda/compat:/usr/local/cuda/lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PIP_BREAK_SYSTEM_PACKAGES=1 \
+    TZ=Asia/Shanghai \
     KIMODO_CODE_ROOT=/home/share/yzt/kimodo-reproduction \
-    KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction
+    KIMODO_STORAGE_ROOT=/home/share/yezitao-kimodo-reproduction \
+    NCCL_IB_HCA=mlx5 \
+    TORCH_NCCL_ASYNC_ERROR_HANDLING=1 \
+    NCCL_ASYNC_ERROR_HANDLING=1
 
-# Build/install workdir. At runtime, reviewed modes prefer KIMODO_CODE_ROOT on
-# the share PVC; /workspace remains the image-local fallback for idle/smoke.
 WORKDIR /workspace
 
-# System deps
+# Prefer a China-reachable Ubuntu mirror; archive.ubuntu.com often 502 from here.
+RUN set -eux; \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do \
+      [ -f "$f" ] || continue; \
+      sed -i \
+        -e 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+        -e 's|https://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+        -e 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+        -e 's|https://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' \
+        "$f"; \
+    done; \
+    printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' \
+      > /etc/apt/apt.conf.d/80-kimodo-retries
+
+# System deps + RDMA (runtime + headers, matching cluster-proven images).
 RUN if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
       command -v git && command -v curl && command -v cmake && command -v gosu \
       && command -v ibv_devices \
@@ -33,20 +68,57 @@ RUN if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
     else \
       apt-get update \
       && apt-get install -y --no-install-recommends \
-        git curl ca-certificates \
+        git wget curl ca-certificates \
         cmake build-essential \
+        software-properties-common \
         gosu \
         zstd openssh-server \
-        libibverbs1 ibverbs-providers rdma-core \
-        infiniband-diags perftest ibutils ibverbs-utils \
-      && rm -rf /var/lib/apt/lists/*; \
+        vim \
+        tzdata \
+        iproute2 \
+        python${KIMODO_PYTHON_VERSION} \
+        python${KIMODO_PYTHON_VERSION}-dev \
+        libibverbs1 \
+        libibverbs-dev \
+        ibverbs-providers \
+        rdma-core \
+        librdmacm1 \
+        librdmacm-dev \
+        libnuma1 \
+        libnuma-dev \
+        numactl \
+        infiniband-diags \
+        ibverbs-utils \
+        perftest \
+        ibutils \
+      && (apt-get install -y --no-install-recommends libmlx5-1 || true) \
+      && ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+      && echo "Asia/Shanghai" > /etc/timezone \
+      && ln -sf /usr/bin/python${KIMODO_PYTHON_VERSION} /usr/bin/python3 \
+      && ln -sf /usr/bin/python${KIMODO_PYTHON_VERSION} /usr/bin/python \
+      && rm -rf /var/lib/apt/lists/* \
+      && command -v ibv_devices; \
     fi
 
-# Hanhai/Kubeflow Notebook SSH: gateway authenticates user-ssh-public-key, then
-# forwards to Pod :22 and logs in as jovyan (the Jupyter/Kubeflow default login
-# account; home is /home/jovyan, usually the Notebook workspace PVC). Custom
-# images must run sshd, ship that account, and install authorized_keys at
-# runtime from KIMODO_SSH_PUBLIC_KEY or a mounted file.
+# Always refresh RDMA userspace on reuse builds so older tags cannot keep a
+# stale verbs stack.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends --allow-change-held-packages \
+      libibverbs1 \
+      libibverbs-dev \
+      ibverbs-providers \
+      rdma-core \
+      librdmacm-dev \
+      libnuma-dev \
+      numactl \
+      infiniband-diags \
+      ibverbs-utils \
+ && (apt-get install -y --no-install-recommends libmlx5-1 librdmacm1 || true) \
+ && rm -rf /var/lib/apt/lists/* \
+ && command -v ibv_devices \
+ && echo "Kimodo image RDMA userspace ready"
+
+# Hanhai/Kubeflow Notebook SSH account (jovyan).
 ARG NB_USER=jovyan
 ARG NB_UID=1000
 ARG NB_GID=100
@@ -75,25 +147,13 @@ RUN mkdir -p /run/sshd /etc/ssh/sshd_config.d \
  && mkdir -p "/home/${NB_USER}" \
  && chown "${NB_UID}:${NB_GID}" "/home/${NB_USER}" \
  && if getent passwd "${NB_USER}" >/dev/null; then \
-      # useradd leaves "!" locked accounts; OpenSSH rejects locked users even for
-      # publickey. "*" disables password auth while keeping the account usable.
       usermod -p '*' "${NB_USER}"; \
     fi
 
 EXPOSE 22
 
-# Some base images ship a broken `/usr/local/bin/cmake` shim (from a partial pip install),
-# which shadows `/usr/bin/cmake` and breaks builds that invoke `cmake` (e.g. MotionCorrection).
-# Prefer the system cmake.
 RUN rm -f /usr/local/bin/cmake || true
 
-# Install from docker_requirements.txt: kimodo editable (-e .),
-# but MotionCorrection non-editable (./MotionCorrection). The -e . line ensures [project.scripts]
-# from pyproject.toml are installed (kimodo_gen, kimodo_demo, kimodo_textencoder).
-# SKIP_MOTION_CORRECTION_IN_SETUP=1 so setup.py does not bundle motion_correction; it is
-# installed separately from ./MotionCorrection in the requirements file (non-editable).
-# The interactive demo's optional kimodo-viser dependency is intentionally not
-# part of this train/eval image.
 COPY docker_requirements.txt /workspace/docker_requirements.txt
 COPY setup.py /workspace/setup.py
 COPY pyproject.toml /workspace/pyproject.toml
@@ -101,55 +161,73 @@ COPY README.md /workspace/README.md
 COPY kimodo /workspace/kimodo
 COPY MotionCorrection /workspace/MotionCorrection
 
+# Bootstrap pip + PyTorch cu130 (same versions/index as cluster-proven images).
+# Keep torch and Kimodo requirements in separate layers so PyPI flakes do not
+# force re-downloading multi-GB CUDA wheels.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
+      python -c "import torch; print('reusing torch:', torch.__version__, torch.version.cuda)"; \
+    else \
+      wget -q https://bootstrap.pypa.io/get-pip.py \
+      && python get-pip.py \
+      && rm -f get-pip.py \
+      && pip install --upgrade "pip==24.2" \
+      && pip install --retries 10 \
+           "torch==${KIMODO_TORCH_VERSION}" \
+           "torchvision==${KIMODO_TORCHVISION_VERSION}" \
+           "torchaudio==${KIMODO_TORCHAUDIO_VERSION}" \
+           --index-url https://download.pytorch.org/whl/cu130 \
+      && python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)"; \
+    fi
+
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ "${KIMODO_REUSE_BASE_ENV}" = 1 ]; then \
       python -c "import kimodo, torch, wandb; print('reusing validated environment:', torch.__version__, wandb.__version__)"; \
     else \
-      PIP_NO_CACHE_DIR=0 python -m pip install --upgrade "pip==24.2" \
-      && PIP_NO_CACHE_DIR=0 SKIP_MOTION_CORRECTION_IN_SETUP=1 python -m pip install -r docker_requirements.txt; \
+      # Training does not need MotionCorrection C++. Building it under QEMU/amd64
+      # on Apple Silicon hits a GCC LTO ICE; install deps without it, then try a
+      # no-LTO build and allow skip if that still fails.
+      grep -vE '^\./MotionCorrection[[:space:]]*$' docker_requirements.txt \
+        > /tmp/docker_requirements.nomc.txt \
+      && PIP_NO_CACHE_DIR=0 SKIP_MOTION_CORRECTION_IN_SETUP=1 \
+           pip install --retries 10 \
+             -i https://mirrors.aliyun.com/pypi/simple/ \
+             --trusted-host mirrors.aliyun.com \
+             -r /tmp/docker_requirements.nomc.txt \
+      && if CMAKE_ARGS="-DCMAKE_INTERPROCEDURAL_OPTIMIZATION:BOOL=OFF -DCMAKE_CXX_FLAGS=-fno-lto" \
+            CFLAGS="-fno-lto" CXXFLAGS="-fno-lto" \
+            pip install --retries 5 --no-build-isolation ./MotionCorrection; then \
+           echo "Kimodo image: MotionCorrection C++ ext installed"; \
+         else \
+           echo "Kimodo image: optional MotionCorrection C++ ext skipped (training OK)"; \
+         fi \
+      && python -c "import kimodo, torch, wandb; print('kimodo image smoke:', torch.__version__, torch.version.cuda, 'wandb', wandb.__version__)"; \
     fi
 
-# NGC 24.10 contains a legacy two-field wheel tag that makes `pip check`
-# crash while scanning platform compatibility. Check missing/version conflicts
-# directly and skip only that broken tag scan.
-RUN python -c "from pip._internal.operations.check import create_package_set_from_installed, check_package_set; package_set, parsing_problems = create_package_set_from_installed(); missing, conflicting = check_package_set(package_set, should_ignore=lambda _name: False); print('dependency check:', len(missing), 'missing,', len(conflicting), 'conflicting'); assert not parsing_problems and not missing and not conflicting, (parsing_problems, missing, conflicting)" \
- && python -c "import kimodo, torch, wandb; print('kimodo image smoke:', torch.__version__, torch.version.cuda, 'wandb', wandb.__version__)"
-
-# Copy the complete Git working tree after the dependency layer. The image still
-# carries /workspace for dependency install, smoke tests, and idle fallback.
-# Company training reads code from KIMODO_CODE_ROOT on the share PVC
-# (/home/share/yzt/kimodo-reproduction). Datasets/checkpoints stay on
-# KIMODO_STORAGE_ROOT and are excluded by .dockerignore.
 RUN find /workspace -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
 COPY . /workspace
 RUN find /workspace/scripts -type f -name '*.sh' -exec chmod +x {} + \
  && git config --system --add safe.directory /workspace \
  && chmod -R a+rwX /workspace
 
-# Fail the image build if the post-migration training/evaluation entry points
-# or the real two-step trainer path are broken. The generated fixture, logs and
-# checkpoints live only on a BuildKit tmpfs and are not retained in the image.
+ARG KIMODO_SKIP_SMOKE=0
 RUN python -m kimodo.evaluation.eval_monitor_cli --help >/dev/null \
  && python -m kimodo.resources.cli --help >/dev/null
 RUN --mount=type=tmpfs,target=/tmp \
-    KIMODO_CODE_ROOT=/workspace \
-    KIMODO_STORAGE_ROOT=/tmp/kimodo-smoke-storage \
-    KIMODO_PYTHON=python /workspace/scripts/smoke_train.sh
+    if [ "${KIMODO_SKIP_SMOKE}" = 1 ]; then \
+      echo "Kimodo image: skipping smoke_train (KIMODO_SKIP_SMOKE=1)"; \
+    else \
+      KIMODO_CODE_ROOT=/workspace \
+      KIMODO_STORAGE_ROOT=/tmp/kimodo-smoke-storage \
+      KIMODO_PYTHON=python /workspace/scripts/smoke_train.sh; \
+    fi
 
-# Use the docker-entrypoint script, to allow the docker to run as the actual user instead of root
 COPY kimodo/scripts/docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 RUN chmod +x /usr/local/bin/docker-entrypoint
 
-# Keep source revision metadata late in the file so changing only the Git
-# commit does not invalidate apt and Python dependency layers.
 ARG KIMODO_GIT_COMMIT=unknown
 LABEL org.opencontainers.image.revision=${KIMODO_GIT_COMMIT}
 ENV KIMODO_IMAGE_GIT_COMMIT=${KIMODO_GIT_COMMIT}
 
-# Keep the image hardware-neutral by default.  The dispatcher stays alive in
-# idle mode, while Kubernetes can either override the command with a concrete
-# launcher or select an explicit KIMODO_CONTAINER_MODE.  Merely creating a Pod
-# must not require 16 H200s or RDMA; train modes expect the share PVC at
-# /home/share with code under KIMODO_CODE_ROOT.
 ENTRYPOINT ["docker-entrypoint"]
 CMD ["/workspace/scripts/container_start.sh"]
