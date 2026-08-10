@@ -14,6 +14,7 @@
   ├─ yzt/kimodo-reproduction/：常驻代码（KIMODO_CODE_ROOT，训练从此处启动）
   └─ yezitao-kimodo-reproduction/
       ├─ benchmark-v2-soma30-v2.2/：manifest、motion、text cache、stats、repro.paths.yaml
+      ├─ feature-cache/v1/：离线 motion 特征（可选，见 docs/motion_feature_cache.zh-CN.md）
       ├─ yezitao-kimodo-eval-v1/：固定 benchmark proxy 与官方基线
       └─ runs/：日志、checkpoint、export（rank 0 可写）
 

@@ -142,6 +142,7 @@ def test_company_v2_1m_profile_is_complete_and_does_not_need_a_hardware_overlay(
     assert config.runtime.checkpoint_every == 10_000
     assert config.runtime.milestone_every == 100_000
     assert config.runtime.enforce_paper_scale is True
+    assert config.data.persistent_workers is True
     training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=16))
     with pytest.raises(RuntimeError, match="deployment contract"):
         training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=8))

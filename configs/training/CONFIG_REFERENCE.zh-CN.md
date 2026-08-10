@@ -129,6 +129,7 @@ data:
   reference_verification: inventory
   reference_inventory: null
   require_paper_data_parity: false
+  feature_cache_dir: null
 ```
 
 ### `manifest`
@@ -209,10 +210,11 @@ DataLoader worker 的启动方式：
 每个 worker 预取的 batch 数。总预取规模大致是 `num_workers × prefetch_factor` 个 batch。增大可能掩盖
 磁盘延迟，也可能显著增加 CPU 内存和文件 I/O 压力。`num_workers=0` 时该值不会传给 DataLoader。
 
-### `persistent_workers: false`
+### `persistent_workers: true|false`
 
-是否在一个 epoch 结束后保留 worker。当前实现强制为 false，因为 Dataset 的 `set_epoch()` 会改变随机裁剪
-种子；持久 worker 持有的 Dataset 副本不会自动收到主进程的新 epoch，从而破坏预期增强和精确 resume。
+是否在一个 epoch 结束后保留 worker。正式 16 卡 V2 配置为 true：`MotionManifestDataset` 用进程间共享
+的 epoch 计数，`set_epoch()` 对持久 worker 可见，避免每个 epoch 在共享盘上重建整机 workers。
+小 smoke / 单测仍可用 false。
 
 ### `require_cached_text: true`
 
@@ -243,6 +245,13 @@ DataLoader worker 的启动方式：
 
 public 配置为 false，诚实表示它使用公开工程数据。strict 配置为 true，因此普通 BONES-SEED manifest 会
 被拒绝。这个门禁只能检查 schema 和自洽性，无法证明未公开 prompt、mixture 与 NVIDIA 私有 recipe 一致。
+
+### `feature_cache_dir: null`
+
+可选的离线 motion 特征缓存目录（`meta.json` + `index.jsonl` + `*.f16.npy`）。为 `null` 时走在线
+NPZ→FK；设置后训练热路径改为 mmap 特征再做窗/旋转/归一化，缺行 fail-closed。构建与切换步骤见
+[`docs/motion_feature_cache.zh-CN.md`](../../docs/motion_feature_cache.zh-CN.md)。该字段已列入 resume
+非关键白名单，可用 `KIMODO_FEATURE_CACHE_DIR` 在续训时切入。
 
 ## 5. `model`：去噪模型和动作表示
 

@@ -76,6 +76,10 @@ class ConstraintCurriculumSampler:
         self.config = config
         if len(self.ALL_PATTERNS) != len(set(self.ALL_PATTERNS)):
             raise RuntimeError("Constraint pattern registry contains duplicate names")
+        # Power-law multinomial weights depend only on (min, max, power); cache them
+        # so Phase-2 hot path does not rebuild arange/pow every sparse draw.
+        self._sparse_weight_cache: dict[tuple[int, int, float], torch.Tensor] = {}
+        self._benchmark_weight_cache: dict[tuple[int, int, float], torch.Tensor] = {}
 
     def _phase2_progress(self, global_step: int) -> float:
         offset = global_step - self.config.phase1_steps
@@ -98,18 +102,38 @@ class ConstraintCurriculumSampler:
             raise ValueError("randint high must be positive")
         return int(torch.randint(high, (), generator=generator).item())
 
+    @staticmethod
+    def _power_law_weights(
+        minimum: int,
+        maximum: int,
+        power: float,
+        cache: dict[tuple[int, int, float], torch.Tensor],
+    ) -> torch.Tensor:
+        key = (int(minimum), int(maximum), float(power))
+        weights = cache.get(key)
+        if weights is None:
+            choices = torch.arange(key[0], key[1] + 1, dtype=torch.float32)
+            weights = choices.pow(-key[2])
+            cache[key] = weights
+        return weights
+
     def _keyframes(self, length: int, maximum: int, generator: torch.Generator) -> torch.Tensor:
         maximum = max(1, min(length, maximum))
         minimum = min(self.config.sparse_keyframes_min, maximum)
-        choices = torch.arange(minimum, maximum + 1, dtype=torch.float32)
-        weights = choices.pow(-float(self.config.sparse_count_power))
+        weights = self._power_law_weights(
+            minimum,
+            maximum,
+            float(self.config.sparse_count_power),
+            self._sparse_weight_cache,
+        )
         selected = int(torch.multinomial(weights, 1, generator=generator).item())
         count = minimum + selected
         return torch.randperm(length, generator=generator)[:count].sort().values
 
     @staticmethod
     def _mark_feature(mask: torch.Tensor, frames: torch.Tensor, feature_slice: slice) -> None:
-        frames = frames.to(mask.device)
+        if frames.device != mask.device:
+            frames = frames.to(mask.device)
         mask[frames, feature_slice] = True
 
     def _mark_joint_features(
@@ -120,7 +144,8 @@ class ConstraintCurriculumSampler:
         joint_indices: list[int],
         width: int,
     ) -> None:
-        frames = frames.to(mask.device)
+        if frames.device != mask.device:
+            frames = frames.to(mask.device)
         start = self.motion_rep.slice_dict[feature_name].start
         for joint_index in joint_indices:
             mask[frames, start + joint_index * width : start + (joint_index + 1) * width] = True
@@ -178,8 +203,12 @@ class ConstraintCurriculumSampler:
             min(length, maximum, int(self.config.benchmark_sparse_keyframes_max)),
         )
         minimum = min(self.config.sparse_keyframes_min, maximum)
-        choices = torch.arange(minimum, maximum + 1, dtype=torch.float32)
-        weights = choices.pow(-float(self.config.benchmark_sparse_count_power))
+        weights = self._power_law_weights(
+            minimum,
+            maximum,
+            float(self.config.benchmark_sparse_count_power),
+            self._benchmark_weight_cache,
+        )
         selected = int(torch.multinomial(weights, 1, generator=generator).item())
         count = minimum + selected
         return torch.randperm(length, generator=generator)[:count].sort().values
@@ -199,7 +228,8 @@ class ConstraintCurriculumSampler:
         self._mark_joint_features(mask, frames, "global_rot_data", rotation_indices, 6)
 
     def _benchmark_mark_root(self, mask, frames, *, heading: bool) -> None:
-        frames = frames.to(mask.device)
+        if frames.device != mask.device:
+            frames = frames.to(mask.device)
         root_pos = self.motion_rep.slice_dict["smooth_root_pos"]
         mask[frames, root_pos.start] = True
         mask[frames, root_pos.start + 2] = True
@@ -333,8 +363,7 @@ class ConstraintCurriculumSampler:
     ) -> ConstraintBatch:
         if clean_motion.ndim != 3:
             raise ValueError("clean_motion must have shape [B,T,D]")
-        batch_size, max_time, _ = clean_motion.shape
-        mask = torch.zeros_like(clean_motion, dtype=torch.bool)
+        batch_size, max_time, feature_dim = clean_motion.shape
         names: list[list[str]] = []
         maximum = self.maximum_sparse_keyframes(global_step)
         lengths_list = lengths.detach().cpu().tolist()
@@ -343,6 +372,13 @@ class ConstraintCurriculumSampler:
 
         in_phase2 = global_step >= self.config.phase1_steps
         if not in_phase2:
+            mask = torch.zeros(
+                batch_size,
+                max_time,
+                feature_dim,
+                dtype=torch.bool,
+                device=clean_motion.device,
+            )
             return ConstraintBatch(
                 torch.zeros_like(clean_motion),
                 mask,
@@ -352,6 +388,10 @@ class ConstraintCurriculumSampler:
                 [0 for _ in range(batch_size)],
             )
 
+        # Build the boolean mask on CPU: all RNG draws already use a CPU
+        # generator, so staying on host avoids per-pattern GPU transfers while
+        # preserving the exact multinomial / randperm / randint order.
+        mask_cpu = torch.zeros(batch_size, max_time, feature_dim, dtype=torch.bool)
         lanes: list[str] = []
         component_counts: list[int] = []
         for batch_index, length_value in enumerate(lengths_list):
@@ -359,10 +399,11 @@ class ConstraintCurriculumSampler:
             selected, lane, component_count = self._select_patterns(generator)
             if selected:
                 for name in selected:
-                    self._apply_pattern(name, mask[batch_index], length, maximum, generator)
+                    self._apply_pattern(name, mask_cpu[batch_index], length, maximum, generator)
             names.append(selected)
             lanes.append(lane)
             component_counts.append(component_count)
 
+        mask = mask_cpu.to(device=clean_motion.device)
         observed = torch.where(mask, clean_motion, torch.zeros_like(clean_motion))
         return ConstraintBatch(observed, mask, names, maximum, lanes, component_counts)

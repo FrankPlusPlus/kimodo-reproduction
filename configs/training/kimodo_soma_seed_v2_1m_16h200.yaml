@@ -11,18 +11,26 @@ data:
   max_seconds: 10.0
   min_frames: 2
   # Per rank: local fixed-300f H200 tests measured 1.64/0.76/0.52 s per step
-  # at 4/8/12 workers. 12 is the lowest tested non-starving setting. On an
-  # 8-rank node this is 96 single-threaded workers; override only after a real
-  # PV/CPU smoke benchmark.
-  num_workers: 12
+  # at 4/8/12 workers. Multi-node hostnet: 8 was slower than the prior 12 baseline
+  # (~1.0 vs ~1.3 steps/s); default 16 to hide JuiceFS latency (128 workers/node).
+  # Override with KIMODO_DATA_WORKERS. Loader fields are resume-whitelisted.
+  num_workers: 16
   multiprocessing_context: fork
   pin_memory: true
-  prefetch_factor: 2
-  persistent_workers: false
+  # Slightly deeper prefetch to hide JuiceFS latency behind GPU compute.
+  # Resume-critical config ignores this field so 10k checkpoints can adopt it.
+  prefetch_factor: 4
+  # Keep workers alive across epochs. Epoch is process-shared on the dataset so
+  # augmentation seeds still track set_epoch(); avoids ~8min JuiceFS respawn stalls.
+  persistent_workers: true
   require_cached_text: true
   reference_verification: inventory
   reference_inventory: null
   require_paper_data_parity: false
+  # Offline FK cache on the data PVC. Leave null while building; after ≥20k
+  # checkpoint, resume with this path set (resume-whitelisted).
+  # Example: /home/share/yezitao-kimodo-reproduction/feature-cache/v1
+  feature_cache_dir: null
 
 model:
   checkpoint_dir: null
@@ -96,7 +104,8 @@ runtime:
   # Per GPU/rank. 16 x 128 x 1 = effective global batch 2048.
   batch_size: 128
   gradient_accumulation_steps: 1
-  log_every: 10
+  # Less frequent metric allreduce + rank0 publish; resume ignores this field.
+  log_every: 20
   checkpoint_every: 10000
   milestone_every: 100000
   keep_last_checkpoints: 3

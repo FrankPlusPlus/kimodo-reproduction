@@ -405,7 +405,7 @@ def test_exported_bundle_strictly_instantiates(training_fixture, tmp_path):
         assert torch.equal(value, reloaded.state_dict()[key])
 
 
-def test_ema_roundtrip_and_persistent_worker_guard():
+def test_ema_roundtrip():
     model = torch.nn.Linear(2, 1)
     initial = {name: value.detach().clone() for name, value in model.state_dict().items()}
     ema = ExponentialMovingAverage(model, decay=0.5)
@@ -427,10 +427,24 @@ def test_ema_roundtrip_and_persistent_worker_guard():
         for name, value in restored.shadow.items()
     )
 
+
+def test_persistent_workers_allowed_and_epoch_is_shared(training_fixture):
     config = TrainingConfig()
     config.data.persistent_workers = True
-    with pytest.raises(ValueError, match="persistent_workers is disabled"):
-        config.validate(require_paths=False)
+    config.validate(require_paths=False)
+
+    dataset = MotionManifestDataset(
+        training_fixture["manifest"],
+        "train",
+        _motion_rep(training_fixture),
+        max_seconds=1.0,
+        min_frames=2,
+        seed=7,
+    )
+    assert dataset.epoch == 0
+    dataset.set_epoch(3)
+    assert dataset.epoch == 3
+    # Persistent workers inherit this Value; a plain int would stay at fork-time 0.
 
 
 def test_official_mode_cannot_hide_skeleton_mismatch(training_fixture):

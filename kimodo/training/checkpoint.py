@@ -19,6 +19,17 @@ from .modeling import unwrap_model
 
 SCHEMA_VERSION = 3
 
+# Data / asset lineage keys always compared on exact resume. code_snapshot is
+# optional so throughput hotfixes on PVC can resume a checkpoint written under
+# an earlier code tree (see KIMODO_RESUME_ALLOW_CODE_MISMATCH).
+_PROVENANCE_KEYS = (
+    "manifest",
+    "stats",
+    "official_bundle",
+    "skeleton_assets",
+    "code_snapshot",
+)
+
 
 def _resume_critical_config(config: dict) -> dict:
     value = dict(config)
@@ -37,6 +48,21 @@ def _resume_critical_config(config: dict) -> dict:
     ):
         runtime.pop(key, None)
     value["runtime"] = runtime
+    # Loader mechanics do not change per-sample RNG (seeded by epoch+index) or
+    # optimizer math; allow throughput retunes across exact resumes.
+    data = dict(value.get("data", {}))
+    for key in (
+        "num_workers",
+        "persistent_workers",
+        "prefetch_factor",
+        "multiprocessing_context",
+        "pin_memory",
+        # Feature-cache path is a throughput switch; long-clip windowing moves
+        # from pre-FK to feature space, so resume with KIMODO_RESUME_ALLOW_CODE_MISMATCH.
+        "feature_cache_dir",
+    ):
+        data.pop(key, None)
+    value["data"] = data
     return value
 
 
@@ -167,13 +193,12 @@ def load_training_state(
         raise ValueError("Diagnostic checkpoint is not an exact optimizer-boundary resume point")
     if expected_provenance is not None:
         saved = state.get("provenance", {})
-        for key in (
-            "manifest",
-            "stats",
-            "official_bundle",
-            "skeleton_assets",
-            "code_snapshot",
-        ):
+        allow_code_mismatch = os.environ.get(
+            "KIMODO_RESUME_ALLOW_CODE_MISMATCH", ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        for key in _PROVENANCE_KEYS:
+            if key == "code_snapshot" and allow_code_mismatch:
+                continue
             if saved.get(key) != expected_provenance.get(key):
                 raise ValueError(f"Resume provenance mismatch for {key}")
     if current_config is not None and _resume_critical_config(state["config"]) != _resume_critical_config(

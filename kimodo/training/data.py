@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import multiprocessing as mp
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,7 +61,8 @@ def _load_training_motion_file(
     """
     effective_source = 30.0 if source_fps is None else float(source_fps)
     if path.suffix.lower() == ".npz" and effective_source == float(target_fps):
-        with np.load(path, allow_pickle=False) as archive:
+        # mmap lets the OS keep hot NPZs in page cache across DataLoader workers.
+        with np.load(path, allow_pickle=False, mmap_mode="r") as archive:
             keys = set(archive.files)
             is_kimodo = {"local_rot_mats", "root_positions"} <= keys
             is_amass = {"trans", "pose_body", "root_orient"} <= keys
@@ -408,6 +410,8 @@ class MotionManifestDataset(Dataset):
         normalize: bool = True,
         augment: bool = True,
         require_paper_data_parity: bool = False,
+        feature_cache_dir: str | Path | None = None,
+        stats_path: str | Path | None = None,
     ) -> None:
         if max_seconds is not None and max_seconds <= 0:
             raise ValueError("max_seconds must be positive or None")
@@ -418,6 +422,28 @@ class MotionManifestDataset(Dataset):
         self.motion_rep = motion_rep
         self.skeleton = motion_rep.skeleton
         self.fps = motion_rep.fps
+        self.feature_cache_dir: Path | None = None
+        self._feature_index: dict[str, dict[str, Any]] | None = None
+        if feature_cache_dir:
+            from kimodo.training.feature_cache import (
+                assert_cache_fingerprint,
+                build_cache_fingerprint,
+                load_index,
+                load_meta,
+            )
+
+            cache_dir = Path(feature_cache_dir).expanduser().resolve()
+            meta = load_meta(cache_dir)
+            fingerprint_stats = stats_path or getattr(motion_rep, "stats_path", None)
+            expected = build_cache_fingerprint(
+                fps=int(self.fps),
+                feature_dim=int(motion_rep.motion_rep_dim),
+                skeleton_joints=int(self.skeleton.nbjoints),
+                stats_path=fingerprint_stats,
+            )
+            assert_cache_fingerprint(meta, expected)
+            self.feature_cache_dir = cache_dir
+            self._feature_index = load_index(cache_dir)
         loaded_entries = load_manifest(manifest, split)
 
         def known_temporal_length(entry: ManifestEntry) -> int | None:
@@ -464,7 +490,10 @@ class MotionManifestDataset(Dataset):
             )
         self.min_frames = min_frames
         self.seed = seed
-        self.epoch = 0
+        # Shared across DataLoader workers so persistent_workers still observe
+        # set_epoch() updates from the training process (fork/spawn inherit the
+        # same backing memory). Plain attrs stay stuck at the worker fork copy.
+        self._epoch = mp.Value("i", 0, lock=False)
         self.require_cached_text = require_cached_text
         self.normalize = normalize
         self.augment = augment
@@ -473,9 +502,22 @@ class MotionManifestDataset(Dataset):
             if missing:
                 preview = ", ".join(missing[:5])
                 raise ValueError(f"Cached text embeddings are required; missing for: {preview}")
+        if self._feature_index is not None:
+            missing_features = [
+                entry.sample_id for entry in self.entries if entry.sample_id not in self._feature_index
+            ]
+            if missing_features:
+                preview = ", ".join(missing_features[:5])
+                raise FileNotFoundError(
+                    f"feature_cache_dir is set but cache rows are missing for: {preview}"
+                )
+
+    @property
+    def epoch(self) -> int:
+        return int(self._epoch.value)
 
     def set_epoch(self, epoch: int) -> None:
-        self.epoch = int(epoch)
+        self._epoch.value = int(epoch)
 
     def __len__(self) -> int:
         return len(self.entries)
@@ -485,7 +527,77 @@ class MotionManifestDataset(Dataset):
         generator.manual_seed(self.seed + self.epoch * len(self.entries) + index)
         return generator
 
+    def _load_text_features(self, entry: ManifestEntry) -> tuple[torch.Tensor | None, int]:
+        if entry.text_embedding_path is None:
+            return None, 0
+        # mmap + explicit copy: share page cache across workers, then own the tensor buffer.
+        array = np.load(entry.text_embedding_path, allow_pickle=False, mmap_mode="r")
+        array = np.array(array, copy=True)
+        if array.ndim == 1:
+            array = array[None]
+        if array.ndim != 2:
+            raise ValueError(f"Text embedding must be [P,D], got {array.shape}: {entry.text_embedding_path}")
+        text_features = torch.from_numpy(array).float()
+        return text_features, int(text_features.shape[0])
+
+    def _finalize_sample(
+        self,
+        entry: ManifestEntry,
+        features: torch.Tensor,
+        length: int,
+        generator: torch.Generator,
+    ) -> dict[str, Any]:
+        if self.augment:
+            target_heading = torch.rand((1,), generator=generator, dtype=features.dtype) * (
+                2.0 * torch.pi
+            )
+            features = self.motion_rep.rotate_to(features, target_heading)
+            first_heading = target_heading[0]
+        else:
+            first_heading = self.motion_rep.get_root_heading_angle(features)[0, 0]
+        if self.normalize:
+            features = self.motion_rep.normalize(features)
+        features = features[0]
+        text_features, text_length = self._load_text_features(entry)
+        return {
+            "id": entry.sample_id,
+            "clean_motion": features,
+            "length": length,
+            "first_heading_angle": first_heading,
+            "text": entry.text,
+            "text_features": text_features,
+            "text_length": text_length,
+            "mixture_source": entry.mixture_source,
+            "sample_kind": entry.sample_kind,
+            "event_count": entry.event_count,
+        }
+
+    def _getitem_from_feature_cache(self, index: int) -> dict[str, Any]:
+        from kimodo.training.feature_cache import load_feature_array
+
+        entry = self.entries[index]
+        generator = self._generator(index)
+        assert self.feature_cache_dir is not None and self._feature_index is not None
+        row = self._feature_index[entry.sample_id]
+        path = self.feature_cache_dir / row["path"]
+        array = load_feature_array(path)
+        if array.ndim != 2:
+            raise ValueError(f"Cached features must be [T,D], got {array.shape}: {path}")
+        length = int(array.shape[0])
+        if length < self.min_frames:
+            raise ValueError(f"Cached motion {entry.sample_id!r} has only {length} frames")
+        if self.max_frames is not None and length > self.max_frames:
+            # Window in feature space (semantic change vs pre-FK windowing).
+            start = int(torch.randint(length - self.max_frames + 1, (), generator=generator).item())
+            array = array[start : start + self.max_frames]
+            length = self.max_frames
+        features = torch.from_numpy(np.array(array, dtype=np.float32, copy=True)).unsqueeze(0)
+        return self._finalize_sample(entry, features, length, generator)
+
     def __getitem__(self, index: int) -> dict[str, Any]:
+        if self.feature_cache_dir is not None:
+            return self._getitem_from_feature_cache(index)
+
         entry = self.entries[index]
         generator = self._generator(index)
         motion, source_joints = _load_training_motion_file(
@@ -528,39 +640,7 @@ class MotionManifestDataset(Dataset):
         )
         # Paper: translate the first-frame smoothed-root XZ above the origin.
         features = self.motion_rep.translate_2d_to_zero(features)
-        if self.augment:
-            target_heading = torch.rand((1,), generator=generator, dtype=features.dtype) * (2.0 * torch.pi)
-            features = self.motion_rep.rotate_to(features, target_heading)
-            first_heading = target_heading[0]
-        else:
-            first_heading = self.motion_rep.get_root_heading_angle(features)[0, 0]
-        if self.normalize:
-            features = self.motion_rep.normalize(features)
-        features = features[0]
-
-        text_features = None
-        text_length = 0
-        if entry.text_embedding_path is not None:
-            array = np.load(entry.text_embedding_path, allow_pickle=False)
-            if array.ndim == 1:
-                array = array[None]
-            if array.ndim != 2:
-                raise ValueError(f"Text embedding must be [P,D], got {array.shape}: {entry.text_embedding_path}")
-            text_features = torch.from_numpy(np.asarray(array)).float()
-            text_length = int(text_features.shape[0])
-
-        return {
-            "id": entry.sample_id,
-            "clean_motion": features,
-            "length": length,
-            "first_heading_angle": first_heading,
-            "text": entry.text,
-            "text_features": text_features,
-            "text_length": text_length,
-            "mixture_source": entry.mixture_source,
-            "sample_kind": entry.sample_kind,
-            "event_count": entry.event_count,
-        }
+        return self._finalize_sample(entry, features, length, generator)
 
 
 def collate_motion_batch(samples: list[dict[str, Any]]) -> dict[str, Any]:

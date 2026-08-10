@@ -54,6 +54,7 @@ class MotionRepBase:
 
         self.skeleton = skeleton
         self.fps = fps
+        self.stats_path = stats_path
         self.nbjoints = skeleton.nbjoints
 
         self.feature_names = list(self.size_dict.keys())

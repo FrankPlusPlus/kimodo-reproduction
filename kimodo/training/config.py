@@ -28,6 +28,7 @@ class DataConfig:
     multiprocessing_context: str = "fork"
     pin_memory: bool = True
     prefetch_factor: int = 2
+    # Safe with MotionManifestDataset's process-shared epoch counter.
     persistent_workers: bool = False
     require_cached_text: bool = True
     # ``full`` hashes every referenced motion/embedding at trainer startup and
@@ -41,6 +42,9 @@ class DataConfig:
     # Keep this false for synthetic/engineering smoke runs; the paper-aligned
     # production profile enables it explicitly.
     require_paper_data_parity: bool = False
+    # Optional on-disk motion-feature cache (FK + translate precomputed). Empty
+    # keeps the online NPZ→FK path. When set, missing rows fail closed.
+    feature_cache_dir: str | None = None
 
 
 @dataclass
@@ -191,10 +195,6 @@ class TrainingConfig:
             raise ValueError("data.fps must match model.fps; resampling belongs in preprocessing")
         if self.data.max_seconds <= 0 or self.data.min_frames < 2:
             raise ValueError("data.max_seconds must be positive and data.min_frames must be >= 2")
-        if self.data.persistent_workers:
-            raise ValueError(
-                "persistent_workers is disabled: worker dataset copies would not receive set_epoch updates"
-            )
         if self.data.multiprocessing_context not in {
             "auto",
             "fork",

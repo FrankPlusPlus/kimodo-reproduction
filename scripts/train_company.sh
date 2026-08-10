@@ -22,6 +22,7 @@ set -euo pipefail
 #   KIMODO_EXPECTED_WORLD_SIZE             default 16; set empty to disable the gate
 #   KIMODO_TRAINING_CONFIG / OVERLAY / RUN_DIR / DATA_ROOT / PATHS_CONFIG
 #   KIMODO_BATCH_SIZE / KIMODO_GRAD_ACCUM / KIMODO_MAX_STEPS / KIMODO_DATA_WORKERS
+#   KIMODO_FEATURE_CACHE_DIR               optional mmap feature cache (after offline build)
 #   KIMODO_AUTO_RESUME / KIMODO_REQUIRE_RDMA / KIMODO_EXPECTED_GPU_PATTERN
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -144,6 +145,9 @@ if [[ -n "${KIMODO_DATA_WORKERS:-}" ]]; then
     exit 2
   fi
   data_args+=(--set "data.num_workers=${KIMODO_DATA_WORKERS}")
+fi
+if [[ -n "${KIMODO_FEATURE_CACHE_DIR:-}" ]]; then
+  data_args+=(--set "data.feature_cache_dir=${KIMODO_FEATURE_CACHE_DIR}")
 fi
 
 resume_args=()

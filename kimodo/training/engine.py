@@ -9,7 +9,9 @@ import copy
 import hashlib
 import json
 import os
+import queue
 import random
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -131,21 +133,77 @@ def _reduce_scalar(value: torch.Tensor, context: DistributedContext) -> float:
 
 
 class JsonlLogger:
-    def __init__(self, path: Path, enabled: bool, monitor: WandbMonitor | None = None) -> None:
+    """Rank-0 metrics logger.
+
+    File / stdout / W&B publication runs on a background thread so the training
+    step is not blocked on JuiceFS append latency. ``close()`` drains the queue.
+    """
+
+    def __init__(
+        self,
+        path: Path,
+        enabled: bool,
+        monitor: WandbMonitor | None = None,
+        *,
+        async_write: bool = True,
+    ) -> None:
         self.path = path
         self.enabled = enabled
         self.monitor = monitor
+        self._queue: queue.Queue[dict | None] | None = None
+        self._thread: threading.Thread | None = None
+        self._error: BaseException | None = None
         if enabled:
             path.parent.mkdir(parents=True, exist_ok=True)
+            if async_write:
+                self._queue = queue.Queue(maxsize=256)
+                self._thread = threading.Thread(
+                    target=self._worker,
+                    name="kimodo-jsonl-logger",
+                    daemon=True,
+                )
+                self._thread.start()
+
+    def _write_sync(self, record: dict) -> None:
+        payload = json.dumps(record, sort_keys=True)
+        with self.path.open("a", encoding="utf-8") as handle:
+            handle.write(payload + "\n")
+        print(payload, flush=True)
+        if self.monitor is not None:
+            self.monitor.log(record, step=record.get("global_step"))
+
+    def _worker(self) -> None:
+        assert self._queue is not None
+        while True:
+            item = self._queue.get()
+            try:
+                if item is None:
+                    return
+                self._write_sync(item)
+            except BaseException as error:  # noqa: BLE001 - surface on next write/close
+                self._error = error
+            finally:
+                self._queue.task_done()
 
     def write(self, record: dict) -> None:
         if not self.enabled:
             return
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, sort_keys=True) + "\n")
-        print(json.dumps(record, sort_keys=True), flush=True)
-        if self.monitor is not None:
-            self.monitor.log(record, step=record.get("global_step"))
+        if self._error is not None:
+            raise RuntimeError("async metrics logger failed") from self._error
+        if self._queue is None:
+            self._write_sync(record)
+            return
+        self._queue.put(record)
+
+    def close(self) -> None:
+        if self._queue is None or self._thread is None:
+            return
+        self._queue.put(None)
+        self._thread.join(timeout=120)
+        self._queue = None
+        self._thread = None
+        if self._error is not None:
+            raise RuntimeError("async metrics logger failed") from self._error
 
 
 def build_training_dataset(config, motion_rep):
@@ -159,6 +217,8 @@ def build_training_dataset(config, motion_rep):
         seed=config.runtime.seed,
         require_cached_text=config.data.require_cached_text,
         require_paper_data_parity=config.data.require_paper_data_parity,
+        feature_cache_dir=config.data.feature_cache_dir,
+        stats_path=config.model.stats_path,
         normalize=True,
         augment=True,
     )
@@ -258,7 +318,12 @@ class KimodoTrainer:
         # benchmark harness. Production training passes no observer, so the
         # mathematical path and checkpoint behavior remain unchanged.
         self.step_observer = step_observer
+        boot_t0 = time.perf_counter()
         self.context = initialize_distributed(config.runtime.device, config.runtime.distributed)
+        self._boot_log(
+            f"distributed ready rank={self.context.rank}/{self.context.world_size} "
+            f"device={self.context.device}"
+        )
         validate_paper_runtime_scale(config, self.context)
         seed_everything(config.runtime.seed, self.context.rank)
         self.output_dir = Path(config.runtime.output_dir).expanduser().resolve()
@@ -279,6 +344,7 @@ class KimodoTrainer:
         # Validate provenance before allocating the 283M-parameter model and
         # optimizer. Rank zero performs the filesystem work once; peers wait
         # for the compact result.
+        phase_t0 = time.perf_counter()
         if self.context.is_main:
             provenance = collect_provenance(config, self.project_root, context=self.context)
         else:
@@ -296,6 +362,8 @@ class KimodoTrainer:
                 "parent_checkpoint_sha256": _sha256_file(resume_path),
             }
         self.provenance = provenance
+        self._boot_log(f"provenance ready in {time.perf_counter() - phase_t0:.1f}s")
+        phase_t0 = time.perf_counter()
         self.model = build_trainable_denoiser(config.model, config.curriculum, self.context.device)
         validate_model_contract(self.model, config.model)
         self.model.train()
@@ -329,17 +397,27 @@ class KimodoTrainer:
         self.micro_index = self.global_step * config.runtime.gradient_accumulation_steps
         self._last_dropout = None
         self._last_saved_position: tuple[int, int] | None = None
+        self._boot_log(f"model/optimizer ready in {time.perf_counter() - phase_t0:.1f}s")
 
         # The denoiser and loss use the device-resident representation above,
         # while DataLoader workers construct motion features on CPU. Sharing
         # the same instance leaves skeleton index buffers on CUDA and makes
         # CPU forward kinematics fail before the first training step.
+        phase_t0 = time.perf_counter()
         dataset_motion_rep = copy.deepcopy(self.motion_rep)
         for value in vars(dataset_motion_rep).values():
             if isinstance(value, torch.nn.Module):
                 value.cpu()
+        self._boot_log(
+            f"loading manifest dataset ({config.data.manifest}) "
+            f"workers={config.data.num_workers} persistent={config.data.persistent_workers} "
+            f"prefetch={config.data.prefetch_factor}"
+        )
         dataset = build_training_dataset(config, dataset_motion_rep)
         self.dataset = dataset
+        self._boot_log(
+            f"dataset ready entries={len(dataset)} in {time.perf_counter() - phase_t0:.1f}s"
+        )
         # Use an epoch-addressable sampler even on one process. RandomSampler
         # creates its permutation from ambient RNG state when iteration starts,
         # which makes an exact mid-epoch resume impossible.
@@ -378,6 +456,7 @@ class KimodoTrainer:
         self.loader = DataLoader(**loader_kwargs)
         if len(self.loader) == 0:
             raise ValueError("Training DataLoader is empty; lower batch_size or add data")
+        self._boot_log(f"dataloader ready len={len(self.loader)} batches/epoch")
 
         if config.runtime.resume:
             state = load_training_state(
@@ -401,6 +480,10 @@ class KimodoTrainer:
                     f"resume checkpoint global_step={self.global_step} exceeds configured "
                     f"total_steps={config.total_steps}"
                 )
+            self._boot_log(
+                f"resumed checkpoint global_step={self.global_step} epoch={self.epoch} "
+                f"batch_in_epoch={self.batch_in_epoch}"
+            )
 
         self.run_lock = ExclusiveRunLock(self.output_dir) if self.context.is_main else None
         lock_error = None
@@ -440,6 +523,88 @@ class KimodoTrainer:
         self.logger = JsonlLogger(
             self.output_dir / "train.jsonl", self.context.is_main, self.wandb_monitor
         )
+        self._boot_log(f"trainer init complete in {time.perf_counter() - boot_t0:.1f}s")
+
+    def _boot_log(self, message: str) -> None:
+        if getattr(self, "context", None) is None or self.context.is_main:
+            print(f"[kimodo-train] {message}", flush=True)
+
+    def _accumulate_curriculum_counts(
+        self,
+        curriculum_counts: dict[str, float],
+        *,
+        text_dropped: torch.Tensor,
+        lengths: torch.Tensor,
+        conditioning,
+        mixture_sources: list[str],
+    ) -> None:
+        """Update logging counters without per-step training math.
+
+        Phase-1 lanes never need sequence lengths (no benchmark duration bins),
+        so we skip that host sync until Phase-2 actually emits benchmark lanes.
+        """
+        lanes = conditioning.sampling_lanes
+        need_lengths = any(lane == "benchmark" for lane in lanes)
+        # One host transfer for dropout flags (not one sync per sample).
+        dropped_values = text_dropped.detach().to("cpu").tolist()
+        length_values = lengths.detach().to("cpu").tolist() if need_lengths else None
+        fps = float(self.config.data.fps)
+        for index, (dropped_value, patterns, lane, component_count) in enumerate(
+            zip(
+                dropped_values,
+                conditioning.pattern_names,
+                lanes,
+                conditioning.component_counts,
+                strict=True,
+            )
+        ):
+            dropped = bool(dropped_value)
+            constrained = bool(patterns)
+            curriculum_counts["samples"] += 1
+            curriculum_counts["text_dropped"] += float(dropped)
+            curriculum_counts["constrained"] += float(constrained)
+            curriculum_counts["two_patterns"] += float(lane == "paper_two")
+            curriculum_counts["none_lane"] += float(lane in {"none", "phase1_none"})
+            curriculum_counts["paper_single_lane"] += float(lane == "paper_single")
+            curriculum_counts["benchmark_lane"] += float(lane == "benchmark")
+            curriculum_counts["benchmark_atomic"] += float(
+                lane == "benchmark" and component_count == 1
+            )
+            curriculum_counts["benchmark_two_component"] += float(
+                lane == "benchmark" and component_count == 2
+            )
+            curriculum_counts["benchmark_three_component"] += float(
+                lane == "benchmark" and component_count == 3
+            )
+            curriculum_counts["benchmark_with_text"] += float(
+                lane == "benchmark" and not dropped
+            )
+            curriculum_counts["benchmark_without_text"] += float(
+                lane == "benchmark" and dropped
+            )
+            if need_lengths and lane == "benchmark":
+                duration_seconds = float(length_values[index]) / fps
+                curriculum_counts["benchmark_duration_lt_3s"] += float(duration_seconds < 3.0)
+                curriculum_counts["benchmark_duration_3_to_10s"] += float(
+                    3.0 <= duration_seconds <= 10.0
+                )
+                curriculum_counts["benchmark_duration_gt_10s"] += float(duration_seconds > 10.0)
+            curriculum_counts["exact_two_component"] += float(component_count == 2)
+            curriculum_counts["physical_multi_constraint"] += float(component_count >= 2)
+            branch = (
+                "unconditional"
+                if dropped and not constrained
+                else "constraint_only"
+                if dropped
+                else "joint"
+                if constrained
+                else "text_only"
+            )
+            curriculum_counts[branch] += 1
+            for pattern in patterns:
+                curriculum_counts[f"pattern/{pattern}"] += 1
+        for source in mixture_sources:
+            curriculum_counts[f"data_source/{source}"] += 1
 
     def _observed_section(self, name: str):
         """Return an optional benchmark-only profiling range."""
@@ -558,6 +723,12 @@ class KimodoTrainer:
             )
             raise
         finally:
+            try:
+                self.logger.close()
+            except Exception:
+                if exit_code == 0:
+                    exit_code = 1
+                print("[kimodo-train] metrics logger close failed", flush=True)
             self.wandb_monitor.finish(exit_code=exit_code)
             if self.run_lock is not None:
                 self.run_lock.release()
@@ -576,6 +747,7 @@ class KimodoTrainer:
         interval_skipped_steps = 0
         interval_gradient_norm_sum = 0.0
         interval_gradient_clip_hits = 0
+        first_batch_logged = False
         if self.context.device.type == "cuda":
             torch.cuda.reset_peak_memory_stats(self.context.device)
         if (
@@ -615,6 +787,10 @@ class KimodoTrainer:
             **{f"data_source/{name}": 0.0 for name in self.dataset.mixture_sources},
         }
 
+        self._boot_log(
+            f"entering train loop from global_step={self.global_step} "
+            f"target={self.config.total_steps}"
+        )
         while self.global_step < self.config.total_steps:
             self.dataset.set_epoch(self.epoch)
             self.distributed_sampler.set_epoch(self.epoch)
@@ -622,6 +798,11 @@ class KimodoTrainer:
                 if batch_index < skip_batches:
                     continue
                 skip_batches = 0
+                if not first_batch_logged:
+                    self._boot_log(
+                        f"first training batch ready epoch={self.epoch} batch_index={batch_index}"
+                    )
+                    first_batch_logged = True
                 phase = self._apply_phase()
                 with self._observed_section("h2d"):
                     batch = _to_device(batch, self.context.device)
@@ -644,70 +825,13 @@ class KimodoTrainer:
                     conditioning = self.constraint_sampler.sample(
                         batch["clean_motion"], batch["lengths"], self.global_step, cpu_generator
                     )
-                    dropped_values = text_dropped.detach().cpu().tolist()
-                    length_values = batch["lengths"].detach().cpu().tolist()
-                    for dropped_value, length_value, patterns, lane, component_count in zip(
-                        dropped_values,
-                        length_values,
-                        conditioning.pattern_names,
-                        conditioning.sampling_lanes,
-                        conditioning.component_counts,
-                        strict=True,
-                    ):
-                        dropped = bool(dropped_value)
-                        constrained = bool(patterns)
-                        curriculum_counts["samples"] += 1
-                        curriculum_counts["text_dropped"] += float(dropped)
-                        curriculum_counts["constrained"] += float(constrained)
-                        curriculum_counts["two_patterns"] += float(lane == "paper_two")
-                        curriculum_counts["none_lane"] += float(lane in {"none", "phase1_none"})
-                        curriculum_counts["paper_single_lane"] += float(lane == "paper_single")
-                        curriculum_counts["benchmark_lane"] += float(lane == "benchmark")
-                        curriculum_counts["benchmark_atomic"] += float(
-                            lane == "benchmark" and component_count == 1
-                        )
-                        curriculum_counts["benchmark_two_component"] += float(
-                            lane == "benchmark" and component_count == 2
-                        )
-                        curriculum_counts["benchmark_three_component"] += float(
-                            lane == "benchmark" and component_count == 3
-                        )
-                        curriculum_counts["benchmark_with_text"] += float(
-                            lane == "benchmark" and not dropped
-                        )
-                        curriculum_counts["benchmark_without_text"] += float(
-                            lane == "benchmark" and dropped
-                        )
-                        duration_seconds = float(length_value) / self.config.data.fps
-                        curriculum_counts["benchmark_duration_lt_3s"] += float(
-                            lane == "benchmark" and duration_seconds < 3.0
-                        )
-                        curriculum_counts["benchmark_duration_3_to_10s"] += float(
-                            lane == "benchmark" and 3.0 <= duration_seconds <= 10.0
-                        )
-                        curriculum_counts["benchmark_duration_gt_10s"] += float(
-                            lane == "benchmark" and duration_seconds > 10.0
-                        )
-                        curriculum_counts["exact_two_component"] += float(
-                            component_count == 2
-                        )
-                        curriculum_counts["physical_multi_constraint"] += float(
-                            component_count >= 2
-                        )
-                        branch = (
-                            "unconditional"
-                            if dropped and not constrained
-                            else "constraint_only"
-                            if dropped
-                            else "joint"
-                            if constrained
-                            else "text_only"
-                        )
-                        curriculum_counts[branch] += 1
-                        for pattern in patterns:
-                            curriculum_counts[f"pattern/{pattern}"] += 1
-                    for source in batch["mixture_sources"]:
-                        curriculum_counts[f"data_source/{source}"] += 1
+                    self._accumulate_curriculum_counts(
+                        curriculum_counts,
+                        text_dropped=text_dropped,
+                        lengths=batch["lengths"],
+                        conditioning=conditioning,
+                        mixture_sources=batch["mixture_sources"],
+                    )
                 with self._observed_section("noise_and_diffusion"):
                     noise = torch.randn(
                         batch["clean_motion"].shape,
