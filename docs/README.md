@@ -16,6 +16,8 @@
    NCCL/RDMA 和启动脚本。
 5. [`training_benchmark_monitor.zh-CN.md`](training_benchmark_monitor.zh-CN.md)：训练旁路评测和公开
    benchmark 指标监控。
-6. [`code_surface.zh-CN.md`](code_surface.zh-CN.md)：公共入口、核心模块和内部审计工具边界。
+6. [`dev_notebook_network.zh-CN.md`](dev_notebook_network.zh-CN.md)：官方 Notebook 开发机网络/代理
+   （SSH RemoteForward、NO_PROXY、新 Pod 一键安装）。
+7. [`code_surface.zh-CN.md`](code_surface.zh-CN.md)：公共入口、核心模块和内部审计工具边界。
 
 历史验收快照、V1 设计草案、重复流程图以及上游网站生成源已经删除，避免旧结论与当前 V2 链路并存。
