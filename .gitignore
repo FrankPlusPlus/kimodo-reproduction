@@ -111,8 +111,8 @@ celerybeat.pid
 .env
 .env.*
 !.env.example
-.venv/
-.venv.*/
+# Covers .venv, .venv-feature-cache, .venv.*, etc.
+.venv*/
 venv/
 ENV/
 env.bak/
