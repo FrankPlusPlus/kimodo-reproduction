@@ -19,16 +19,25 @@ export KIMODO_NCCL_ENV_MODE=respect
 export KIMODO_NCCL_PROBE=0
 # Checkpoint was written before PVC throughput hotfixes; allow code_snapshot drift.
 export KIMODO_RESUME_ALLOW_CODE_MISMATCH=1
-# 8 workers regressed vs prior ~1.3 steps/s at 12; try 16 on 2x8 hostnet.
-export KIMODO_DATA_WORKERS="${KIMODO_DATA_WORKERS:-16}"
-# After offline build + ≥20k ckpt, enable mmap features:
-#   export KIMODO_FEATURE_CACHE_DIR=/home/share/yezitao-kimodo-reproduction/feature-cache/v1
+# Feature-cache resume: 16 was baseline; try 20 once mmap features are online.
+export KIMODO_DATA_WORKERS="${KIMODO_DATA_WORKERS:-20}"
+export KIMODO_FEATURE_CACHE_DIR="${KIMODO_FEATURE_CACHE_DIR:-/home/share/yezitao-kimodo-reproduction/feature-cache/v1}"
 unset NCCL_IB_DISABLE
 
 cd "${KIMODO_CODE_ROOT}"
 echo "Kimodo resume hostnet: code=${KIMODO_CODE_ROOT} run=${KIMODO_RUN_DIR}"
 echo "persistent_workers/prefetch from training yaml; AUTO_RESUME from checkpoints/latest.txt"
 echo "KIMODO_RESUME_ALLOW_CODE_MISMATCH=${KIMODO_RESUME_ALLOW_CODE_MISMATCH} KIMODO_DATA_WORKERS=${KIMODO_DATA_WORKERS}"
+echo "KIMODO_FEATURE_CACHE_DIR=${KIMODO_FEATURE_CACHE_DIR}"
+
+# Fail closed before torchrun if the offline cache is not merge-complete yet.
+if [[ -n "${KIMODO_FEATURE_CACHE_DIR}" ]]; then
+  if [[ ! -f "${KIMODO_FEATURE_CACHE_DIR}/meta.json" || ! -f "${KIMODO_FEATURE_CACHE_DIR}/index.jsonl" ]]; then
+    echo "feature cache not ready: need ${KIMODO_FEATURE_CACHE_DIR}/{meta.json,index.jsonl}" >&2
+    echo "wait for build-v1-sharded ALL_DONE, or unset KIMODO_FEATURE_CACHE_DIR to resume without cache" >&2
+    exit 2
+  fi
+fi
 
 # Only the master launcher clears a leftover cross-host lock (workers must not race).
 LOCK_PATH="${KIMODO_RUN_DIR}/.kimodo-active-run.lock"

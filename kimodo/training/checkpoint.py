@@ -85,6 +85,15 @@ def restore_rng_state(state: dict) -> None:
         torch.cuda.set_rng_state_all(state["cuda"])
 
 
+def _publish_mode(path: Path, mode: int = 0o644) -> None:
+    """Make trainer artifacts readable by sidecar eval pods on shared PVC."""
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        # Best-effort: some filesystems/ACLs refuse chmod from the writer.
+        pass
+
+
 def atomic_torch_save(value, path: str | Path) -> None:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -93,7 +102,9 @@ def atomic_torch_save(value, path: str | Path) -> None:
     temporary = Path(temporary_name)
     try:
         torch.save(value, temporary)
+        _publish_mode(temporary)
         os.replace(temporary, destination)
+        _publish_mode(destination)
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -110,12 +121,14 @@ def exclusive_torch_save(value, path: str | Path) -> None:
     temporary = Path(temporary_name)
     try:
         torch.save(value, temporary)
+        _publish_mode(temporary)
         try:
             os.link(temporary, destination)
         except FileExistsError as error:
             raise FileExistsError(
                 f"Refusing to overwrite existing checkpoint: {destination}"
             ) from error
+        _publish_mode(destination)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -132,7 +145,9 @@ def atomic_text_write(value: str, path: str | Path) -> None:
             handle.write(value)
             handle.flush()
             os.fsync(handle.fileno())
+        _publish_mode(temporary)
         os.replace(temporary, destination)
+        _publish_mode(destination)
     finally:
         if temporary.exists():
             temporary.unlink()
@@ -383,6 +398,9 @@ def export_inference_bundle(model, ema, output_dir: str | Path, global_step: int
         if destination.exists():
             raise FileExistsError(f"Refusing to overwrite inference bundle: {destination}")
         os.replace(temporary, destination)
+        # Sidecar eval pods often run as a non-root user on the same PVC.
+        for path in [destination, *destination.rglob("*")]:
+            _publish_mode(path, 0o755 if path.is_dir() else 0o644)
     finally:
         if temporary.exists():
             shutil.rmtree(temporary)
