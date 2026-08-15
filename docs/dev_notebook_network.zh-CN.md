@@ -178,6 +178,9 @@ curl -sk -v https://hub.inner.ai.kingsoft.com/v2/ -o /dev/null 2>&1 | grep -E 'C
 | Google 通 + Harbor 401/200 | 网络合同正确 |
 | Harbor TLS eof / decode error | `NO_PROXY` 没生效，内网被拐进 7993 |
 | Google 失败、隧道 closed | 本机 Clash 或 SSH `-R` 断了 |
+| 隧道 open，百度 200，GitHub/Google TLS eof | **SSH 转发还在，但本机 Clash 国际节点挂了或 `RemoteForward` 指错端口**；在本机换节点/确认 mixed-port 后重连 SSH |
+
+`git push` 报 `gnutls_handshake() failed: The TLS connection was non-properly terminated` 时，先跑 `proxy_status`：若显示 `egress: BROKEN`，不要改仓库，先修本机代理链路。
 
 Harbor 证书是公司自签 `harbor-ca`；系统未信任时用 `curl -sk`，或把 CA 导入系统信任库。  
 **镜像 push/pull 仍在实体机 Docker 完成**；Notebook 一般没有 Docker 守护进程。

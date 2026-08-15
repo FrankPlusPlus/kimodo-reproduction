@@ -48,6 +48,16 @@ def _resume_critical_config(config: dict) -> dict:
     ):
         runtime.pop(key, None)
     value["runtime"] = runtime
+    curriculum = dict(value.get("curriculum", {}))
+    # Older checkpoints predate these fields; missing means paper defaults.
+    curriculum.setdefault("sparse_keyframe_cap_mode", "round")
+    curriculum.setdefault("sparse_load_baseline", 7)
+    curriculum.setdefault("sparse_tail_power", 2.0)
+    value["curriculum"] = curriculum
+    optimizer = dict(value.get("optimizer", {}))
+    optimizer.setdefault("skip_gradient_norm", None)
+    optimizer.setdefault("skip_gradient_abort_fraction", 0.1)
+    value["optimizer"] = optimizer
     # Loader mechanics do not change per-sample RNG (seeded by epoch+index) or
     # optimizer math; allow throughput retunes across exact resumes.
     data = dict(value.get("data", {}))
@@ -201,12 +211,17 @@ def load_training_state(
     rank: int = 0,
     world_size: int = 1,
 ) -> dict:
-    state = torch.load(path, map_location="cpu", weights_only=False)
+    # Trainer checkpoints are immutable ZIP-format files.  Mapping their
+    # storages lets ranks on the same node share the kernel page cache instead
+    # of eagerly reading a multi-GB checkpoint into anonymous RAM per rank.
+    state = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
     if state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError(f"Unsupported trainer checkpoint schema: {state.get('schema_version')}")
     if state.get("resume_exact", True) is not True:
         raise ValueError("Diagnostic checkpoint is not an exact optimizer-boundary resume point")
-    if expected_provenance is not None:
+    resume_mode = str((current_config or {}).get("runtime", {}).get("resume_mode") or "in_place")
+    strict_lineage = resume_mode != "fork"
+    if strict_lineage and expected_provenance is not None:
         saved = state.get("provenance", {})
         allow_code_mismatch = os.environ.get(
             "KIMODO_RESUME_ALLOW_CODE_MISMATCH", ""
@@ -216,8 +231,10 @@ def load_training_state(
                 continue
             if saved.get(key) != expected_provenance.get(key):
                 raise ValueError(f"Resume provenance mismatch for {key}")
-    if current_config is not None and _resume_critical_config(state["config"]) != _resume_critical_config(
-        current_config
+    if (
+        strict_lineage
+        and current_config is not None
+        and _resume_critical_config(state["config"]) != _resume_critical_config(current_config)
     ):
         raise ValueError(
             "Resume training-critical config differs from the checkpoint; only output/log/checkpoint "

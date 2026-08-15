@@ -189,9 +189,16 @@ core.*
 *.txt~*
 *.un~
 *~
+# Local editor/agent backups (e.g. *.pre-startup-opt-*.bak)
+*.bak
 train_done
 .aider*
 onelogger.err
+
+# Local watcher / launch diagnostics (runtime state, not source)
+/watch/
+*.launch-status/
+.kimodo-active-run.lock
 
 # deploy files
 /helm-library

@@ -64,6 +64,20 @@ proxy_status() {
     echo "tunnel ${proxy_port}: open"
   else
     echo "tunnel ${proxy_port}: closed (reconnect SSH / keep Cursor session)"
+    return 0
+  fi
+  # Distinguish "port listening" from "Clash node actually reaches GitHub".
+  local baidu_code github_code
+  baidu_code="\$(curl -sS -m 8 -o /dev/null -w '%{http_code}' -x "\${_KIMODO_PROXY_URL}" https://www.baidu.com 2>/dev/null || true)"
+  github_code="\$(curl -sS -m 10 -o /dev/null -w '%{http_code}' -x "\${_KIMODO_PROXY_URL}" https://github.com 2>/dev/null || true)"
+  [[ -n "\${baidu_code}" ]] || baidu_code=000
+  [[ -n "\${github_code}" ]] || github_code=000
+  echo "probe baidu=\${baidu_code} github=\${github_code}"
+  if [[ "\${github_code}" != "200" ]]; then
+    echo "egress: BROKEN — tunnel is up but GitHub TLS fails (fix local Clash node / RemoteForward target port)"
+    echo "hint: on laptop, switch Clash node, confirm mixed-port, then reconnect SSH -R ${proxy_port}:127.0.0.1:<clash-port>"
+  else
+    echo "egress: OK — GitHub reachable via tunnel"
   fi
 }
 alias codex='HTTP_PROXY=${proxy_url} HTTPS_PROXY=${proxy_url} ALL_PROXY=${proxy_url} NO_PROXY=${no_proxy_list} command codex'

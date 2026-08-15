@@ -11,6 +11,7 @@ resolved="${KIMODO_RESOLVED_CONFIG:-${train_run}/config.resolved.yaml}"
 poll_seconds="${KIMODO_EXPORT_POLL_SECONDS:-120}"
 python_bin="${KIMODO_EXPORT_PYTHON:-${code_root}/.venv-feature-cache/bin/python}"
 min_step="${KIMODO_EXPORT_MIN_STEP:-30000}"
+step_every="${KIMODO_EXPORT_STEP_EVERY:-1}"
 once="${KIMODO_EXPORT_ONCE:-0}"
 
 export PYTHONPATH="${code_root}${PYTHONPATH:+:${PYTHONPATH}}"
@@ -22,13 +23,16 @@ fi
 
 echo "export watcher: train=${train_run}"
 echo "export watcher: out=${export_run}/exports"
-echo "export watcher: python=${python_bin} poll=${poll_seconds}s min_step=${min_step}"
+echo "export watcher: python=${python_bin} poll=${poll_seconds}s min_step=${min_step} every=${step_every}"
 
 export_one() {
   local ckpt="$1"
   local step
   step="$(basename "${ckpt}" | sed -E 's/^step-0*([0-9]+)\.pt$/\1/')"
   if [[ -z "${step}" || "${step}" -lt "${min_step}" ]]; then
+    return 0
+  fi
+  if (( step % step_every != 0 )); then
     return 0
   fi
   local dest="${export_run}/exports/step-$(printf '%09d' "${step}")"

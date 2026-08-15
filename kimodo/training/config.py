@@ -87,7 +87,19 @@ class CurriculumConfig:
     mix_two_probability: float = 0.25
     sparse_keyframes_min: int = 1
     sparse_keyframes_max: int = 20
+    # ``round`` is the paper reconstruction: Kmax jumps at half-integers.
+    # ``adjacent_mix`` keeps the same continuous ramp to sparse_keyframes_max,
+    # but each sample draws floor(u) or ceil(u) with probability equal to the
+    # fractional part, so 7.1 is 90% K≤7 / 10% K≤8 instead of an all-at-once jump.
+    sparse_keyframe_cap_mode: str = "round"
     sparse_count_power: float = 1.0
+    # Constant-load curriculum: K <= baseline keeps the original power-law.
+    # Above baseline the 1..baseline-1 bins stay frozen at the baseline
+    # distribution and the leftover tail mass is split across baseline..Kmax
+    # with weights ∝ k^{-tail_power} so opening 8..20 does not renormalize
+    # extra load onto the high-density events.
+    sparse_load_baseline: int = 7
+    sparse_tail_power: float = 2.0
     dense_path_min_fraction: float = 0.2
     dense_path_max_fraction: float = 0.8
     root_heading_probability: float = 0.5
@@ -127,6 +139,11 @@ class OptimizerConfig:
     weight_decay: float = 0.0
     atan2_lambda: float = 8.0
     gradient_clip_norm: float | None = 1.0
+    # Skip the optimizer step (no Adam write) when the pre-clip grad norm
+    # exceeds this value. None disables the fuse. Abort if the skip fraction
+    # over a log window exceeds skip_gradient_abort_fraction.
+    skip_gradient_norm: float | None = None
+    skip_gradient_abort_fraction: float = 0.1
 
 
 @dataclass
@@ -252,6 +269,15 @@ class TrainingConfig:
             raise ValueError("sparse_keyframes_min must be at least 1")
         if self.curriculum.sparse_keyframes_max < self.curriculum.sparse_keyframes_min:
             raise ValueError("sparse_keyframes_max must be >= sparse_keyframes_min")
+        if self.curriculum.sparse_keyframe_cap_mode not in {"round", "adjacent_mix"}:
+            raise ValueError("sparse_keyframe_cap_mode must be 'round' or 'adjacent_mix'")
+        if self.curriculum.sparse_load_baseline < self.curriculum.sparse_keyframes_min:
+            raise ValueError("sparse_load_baseline must be >= sparse_keyframes_min")
+        if (
+            not math.isfinite(self.curriculum.sparse_tail_power)
+            or self.curriculum.sparse_tail_power <= 0
+        ):
+            raise ValueError("sparse_tail_power must be positive")
         if self.curriculum.benchmark_sparse_keyframes_max < 1:
             raise ValueError("benchmark_sparse_keyframes_max must be at least 1")
         if (
@@ -302,6 +328,10 @@ class TrainingConfig:
             raise ValueError("optimizer.learning_rate must be positive")
         if self.optimizer.atan2_lambda <= 0:
             raise ValueError("optimizer.atan2_lambda must be positive")
+        if self.optimizer.skip_gradient_norm is not None and self.optimizer.skip_gradient_norm <= 0:
+            raise ValueError("optimizer.skip_gradient_norm must be positive when set")
+        if not 0.0 < self.optimizer.skip_gradient_abort_fraction <= 1.0:
+            raise ValueError("optimizer.skip_gradient_abort_fraction must be in (0, 1]")
         if self.loss.smooth_l1_beta <= 0:
             raise ValueError("loss.smooth_l1_beta must be positive")
         if self.ema.enabled and (not 0.0 < self.ema.decay < 1.0 or self.ema.update_every < 1):

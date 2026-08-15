@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -17,6 +18,10 @@ class ConstraintBatch:
     maximum_sparse_keyframes: int
     sampling_lanes: list[str]
     component_counts: list[int]
+    scheduled_sparse_keyframes: float = 0.0
+    sampled_sparse_keyframe_cap_mean: float = 0.0
+    sampled_sparse_keyframe_count_mean: float = 0.0
+    sparse_constraint_load_mean: float = 0.0
 
 
 class ConstraintCurriculumSampler:
@@ -69,6 +74,29 @@ class ConstraintCurriculumSampler:
             "benchmark_mix_root_ee_hands_feet_posrot_fullbody",
         }
     )
+    # Sparse keyframe draws that consume the sample-level K budget. Dense path,
+    # full 2D root path, and inbetweening are excluded: they ignore Kmax and
+    # were already present in the stable K≤7 window.
+    SPARSE_DRAW_KINDS = {
+        "full_body_sparse": ("full_body",),
+        "end_effector_sparse": ("end_effector",),
+        "root_sparse": ("root",),
+        "root_dense": (),
+        "foot_contact_sparse": ("foot",),
+        "benchmark_full_body_inbetweening": (),
+        "benchmark_full_body_random": ("full_body",),
+        "benchmark_ee_feet_posrot": ("end_effector",),
+        "benchmark_ee_hands_posrot": ("end_effector",),
+        "benchmark_ee_hands_feet_posrot": ("end_effector",),
+        "benchmark_root_path_2dpos": (),
+        "benchmark_root_path_2dposrot": (),
+        "benchmark_root_waypoint_2dpos": ("root",),
+        "benchmark_root_waypoint_2dposrot": ("root",),
+        "benchmark_mix_root_ee_hands_posrot": ("root", "end_effector"),
+        "benchmark_mix_root_ee_hands_posrot_fullbody": ("root", "end_effector", "full_body"),
+        "benchmark_mix_root_ee_hands_feet_posrot_fullbody": ("end_effector", "full_body"),
+        "benchmark_mix_root_path_fullbody": ("full_body",),
+    }
 
     def __init__(self, motion_rep, config) -> None:
         self.motion_rep = motion_rep
@@ -76,21 +104,56 @@ class ConstraintCurriculumSampler:
         self.config = config
         if len(self.ALL_PATTERNS) != len(set(self.ALL_PATTERNS)):
             raise RuntimeError("Constraint pattern registry contains duplicate names")
+        if set(self.SPARSE_DRAW_KINDS) != set(self.ALL_PATTERNS):
+            raise RuntimeError("SPARSE_DRAW_KINDS must cover every registered pattern")
         # Power-law multinomial weights depend only on (min, max, power); cache them
         # so Phase-2 hot path does not rebuild arange/pow every sparse draw.
         self._sparse_weight_cache: dict[tuple[int, int, float], torch.Tensor] = {}
         self._benchmark_weight_cache: dict[tuple[int, int, float], torch.Tensor] = {}
+        self._constant_load_cache: dict[tuple, torch.Tensor] = {}
+        self._count_budget: list[int] | None = None
+        self._count_budget_index = 0
+        root = self.motion_rep.slice_dict["smooth_root_pos"]
+        heading = self.motion_rep.slice_dict["global_root_heading"]
+        joints = self.motion_rep.slice_dict["local_joints_positions"]
+        feet = self.motion_rep.slice_dict["foot_contacts"]
+        self._channel_cost = {
+            "full_body": (root.stop - root.start) + (heading.stop - heading.start) + (joints.stop - joints.start),
+            "end_effector": 40,
+            "root": 3,
+            "foot": feet.stop - feet.start,
+        }
 
     def _phase2_progress(self, global_step: int) -> float:
         offset = global_step - self.config.phase1_steps
         denominator = max(1, self.config.phase2_steps - 1)
         return min(1.0, max(0.0, offset / denominator))
 
-    def maximum_sparse_keyframes(self, global_step: int) -> int:
+    def scheduled_sparse_keyframes(self, global_step: int) -> float:
         progress = self._phase2_progress(global_step)
-        low = self.config.sparse_keyframes_min
-        high = self.config.sparse_keyframes_max
-        return round(low + progress * (high - low))
+        low = float(self.config.sparse_keyframes_min)
+        high = float(self.config.sparse_keyframes_max)
+        return low + progress * (high - low)
+
+    def maximum_sparse_keyframes(self, global_step: int) -> int:
+        scheduled = self.scheduled_sparse_keyframes(global_step)
+        low = int(self.config.sparse_keyframes_min)
+        high = int(self.config.sparse_keyframes_max)
+        return min(high, max(low, int(round(scheduled))))
+
+    def sample_sparse_keyframe_cap(self, global_step: int, generator: torch.Generator) -> int:
+        mode = str(self.config.sparse_keyframe_cap_mode)
+        if mode == "round":
+            return self.maximum_sparse_keyframes(global_step)
+        if mode != "adjacent_mix":
+            raise ValueError("sparse_keyframe_cap_mode must be 'round' or 'adjacent_mix'")
+        scheduled = self.scheduled_sparse_keyframes(global_step)
+        low = max(int(self.config.sparse_keyframes_min), int(math.floor(scheduled)))
+        high = min(int(self.config.sparse_keyframes_max), int(math.ceil(scheduled)))
+        if high <= low:
+            return low
+        fraction = scheduled - float(low)
+        return high if self._rand(generator) < fraction else low
 
     @staticmethod
     def _rand(generator: torch.Generator) -> float:
@@ -117,18 +180,151 @@ class ConstraintCurriculumSampler:
             cache[key] = weights
         return weights
 
+    def _constant_load_weights(
+        self,
+        minimum: int,
+        maximum: int,
+        power: float,
+    ) -> torch.Tensor:
+        baseline = int(self.config.sparse_load_baseline)
+        tail_power = float(self.config.sparse_tail_power)
+        key = (int(minimum), int(maximum), float(power), baseline, tail_power)
+        weights = self._constant_load_cache.get(key)
+        if weights is not None:
+            return weights
+        if maximum <= baseline or minimum > baseline:
+            raw = self._power_law_weights(
+                minimum, maximum, power, self._sparse_weight_cache
+            )
+            weights = raw / raw.sum()
+            self._constant_load_cache[key] = weights
+            return weights
+        base_choices = torch.arange(minimum, baseline + 1, dtype=torch.float32)
+        base_weights = base_choices.pow(-float(power))
+        base_z = base_weights.sum()
+        prefix = baseline - minimum
+        combined = torch.empty(maximum - minimum + 1, dtype=torch.float32)
+        combined[:prefix] = base_weights[:prefix] / base_z
+        tail_mass = base_weights[prefix] / base_z
+        tail_choices = torch.arange(baseline, maximum + 1, dtype=torch.float32)
+        tail_weights = tail_choices.pow(-tail_power)
+        combined[prefix:] = tail_mass * tail_weights / tail_weights.sum()
+        self._constant_load_cache[key] = combined
+        return combined
+
+    def _sample_sparse_count(
+        self,
+        maximum: int,
+        generator: torch.Generator,
+        power: float,
+        cache: dict[tuple[int, int, float], torch.Tensor],
+        *,
+        constant_load: bool,
+    ) -> int:
+        maximum = max(1, maximum)
+        minimum = min(int(self.config.sparse_keyframes_min), maximum)
+        if constant_load:
+            weights = self._constant_load_weights(minimum, maximum, power)
+        else:
+            weights = self._power_law_weights(minimum, maximum, power, cache)
+        selected = int(torch.multinomial(weights, 1, generator=generator).item())
+        return minimum + selected
+
+    def _split_positive(self, total: int, parts: int, generator: torch.Generator) -> list[int]:
+        if parts <= 0:
+            return []
+        total = max(total, parts)
+        if parts == 1:
+            return [total]
+        if total == parts:
+            return [1] * parts
+        cuts = torch.randperm(total - 1, generator=generator)[: parts - 1].sort().values
+        edges = [0, *[int(value) + 1 for value in cuts.tolist()], total]
+        return [edges[index + 1] - edges[index] for index in range(parts)]
+
+    def _shrink_to_channel_budget(
+        self, counts: list[int], kinds: list[str], total: int
+    ) -> list[int]:
+        if not counts:
+            return counts
+        counts = list(counts)
+        budget = total * int(self._channel_cost["full_body"])
+        widths = [int(self._channel_cost[kind]) for kind in kinds]
+
+        def cost() -> int:
+            return sum(count * width for count, width in zip(counts, widths, strict=True))
+
+        while cost() > budget and any(count > 1 for count in counts):
+            index = max(
+                (item for item in range(len(counts)) if counts[item] > 1),
+                key=lambda item: widths[item],
+            )
+            counts[index] -= 1
+        return counts
+
+    def _prepare_count_budget(
+        self,
+        selected: list[str],
+        cap: int,
+        length: int,
+        generator: torch.Generator,
+        lane: str,
+    ) -> tuple[int, int]:
+        kinds = [kind for name in selected for kind in self.SPARSE_DRAW_KINDS[name]]
+        self._count_budget = None
+        self._count_budget_index = 0
+        if not kinds or cap <= int(self.config.sparse_load_baseline):
+            return 0, 0
+        if lane == "benchmark":
+            power = float(self.config.benchmark_sparse_count_power)
+            cache = self._benchmark_weight_cache
+            maximum = max(
+                1,
+                min(cap, length, int(self.config.benchmark_sparse_keyframes_max)),
+            )
+        else:
+            power = float(self.config.sparse_count_power)
+            cache = self._sparse_weight_cache
+            maximum = max(1, min(cap, length))
+        total = self._sample_sparse_count(
+            maximum, generator, power, cache, constant_load=True
+        )
+        total = max(total, len(kinds))
+        counts = self._split_positive(total, len(kinds), generator)
+        counts = self._shrink_to_channel_budget(counts, kinds, total)
+        self._count_budget = counts
+        load = sum(
+            count * int(self._channel_cost[kind])
+            for count, kind in zip(counts, kinds, strict=True)
+        )
+        return sum(counts), load
+
+    def _take_budget_count(self) -> int | None:
+        if self._count_budget is None:
+            return None
+        if self._count_budget_index >= len(self._count_budget):
+            raise RuntimeError("sparse count budget exhausted")
+        count = self._count_budget[self._count_budget_index]
+        self._count_budget_index += 1
+        return count
+
+    def _frames_from_count(self, length: int, count: int, generator: torch.Generator) -> torch.Tensor:
+        count = max(1, min(length, count))
+        return torch.randperm(length, generator=generator)[:count].sort().values
+
     def _keyframes(self, length: int, maximum: int, generator: torch.Generator) -> torch.Tensor:
+        budget_count = self._take_budget_count()
         maximum = max(1, min(length, maximum))
-        minimum = min(self.config.sparse_keyframes_min, maximum)
-        weights = self._power_law_weights(
-            minimum,
+        if budget_count is not None:
+            return self._frames_from_count(length, min(budget_count, maximum), generator)
+        count = self._sample_sparse_count(
             maximum,
+            generator,
             float(self.config.sparse_count_power),
             self._sparse_weight_cache,
+            constant_load=False,
         )
-        selected = int(torch.multinomial(weights, 1, generator=generator).item())
-        count = minimum + selected
-        return torch.randperm(length, generator=generator)[:count].sort().values
+        return self._frames_from_count(length, count, generator)
 
     @staticmethod
     def _mark_feature(mask: torch.Tensor, frames: torch.Tensor, feature_slice: slice) -> None:
@@ -202,16 +398,17 @@ class ConstraintCurriculumSampler:
             1,
             min(length, maximum, int(self.config.benchmark_sparse_keyframes_max)),
         )
-        minimum = min(self.config.sparse_keyframes_min, maximum)
-        weights = self._power_law_weights(
-            minimum,
+        budget_count = self._take_budget_count()
+        if budget_count is not None:
+            return self._frames_from_count(length, min(budget_count, maximum), generator)
+        count = self._sample_sparse_count(
             maximum,
+            generator,
             float(self.config.benchmark_sparse_count_power),
             self._benchmark_weight_cache,
+            constant_load=False,
         )
-        selected = int(torch.multinomial(weights, 1, generator=generator).item())
-        count = minimum + selected
-        return torch.randperm(length, generator=generator)[:count].sort().values
+        return self._frames_from_count(length, count, generator)
 
     def _benchmark_mark_full_body(self, mask, frames) -> None:
         self._mark_feature(mask, frames, self.motion_rep.slice_dict["smooth_root_pos"])
@@ -365,6 +562,7 @@ class ConstraintCurriculumSampler:
             raise ValueError("clean_motion must have shape [B,T,D]")
         batch_size, max_time, feature_dim = clean_motion.shape
         names: list[list[str]] = []
+        scheduled = self.scheduled_sparse_keyframes(global_step)
         maximum = self.maximum_sparse_keyframes(global_step)
         lengths_list = lengths.detach().cpu().tolist()
         if any(not 1 <= int(length) <= max_time for length in lengths_list):
@@ -386,6 +584,10 @@ class ConstraintCurriculumSampler:
                 maximum,
                 ["phase1_none" for _ in range(batch_size)],
                 [0 for _ in range(batch_size)],
+                scheduled,
+                float(maximum),
+                0.0,
+                0.0,
             )
 
         # Build the boolean mask on CPU: all RNG draws already use a CPU
@@ -394,16 +596,39 @@ class ConstraintCurriculumSampler:
         mask_cpu = torch.zeros(batch_size, max_time, feature_dim, dtype=torch.bool)
         lanes: list[str] = []
         component_counts: list[int] = []
+        sampled_caps: list[int] = []
+        sampled_counts: list[int] = []
+        sampled_loads: list[int] = []
         for batch_index, length_value in enumerate(lengths_list):
             length = int(length_value)
             selected, lane, component_count = self._select_patterns(generator)
+            cap = self.sample_sparse_keyframe_cap(global_step, generator)
+            sampled_caps.append(cap)
+            count_sum, load = self._prepare_count_budget(
+                selected, cap, length, generator, lane
+            )
+            sampled_counts.append(count_sum)
+            sampled_loads.append(load)
             if selected:
                 for name in selected:
-                    self._apply_pattern(name, mask_cpu[batch_index], length, maximum, generator)
+                    self._apply_pattern(name, mask_cpu[batch_index], length, cap, generator)
+            self._count_budget = None
             names.append(selected)
             lanes.append(lane)
             component_counts.append(component_count)
 
         mask = mask_cpu.to(device=clean_motion.device)
         observed = torch.where(mask, clean_motion, torch.zeros_like(clean_motion))
-        return ConstraintBatch(observed, mask, names, maximum, lanes, component_counts)
+        sampled_mean = float(sum(sampled_caps) / len(sampled_caps))
+        return ConstraintBatch(
+            observed,
+            mask,
+            names,
+            maximum,
+            lanes,
+            component_counts,
+            scheduled,
+            sampled_mean,
+            float(sum(sampled_counts) / len(sampled_counts)),
+            float(sum(sampled_loads) / len(sampled_loads)),
+        )

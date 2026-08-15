@@ -12,6 +12,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 
+try:  # Present in the production image; stdlib remains the portable fallback.
+    import orjson
+
+    _json_loads = orjson.loads
+except ImportError:  # pragma: no cover - depends on the deployment image
+    _json_loads = json.loads
+
 if TYPE_CHECKING:
     from kimodo.training.data import ManifestEntry
 
@@ -99,8 +106,12 @@ def assert_cache_fingerprint(meta: dict[str, Any], expected: dict[str, Any]) -> 
         raise ValueError(f"Feature-cache fingerprint mismatch: {mismatches}")
 
 
-def load_index(cache_dir: Path) -> dict[str, dict[str, Any]]:
-    path = cache_dir / INDEX_NAME
+def load_index(
+    cache_dir: Path,
+    *,
+    read_path: str | Path | None = None,
+) -> dict[str, dict[str, Any]]:
+    path = cache_dir / INDEX_NAME if read_path is None else Path(read_path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(f"Feature cache index missing: {path}")
     index: dict[str, dict[str, Any]] = {}
@@ -108,7 +119,7 @@ def load_index(cache_dir: Path) -> dict[str, dict[str, Any]]:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
-            row = json.loads(line)
+            row = _json_loads(line)
             sample_id = str(row["id"])
             if sample_id in index:
                 raise ValueError(f"Duplicate feature-cache id at line {line_number}: {sample_id}")

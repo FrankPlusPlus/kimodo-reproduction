@@ -7,7 +7,10 @@ from __future__ import annotations
 import hashlib
 import json
 import multiprocessing as mp
+import os
 import re
+import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -21,8 +24,15 @@ from kimodo.skeleton import SOMASkeleton30, SOMASkeleton77
 
 _MIXTURE_SOURCE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
+try:  # Present in the production image; stdlib remains the portable fallback.
+    import orjson
 
-@dataclass(frozen=True)
+    _json_loads = orjson.loads
+except ImportError:  # pragma: no cover - depends on the deployment image
+    _json_loads = json.loads
+
+
+@dataclass(frozen=True, slots=True)
 class ManifestEntry:
     sample_id: str
     motion_path: Path
@@ -41,11 +51,18 @@ class ManifestEntry:
     frame_count: int | None = None
 
 
-def _resolve_path(base: Path, value: str | None) -> Path | None:
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _resolve_path(base: Path, value: str | None, *, touch_fs: bool = True) -> Path | None:
     if value is None:
         return None
     path = Path(value).expanduser()
-    return path if path.is_absolute() else (base / path).resolve()
+    if path.is_absolute():
+        return path
+    joined = base / path
+    return joined.resolve() if touch_fs else joined
 
 
 def _load_training_motion_file(
@@ -227,9 +244,20 @@ def validate_paper_data_parity_manifest(path: str | Path) -> dict[str, Any]:
     return metadata
 
 
-def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEntry]:
+def load_manifest(
+    path: str | Path,
+    split: str | None = None,
+    *,
+    read_path: str | Path | None = None,
+) -> list[ManifestEntry]:
     """Load JSONL entries and reject ambiguous IDs or missing source files."""
     manifest_path = Path(path).expanduser().resolve()
+    manifest_read_path = (
+        manifest_path if read_path is None else Path(read_path).expanduser().resolve()
+    )
+    if not manifest_read_path.is_file():
+        raise FileNotFoundError(f"Manifest read path does not exist: {manifest_read_path}")
+    skip_path_stat = _env_flag("KIMODO_SKIP_MANIFEST_PATH_STAT")
     base = manifest_path.parent
     manifest_schema = None
     manifest_metadata_path = _manifest_sidecar_path(manifest_path)
@@ -244,17 +272,42 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
     # metadata operations while retaining fail-closed path validation.
     file_exists: dict[Path, bool] = {}
     validated_embedding_metadata: dict[Path, tuple[str, str]] = {}
+    resolved_paths: dict[str, Path] = {}
+    started = time.perf_counter()
+
+    def resolve_cached(value: str | None) -> Path | None:
+        if value is None:
+            return None
+        key = str(value)
+        cached = resolved_paths.get(key)
+        if cached is None:
+            cached = _resolve_path(base, key, touch_fs=not skip_path_stat)
+            assert cached is not None
+            resolved_paths[key] = cached
+        return cached
 
     def is_file_cached(path: Path) -> bool:
         if path not in file_exists:
             file_exists[path] = path.is_file()
         return file_exists[path]
 
-    with manifest_path.open("r", encoding="utf-8") as handle:
+    def log_progress(line_number: int, *, done: bool = False) -> None:
+        label = "manifest parsed" if done else "manifest parsing"
+        print(
+            f"[kimodo-train] {label} lines={line_number} entries={len(entries)} "
+            f"skip_path_stat={int(skip_path_stat)} "
+            f"elapsed_s={time.perf_counter() - started:.1f}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    log_progress(0)
+    line_number = 0
+    with manifest_read_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
-            raw = json.loads(line)
+            raw = _json_loads(line)
             required = {"id", "motion", "text", "split"}
             missing = required - raw.keys()
             if missing:
@@ -263,9 +316,9 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
             if sample_id in seen_ids:
                 raise ValueError(f"Duplicate manifest id: {sample_id}")
             seen_ids.add(sample_id)
-            motion_path = _resolve_path(base, raw["motion"])
+            motion_path = resolve_cached(str(raw["motion"]))
             assert motion_path is not None
-            entry_split = str(raw["split"])
+            entry_split = sys.intern(str(raw["split"]))
             prior_split = seen_motion_split.get(motion_path)
             if prior_split is not None and prior_split != entry_split:
                 raise ValueError(
@@ -274,11 +327,12 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
             seen_motion_split[motion_path] = entry_split
             if split is not None and entry_split != split:
                 continue
-            embedding_path = _resolve_path(base, raw.get("text_embedding"))
-            if not is_file_cached(motion_path):
-                raise FileNotFoundError(f"Motion file does not exist: {motion_path}")
-            if embedding_path is not None and not is_file_cached(embedding_path):
-                raise FileNotFoundError(f"Text embedding does not exist: {embedding_path}")
+            embedding_path = resolve_cached(raw.get("text_embedding"))
+            if not skip_path_stat:
+                if not is_file_cached(motion_path):
+                    raise FileNotFoundError(f"Motion file does not exist: {motion_path}")
+                if embedding_path is not None and not is_file_cached(embedding_path):
+                    raise FileNotFoundError(f"Text embedding does not exist: {embedding_path}")
             integrity_values = (
                 raw.get("text_cache_key"),
                 raw.get("text_embedding_sha256"),
@@ -295,43 +349,44 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                     raise ValueError(
                         f"{manifest_path}:{line_number} has an incomplete text-embedding identity"
                     )
-                embedding_metadata = _resolve_path(base, str(raw["text_embedding_metadata"]))
+                embedding_metadata = resolve_cached(str(raw["text_embedding_metadata"]))
                 assert embedding_metadata is not None
-                if not is_file_cached(embedding_metadata):
-                    raise FileNotFoundError(
-                        f"Text embedding metadata does not exist: {embedding_metadata}"
-                    )
                 expected_identity = (
                     str(raw["text_cache_key"]),
                     str(raw["text_embedding_sha256"]),
                 )
-                if embedding_metadata not in validated_embedding_metadata:
-                    metadata_record = json.loads(
-                        embedding_metadata.read_text(encoding="utf-8")
-                    )
-                    if (
-                        metadata_record.get("schema_version") != 1
-                        or metadata_record.get("cache_key") != raw["text_cache_key"]
-                        or metadata_record.get("sha256") != raw["text_embedding_sha256"]
-                        or metadata_record.get("dtype") != "float32"
-                        or metadata_record.get("shape", [None])[0] != 1
-                    ):
-                        raise ValueError(
-                            f"Text embedding identity mismatch: {embedding_metadata}"
+                if not skip_path_stat:
+                    if not is_file_cached(embedding_metadata):
+                        raise FileNotFoundError(
+                            f"Text embedding metadata does not exist: {embedding_metadata}"
                         )
-                    validated_embedding_metadata[embedding_metadata] = expected_identity
-                elif validated_embedding_metadata[embedding_metadata] != expected_identity:
-                    raise ValueError(
-                        f"Manifest rows disagree about embedding identity: {embedding_metadata}"
-                    )
-            mixture_source = str(raw.get("mixture_source", "base"))
+                    if embedding_metadata not in validated_embedding_metadata:
+                        metadata_record = json.loads(
+                            embedding_metadata.read_text(encoding="utf-8")
+                        )
+                        if (
+                            metadata_record.get("schema_version") != 1
+                            or metadata_record.get("cache_key") != raw["text_cache_key"]
+                            or metadata_record.get("sha256") != raw["text_embedding_sha256"]
+                            or metadata_record.get("dtype") != "float32"
+                            or metadata_record.get("shape", [None])[0] != 1
+                        ):
+                            raise ValueError(
+                                f"Text embedding identity mismatch: {embedding_metadata}"
+                            )
+                        validated_embedding_metadata[embedding_metadata] = expected_identity
+                    elif validated_embedding_metadata[embedding_metadata] != expected_identity:
+                        raise ValueError(
+                            f"Manifest rows disagree about embedding identity: {embedding_metadata}"
+                        )
+            mixture_source = sys.intern(str(raw.get("mixture_source", "base")))
             if not _MIXTURE_SOURCE.fullmatch(mixture_source):
                 raise ValueError(
                     f"{manifest_path}:{line_number} has invalid mixture_source={mixture_source!r}"
                 )
             frame_count = raw.get("frame_count")
             event_count = raw.get("event_count")
-            sample_kind = str(raw.get("sample_kind", "full"))
+            sample_kind = sys.intern(str(raw.get("sample_kind", "full")))
             if event_count is not None and (
                 isinstance(event_count, bool)
                 or not isinstance(event_count, int)
@@ -376,6 +431,9 @@ def load_manifest(path: str | Path, split: str | None = None) -> list[ManifestEn
                     frame_count=frame_count,
                 )
             )
+            if line_number % 100000 == 0:
+                log_progress(line_number)
+    log_progress(line_number, done=True)
     if not entries:
         raise ValueError(f"Manifest contains no entries for split={split!r}: {manifest_path}")
     return entries
@@ -424,6 +482,8 @@ class MotionManifestDataset(Dataset):
         self.fps = motion_rep.fps
         self.feature_cache_dir: Path | None = None
         self._feature_index: dict[str, dict[str, Any]] | None = None
+        self._deterministic_feature_index = False
+        feature_cache_meta: dict[str, Any] | None = None
         if feature_cache_dir:
             from kimodo.training.feature_cache import (
                 assert_cache_fingerprint,
@@ -434,6 +494,7 @@ class MotionManifestDataset(Dataset):
 
             cache_dir = Path(feature_cache_dir).expanduser().resolve()
             meta = load_meta(cache_dir)
+            feature_cache_meta = meta
             fingerprint_stats = stats_path or getattr(motion_rep, "stats_path", None)
             expected = build_cache_fingerprint(
                 fps=int(self.fps),
@@ -443,8 +504,21 @@ class MotionManifestDataset(Dataset):
             )
             assert_cache_fingerprint(meta, expected)
             self.feature_cache_dir = cache_dir
-            self._feature_index = load_index(cache_dir)
-        loaded_entries = load_manifest(manifest, split)
+            index_mode = os.environ.get("KIMODO_FEATURE_CACHE_INDEX_MODE", "strict").strip()
+            if index_mode == "strict":
+                local_index = os.environ.get("KIMODO_LOCAL_FEATURE_INDEX_READ_PATH")
+                self._feature_index = load_index(cache_dir, read_path=local_index or None)
+            elif index_mode == "deterministic":
+                # Schema 1 cache paths are a pure SHA256 function of sample ID.
+                # Production enables this only after a complete index audit.
+                self._deterministic_feature_index = True
+            else:
+                raise ValueError(
+                    "KIMODO_FEATURE_CACHE_INDEX_MODE must be 'strict' or 'deterministic', "
+                    f"got {index_mode!r}"
+                )
+        local_manifest = os.environ.get("KIMODO_LOCAL_MANIFEST_READ_PATH")
+        loaded_entries = load_manifest(manifest, split, read_path=local_manifest or None)
 
         def known_temporal_length(entry: ManifestEntry) -> int | None:
             if entry.frame_count is not None and entry.frame_count < 1:
@@ -474,6 +548,14 @@ class MotionManifestDataset(Dataset):
                 continue
             self.entries.append(entry)
         self.manifest_entries = len(loaded_entries)
+        if self._deterministic_feature_index:
+            assert feature_cache_meta is not None
+            cached_entries = int(feature_cache_meta.get("entry_count", -1))
+            if cached_entries < self.manifest_entries:
+                raise FileNotFoundError(
+                    "deterministic feature cache has fewer declared entries than the manifest: "
+                    f"cache={cached_entries}, manifest={self.manifest_entries}"
+                )
         self.excluded_short_temporal_entries = excluded_short_temporal
         self.excluded_short_full_entries = excluded_short_full
         self.excluded_short_entries = excluded_short_temporal + excluded_short_full
@@ -573,13 +655,16 @@ class MotionManifestDataset(Dataset):
         }
 
     def _getitem_from_feature_cache(self, index: int) -> dict[str, Any]:
-        from kimodo.training.feature_cache import load_feature_array
+        from kimodo.training.feature_cache import feature_relpath, load_feature_array
 
         entry = self.entries[index]
         generator = self._generator(index)
-        assert self.feature_cache_dir is not None and self._feature_index is not None
-        row = self._feature_index[entry.sample_id]
-        path = self.feature_cache_dir / row["path"]
+        assert self.feature_cache_dir is not None
+        if self._deterministic_feature_index:
+            path = self.feature_cache_dir / feature_relpath(entry.sample_id)
+        else:
+            assert self._feature_index is not None
+            path = self.feature_cache_dir / self._feature_index[entry.sample_id]["path"]
         array = load_feature_array(path)
         if array.ndim != 2:
             raise ValueError(f"Cached features must be [T,D], got {array.shape}: {path}")

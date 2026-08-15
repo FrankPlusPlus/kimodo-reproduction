@@ -1,0 +1,19 @@
+# Fork overlay for the collapsed V2 1M run. Apply on
+# configs/training/kimodo_soma_seed_v2_1m_16h200.yaml.
+#
+# Resume the last eval-healthy milestone (600k), not 690k/700k/720k.
+# Support still ramps to 20. Sampling load is pinned at the K=7 baseline in
+# code (frozen 1..6 mass, shared sample budget, channel-cost shrink).
+# Unchanged: V2 lane 0.25, clip 1.0, position-only full-body, detach on.
+curriculum:
+  sparse_keyframe_cap_mode: adjacent_mix
+
+optimizer:
+  learning_rate: 1.0e-5
+  skip_gradient_norm: 5.0
+  skip_gradient_abort_fraction: 0.1
+
+runtime:
+  # 5k * 20 = 100k steps of rolling history (the 10k * 3 window lost 650/660/670k).
+  checkpoint_every: 5000
+  keep_last_checkpoints: 20

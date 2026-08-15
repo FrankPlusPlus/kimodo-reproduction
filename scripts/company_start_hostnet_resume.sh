@@ -2,6 +2,10 @@
 # Paste into Hanhai start command after step-000010000.pt exists.
 # UI: enable_host_network=True, RDMA/IB x8, 2 instances x 8 GPU.
 # Uses PVC code with persistent_workers + async metrics + prefetch=4.
+#
+# After the kf=8 collapse, do NOT use this script: it AUTO_RESUME's
+# runs/v2-1m-hostnet/checkpoints/latest.txt (collapsed ~720k).
+# Use scripts/company_start_hostnet_fork_600k.sh instead.
 set -euo pipefail
 
 export KIMODO_CODE_ROOT=/home/share/yzt/kimodo-reproduction
