@@ -1,0 +1,22 @@
+# Diagnostic fork from k7-from690k step-000696000: keep K=7 / LR / Adam,
+# change runtime.seed so data shuffle, crops, noise, and timesteps all
+# diverge from the 696.6k stream. Stop at 698k (~2000 steps).
+#
+# Apply on configs/training/kimodo_soma_seed_v2_1m_16h200.yaml.
+# Do not set sparse_keyframes_max: 7.
+curriculum:
+  sparse_keyframe_cap_mode: adjacent_mix
+  sparse_keyframes_hard_cap: 7
+  sparse_channel_budget: 0
+  sparse_same_frame_overlap_probability: 0.0
+
+optimizer:
+  learning_rate: 1.0e-5
+  skip_gradient_norm: 5.0
+  skip_gradient_abort_fraction: 0.1
+
+runtime:
+  seed: 4321
+  max_steps_override: 698000
+  checkpoint_every: 500
+  keep_last_checkpoints: 20

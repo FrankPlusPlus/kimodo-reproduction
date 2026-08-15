@@ -100,6 +100,9 @@ def test_phase2_benchmark_lane_trains_and_logs_static_pattern_schema(
     assert record["system/optimizer_steps_per_second"] > 0
     assert record["system/samples_per_second"] > 0
     assert record["optimizer/learning_rate"] == config.optimizer.learning_rate
+    assert record["maximum_sparse_keyframes"] == 1
+    assert record["scheduled_sparse_keyframes"] == pytest.approx(1.0)
+    assert record["sampled_sparse_keyframe_cap_mean"] == pytest.approx(1.0)
     assert record["optimizer/gradient_norm_before_clip"] >= 0
     assert 0 <= record["optimizer/gradient_clip_fraction"] <= 1
     assert record["optimizer/skipped_step_fraction"] == 0
@@ -246,3 +249,111 @@ def test_resume_rejects_total_steps_behind_checkpoint(training_fixture, tmp_path
     config.runtime.resume_mode = "fork"
     with pytest.raises(ValueError, match="exceeds configured total_steps"):
         KimodoTrainer(config, project_root)
+
+
+def test_fork_resume_applies_yaml_learning_rate_after_loading_optimizer(
+    training_fixture, tmp_path
+):
+    project_root = Path(__file__).resolve().parents[2]
+    parent = tmp_path / "parent-lr"
+    KimodoTrainer(_config(training_fixture, parent, 1), project_root).train()
+    checkpoint = parent / "checkpoints/step-000000001.pt"
+    state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    assert state["config"]["optimizer"]["learning_rate"] == pytest.approx(2.0e-5)
+    state["config"]["optimizer"]["learning_rate"] = 1.0e-5
+    torch.save(state, checkpoint)
+
+    child = tmp_path / "child-lr"
+    config = _config(training_fixture, child, 2)
+    config.optimizer.learning_rate = 1.0e-5
+    config.runtime.resume = str(checkpoint)
+    config.runtime.resume_mode = "fork"
+    trainer = KimodoTrainer(config, project_root)
+    assert trainer.optimizer.param_groups[0]["lr"] == pytest.approx(1.0e-5)
+    trainer.train()
+    records = [
+        json.loads(line)
+        for line in (child / "train.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert records[-1]["optimizer/learning_rate"] == pytest.approx(1.0e-5)
+
+
+def test_fork_resume_allows_overlay_fields_without_rewriting_checkpoint(
+    training_fixture, tmp_path
+):
+    project_root = Path(__file__).resolve().parents[2]
+    parent = tmp_path / "parent-overlay"
+    KimodoTrainer(_config(training_fixture, parent, 1), project_root).train()
+    checkpoint = parent / "checkpoints" / "step-000000001.pt"
+
+    child = tmp_path / "child-overlay"
+    config = _config(training_fixture, child, 2)
+    config.optimizer.learning_rate = 1.0e-5
+    config.optimizer.skip_gradient_norm = 5.0
+    config.curriculum.sparse_keyframe_cap_mode = "adjacent_mix"
+    config.runtime.resume = str(checkpoint)
+    config.runtime.resume_mode = "fork"
+    trainer = KimodoTrainer(config, project_root)
+    assert trainer.global_step == 1
+    assert trainer.optimizer.param_groups[0]["lr"] == pytest.approx(1.0e-5)
+
+
+def test_fork_reset_optimizer_drops_moments_and_keeps_ema(training_fixture, tmp_path):
+    project_root = Path(__file__).resolve().parents[2]
+    parent = tmp_path / "parent-reset"
+    KimodoTrainer(_config(training_fixture, parent, 1), project_root).train()
+    checkpoint = parent / "checkpoints" / "step-000000001.pt"
+    parent_state = torch.load(checkpoint, map_location="cpu", weights_only=False)
+    assert parent_state["optimizer"]["state"]
+    assert parent_state["ema"] is not None
+
+    child = tmp_path / "child-reset"
+    config = _config(training_fixture, child, 2)
+    config.optimizer.weight_decay = 0.3
+    config.optimizer.learning_rate = 1.0e-5
+    config.optimizer.warmup_steps = 2
+    config.optimizer.warmup_start_lr = 1.0e-6
+    config.optimizer.lr_schedule_start_step = 1
+    config.runtime.resume = str(checkpoint)
+    config.runtime.resume_mode = "fork"
+    config.runtime.reset_optimizer = True
+    trainer = KimodoTrainer(config, project_root)
+    assert trainer.optimizer.state == {}
+    assert trainer.optimizer.param_groups[0]["weight_decay"] == pytest.approx(0.3)
+    assert trainer.optimizer.param_groups[0]["lr"] == pytest.approx(1.0e-6)
+    assert trainer.ema is not None
+    for name, value in parent_state["ema"]["shadow"].items():
+        assert torch.equal(trainer.ema.shadow[name].cpu(), value.cpu())
+
+
+def test_scheduled_learning_rate_warms_then_decays():
+    from kimodo.training.optim import scheduled_learning_rate
+
+    assert scheduled_learning_rate(
+        650_000,
+        peak_lr=1e-5,
+        total_steps=1_000_000,
+        warmup_steps=2_000,
+        warmup_start_lr=1e-6,
+        lr_end=2e-6,
+        schedule_start_step=650_000,
+    ) == pytest.approx(1e-6)
+    assert scheduled_learning_rate(
+        652_000,
+        peak_lr=1e-5,
+        total_steps=1_000_000,
+        warmup_steps=2_000,
+        warmup_start_lr=1e-6,
+        lr_end=2e-6,
+        schedule_start_step=650_000,
+    ) == pytest.approx(1e-5)
+    assert scheduled_learning_rate(
+        1_000_000,
+        peak_lr=1e-5,
+        total_steps=1_000_000,
+        warmup_steps=2_000,
+        warmup_start_lr=1e-6,
+        lr_end=2e-6,
+        schedule_start_step=650_000,
+    ) == pytest.approx(2e-6)
+

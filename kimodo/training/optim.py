@@ -48,6 +48,8 @@ class AdamAtan2(Optimizer):
                 atan2_lambda=atan2_lambda,
             ),
         )
+        self.last_update_norm = 0.0
+        self.last_update_param_ratio = 0.0
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -56,6 +58,8 @@ class AdamAtan2(Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
+        update_sq = torch.zeros((), dtype=torch.float32)
+        param_sq = torch.zeros((), dtype=torch.float32)
         for group in self.param_groups:
             beta1, beta2 = group["betas"]
             lr = group["lr"]
@@ -94,7 +98,48 @@ class AdamAtan2(Optimizer):
                 if weight_decay:
                     parameter.mul_(1.0 - lr * weight_decay)
                 parameter.add_(update, alpha=-lr)
+                update_sq = update_sq + (update.detach().float().pow(2).sum() * (lr * lr))
+                param_sq = param_sq + parameter.detach().float().pow(2).sum()
+        self.last_update_norm = float(update_sq.sqrt())
+        param_norm = float(param_sq.sqrt())
+        self.last_update_param_ratio = (
+            self.last_update_norm / param_norm if param_norm > 0.0 else float("nan")
+        )
         return loss
+
+
+def scheduled_learning_rate(
+    step: int,
+    *,
+    peak_lr: float,
+    total_steps: int,
+    warmup_steps: int = 0,
+    warmup_start_lr: float | None = None,
+    lr_end: float | None = None,
+    schedule_start_step: int = 0,
+) -> float:
+    """Linear warmup from a fork/start step, then linear decay to ``lr_end``.
+
+    ``step`` is the current completed-step counter (the next optimizer write
+    uses this value before it is incremented).
+    """
+    if peak_lr <= 0:
+        raise ValueError("peak_lr must be positive")
+    start = max(int(schedule_start_step), 0)
+    current = max(int(step), start)
+    warmup = max(int(warmup_steps), 0)
+    warmup_start = peak_lr if warmup_start_lr is None else float(warmup_start_lr)
+    elapsed = current - start
+    if warmup > 0 and elapsed < warmup:
+        return warmup_start + (elapsed / warmup) * (peak_lr - warmup_start)
+    if lr_end is None:
+        return peak_lr
+    decay_start = start + warmup
+    span = int(total_steps) - decay_start
+    if span <= 0:
+        return float(lr_end)
+    fraction = min(max((current - decay_start) / span, 0.0), 1.0)
+    return peak_lr + fraction * (float(lr_end) - peak_lr)
 
 
 def build_optimizer(model: torch.nn.Module, config) -> Optimizer:

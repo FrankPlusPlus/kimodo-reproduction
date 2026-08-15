@@ -1,16 +1,23 @@
-# Fork overlay for the collapsed V2 1M run. Apply on
+# Fork overlay for the 695k cap800 rescue. Apply on
 # configs/training/kimodo_soma_seed_v2_1m_16h200.yaml.
 #
-# Resume the last eval-healthy milestone (600k), not 690k/700k/720k.
-# Support still ramps to 20. Sampling load is pinned at the K=7 baseline in
-# code (frozen 1..6 mass, shared sample budget, channel-cost shrink).
+# Parent is the kf-smooth 695k checkpoint, not 600k/698k.
+# Support still ramps to 20. Sparse sampling is affordable under 800
+# channel units: pick EE groups first, then draw counts only up to what
+# the remaining real cost can pay (8 full-body, 15 four-group EE, or
+# 8 FB + cheap root/foot remainder). Root is billed at worst-case 4.
+# Paper two-pattern keeps 25% two tracks. Same-frame stacking stays off for
+# this rescue fork; enable later after the 800 budget is proven stable.
+# Dense root paths stay outside the 800 budget.
 # Unchanged: V2 lane 0.25, clip 1.0, position-only full-body, detach on.
 curriculum:
   sparse_keyframe_cap_mode: adjacent_mix
+  sparse_channel_budget: 800
+  sparse_same_frame_overlap_probability: 0.0
 
 optimizer:
   learning_rate: 1.0e-5
-  skip_gradient_norm: 5.0
+  skip_gradient_norm: 2.0
   skip_gradient_abort_fraction: 0.1
 
 runtime:

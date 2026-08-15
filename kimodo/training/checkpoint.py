@@ -45,18 +45,26 @@ def _resume_critical_config(config: dict) -> dict:
         "dry_run",
         "max_steps_override",
         "initial_global_step",
+        "reset_optimizer",
     ):
         runtime.pop(key, None)
     value["runtime"] = runtime
     curriculum = dict(value.get("curriculum", {}))
     # Older checkpoints predate these fields; missing means paper defaults.
     curriculum.setdefault("sparse_keyframe_cap_mode", "round")
+    curriculum.setdefault("sparse_keyframes_hard_cap", 0)
     curriculum.setdefault("sparse_load_baseline", 7)
     curriculum.setdefault("sparse_tail_power", 2.0)
+    curriculum.setdefault("sparse_channel_budget", 0)
+    curriculum.setdefault("sparse_same_frame_overlap_probability", 0.0)
     value["curriculum"] = curriculum
     optimizer = dict(value.get("optimizer", {}))
     optimizer.setdefault("skip_gradient_norm", None)
     optimizer.setdefault("skip_gradient_abort_fraction", 0.1)
+    optimizer.setdefault("warmup_steps", 0)
+    optimizer.setdefault("warmup_start_lr", None)
+    optimizer.setdefault("lr_end", None)
+    optimizer.setdefault("lr_schedule_start_step", 0)
     value["optimizer"] = optimizer
     # Loader mechanics do not change per-sample RNG (seeded by epoch+index) or
     # optimizer math; allow throughput retunes across exact resumes.
@@ -211,10 +219,7 @@ def load_training_state(
     rank: int = 0,
     world_size: int = 1,
 ) -> dict:
-    # Trainer checkpoints are immutable ZIP-format files.  Mapping their
-    # storages lets ranks on the same node share the kernel page cache instead
-    # of eagerly reading a multi-GB checkpoint into anonymous RAM per rank.
-    state = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
+    state = torch.load(path, map_location="cpu", weights_only=False)
     if state.get("schema_version") != SCHEMA_VERSION:
         raise ValueError(f"Unsupported trainer checkpoint schema: {state.get('schema_version')}")
     if state.get("resume_exact", True) is not True:
@@ -241,11 +246,18 @@ def load_training_state(
             "controls and max_steps_override may change"
         )
     unwrap_model(model).load_state_dict(state["model"], strict=True)
-    optimizer.load_state_dict(state["optimizer"])
-    for parameter, parameter_state in optimizer.state.items():
-        for key, value in parameter_state.items():
-            if isinstance(value, torch.Tensor):
-                parameter_state[key] = value.to(parameter.device)
+    reset_optimizer = resume_mode == "fork" and bool(
+        (current_config or {}).get("runtime", {}).get("reset_optimizer")
+    )
+    if reset_optimizer:
+        # Keep the freshly built optimizer (current WD/LR); drop parent m/v.
+        pass
+    else:
+        optimizer.load_state_dict(state["optimizer"])
+        for parameter, parameter_state in optimizer.state.items():
+            for key, value in parameter_state.items():
+                if isinstance(value, torch.Tensor):
+                    parameter_state[key] = value.to(parameter.device)
     if ema is not None:
         if state["ema"] is None:
             raise ValueError("EMA is enabled but resume checkpoint has no EMA state")

@@ -1,0 +1,30 @@
+# Stable-reproduction fork from kf-smooth 650k. Not an unpublished NVIDIA recipe.
+#
+# Keep paper-aligned model, seven-term loss, and Kmax 1→20. Change only the
+# undisclosed optimizer-stability knobs: decoupled WD, short warmup after
+# Adam-moment reset, then decay LR toward 1M. Do not freeze K at 7, do not
+# use skip_gradient_norm, and do not treat clip=1 as the update limiter.
+#
+# Parent: runs/v2-1m-hostnet-kf-smooth-lr1e5/checkpoints/step-000650000.pt
+curriculum:
+  sparse_keyframe_cap_mode: adjacent_mix
+  sparse_keyframes_max: 20
+  sparse_channel_budget: 0
+  sparse_same_frame_overlap_probability: 0.0
+
+optimizer:
+  name: adam_atan2
+  learning_rate: 1.0e-5
+  weight_decay: 0.3
+  warmup_steps: 2000
+  warmup_start_lr: 1.0e-6
+  lr_end: 2.0e-6
+  lr_schedule_start_step: 650000
+  gradient_clip_norm: 1.0
+  skip_gradient_norm: null
+
+runtime:
+  reset_optimizer: true
+  checkpoint_every: 5000
+  keep_last_checkpoints: 20
+  milestone_every: 50000

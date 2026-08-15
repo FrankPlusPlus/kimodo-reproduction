@@ -37,7 +37,7 @@ from .data import MotionManifestDataset, collate_motion_batch
 from .ema import ExponentialMovingAverage
 from .losses import KimodoLoss
 from .modeling import build_trainable_denoiser, set_model_dropout, unwrap_model, validate_model_contract
-from .optim import build_optimizer
+from .optim import build_optimizer, scheduled_learning_rate
 from .provenance import collect_provenance, save_provenance
 from .run_lock import ExclusiveRunLock
 
@@ -496,9 +496,18 @@ class KimodoTrainer:
                 f"batch_in_epoch={self.batch_in_epoch} "
                 f"elapsed_s={time.perf_counter() - checkpoint_t0:.1f}"
             )
-            configured_lr = float(config.optimizer.learning_rate)
+            configured_lr = self._scheduled_learning_rate()
             for group in self.optimizer.param_groups:
                 group["lr"] = configured_lr
+                group["weight_decay"] = float(self.config.optimizer.weight_decay)
+            if (
+                config.runtime.resume_mode == "fork"
+                and config.runtime.reset_optimizer
+            ):
+                self._boot_log(
+                    "fork reset optimizer moments; EMA restored from parent "
+                    f"weight_decay={self.config.optimizer.weight_decay}"
+                )
             self._boot_log(f"optimizer learning_rate={configured_lr}")
 
         self.run_lock = ExclusiveRunLock(self.output_dir) if self.context.is_main else None
@@ -544,6 +553,46 @@ class KimodoTrainer:
     def _boot_log(self, message: str) -> None:
         if getattr(self, "context", None) is None or self.context.is_main:
             print(f"[kimodo-train] {message}", flush=True)
+
+    def _scheduled_learning_rate(self) -> float:
+        optimizer = self.config.optimizer
+        return scheduled_learning_rate(
+            self.global_step,
+            peak_lr=float(optimizer.learning_rate),
+            total_steps=int(self.config.total_steps),
+            warmup_steps=int(optimizer.warmup_steps),
+            warmup_start_lr=optimizer.warmup_start_lr,
+            lr_end=optimizer.lr_end,
+            schedule_start_step=int(optimizer.lr_schedule_start_step),
+        )
+
+    def _apply_scheduled_optimizer_hyperparams(self) -> None:
+        learning_rate = self._scheduled_learning_rate()
+        weight_decay = float(self.config.optimizer.weight_decay)
+        for group in self.optimizer.param_groups:
+            group["lr"] = learning_rate
+            group["weight_decay"] = weight_decay
+
+    def _body_layer_grad_norms(self) -> dict[str, float]:
+        body = unwrap_model(self.model).body_model
+        encoder = getattr(body, "seqTransEncoder", None)
+        if encoder is None:
+            return {}
+        report: dict[str, float] = {}
+        layer_squares = []
+        for index, layer in enumerate(encoder.layers):
+            squares = [
+                parameter.grad.detach().float().pow(2).sum()
+                for parameter in layer.parameters()
+                if parameter.grad is not None
+            ]
+            value = float(torch.stack(squares).sum().sqrt()) if squares else 0.0
+            report[f"body_layer_{index:02d}_grad_norm"] = value
+            layer_squares.extend(squares)
+        report["body_grad_norm"] = (
+            float(torch.stack(layer_squares).sum().sqrt()) if layer_squares else 0.0
+        )
+        return report
 
     def _accumulate_curriculum_counts(
         self,
@@ -625,6 +674,13 @@ class KimodoTrainer:
         )
         curriculum_counts["sparse_constraint_load_sum"] += (
             float(conditioning.sparse_constraint_load_mean) * batch_size
+        )
+        curriculum_counts["mask_channel_load_sum"] += (
+            float(conditioning.mask_channel_load_mean) * batch_size
+        )
+        curriculum_counts["mask_channel_load_max"] = max(
+            float(curriculum_counts["mask_channel_load_max"]),
+            float(conditioning.mask_channel_load_max),
         )
         for source in mixture_sources:
             curriculum_counts[f"data_source/{source}"] += 1
@@ -771,6 +827,9 @@ class KimodoTrainer:
         interval_gradient_norm_sum = 0.0
         interval_gradient_clip_hits = 0
         interval_extreme_skips = 0
+        interval_update_norm_sum = 0.0
+        interval_update_ratio_sum = 0.0
+        interval_body_layer_sums: dict[str, float] = {}
         first_batch_logged = False
         first_committed_step = self.global_step + 1
         if self.context.device.type == "cuda":
@@ -810,6 +869,8 @@ class KimodoTrainer:
             "unconditional": 0.0,
             "sparse_keyframe_count_sum": 0.0,
             "sparse_constraint_load_sum": 0.0,
+            "mask_channel_load_sum": 0.0,
+            "mask_channel_load_max": 0.0,
             **{f"pattern/{name}": 0.0 for name in self.constraint_sampler.ALL_PATTERNS},
             **{f"data_source/{name}": 0.0 for name in self.dataset.mixture_sources},
         }
@@ -951,6 +1012,7 @@ class KimodoTrainer:
                             f"Non-finite gradient norm at global_step={self.global_step}"
                         )
                     gradient_norm_value = float(gradient_norm.detach().float().item())
+                    step_body_layer_norms = self._body_layer_grad_norms()
                     skip_extreme = torch.tensor(0.0, device=self.context.device)
                     skip_threshold = self.config.optimizer.skip_gradient_norm
                     if skip_threshold is not None and gradient_norm_value > skip_threshold:
@@ -960,31 +1022,27 @@ class KimodoTrainer:
                     if bool(skip_extreme.item()):
                         interval_skipped_steps += 1
                         interval_extreme_skips += 1
+                        self.optimizer.zero_grad(set_to_none=True)
                         abort_fraction = float(self.config.optimizer.skip_gradient_abort_fraction)
+                        attempted = interval_extreme_skips + interval_optimizer_steps
                         if (
-                            interval_extreme_skips >= max(self.config.runtime.log_every, 20)
-                            and interval_extreme_skips
-                            / max(interval_extreme_skips + interval_optimizer_steps, 1)
-                            > abort_fraction
+                            attempted >= max(self.config.runtime.log_every, 1)
+                            and interval_extreme_skips / max(attempted, 1) > abort_fraction
                         ):
                             raise RuntimeError(
                                 "extreme-gradient skip fraction "
-                                f"{interval_extreme_skips}/"
-                                f"{interval_extreme_skips + interval_optimizer_steps} "
+                                f"{interval_extreme_skips}/{attempted} "
                                 f"exceeded {abort_fraction}"
                             )
-                        self.optimizer.zero_grad(set_to_none=True)
-                        self.scaler.step(self.optimizer)
                         self.scaler.update()
                         accumulated_valid_frames = 0
                         accumulated_loss_sums.clear()
-                        for name in curriculum_counts:
-                            curriculum_counts[name] = 0.0
                         continue
                     if self.config.optimizer.gradient_clip_norm is not None:
                         torch.nn.utils.clip_grad_norm_(
                             self.model.parameters(), self.config.optimizer.gradient_clip_norm
                         )
+                self._apply_scheduled_optimizer_hyperparams()
                 with self._observed_section("optimizer"):
                     previous_scale = self.scaler.get_scale()
                     self.scaler.step(self.optimizer)
@@ -1005,6 +1063,14 @@ class KimodoTrainer:
                     )
                 interval_optimizer_steps += 1
                 interval_gradient_norm_sum += gradient_norm_value
+                interval_update_norm_sum += float(
+                    getattr(self.optimizer, "last_update_norm", 0.0) or 0.0
+                )
+                interval_update_ratio_sum += float(
+                    getattr(self.optimizer, "last_update_param_ratio", 0.0) or 0.0
+                )
+                for name, value in step_body_layer_norms.items():
+                    interval_body_layer_sums[name] = interval_body_layer_sums.get(name, 0.0) + value
                 interval_gradient_clip_hits += int(
                     self.config.optimizer.gradient_clip_norm is not None
                     and gradient_norm_value > self.config.optimizer.gradient_clip_norm
@@ -1025,7 +1091,7 @@ class KimodoTrainer:
                     if self.context.world_size > 1:
                         for value in logged_sums.values():
                             dist.all_reduce(value, op=dist.ReduceOp.SUM)
-                    count_names = list(curriculum_counts)
+                    count_names = [name for name in curriculum_counts if name != "mask_channel_load_max"]
                     count_values = torch.tensor(
                         [curriculum_counts[name] for name in count_names],
                         device=self.context.device,
@@ -1034,6 +1100,13 @@ class KimodoTrainer:
                     if self.context.world_size > 1:
                         dist.all_reduce(count_values, op=dist.ReduceOp.SUM)
                     global_counts = dict(zip(count_names, count_values.tolist()))
+                    mask_load_max = torch.tensor(
+                        float(curriculum_counts["mask_channel_load_max"]),
+                        device=self.context.device,
+                        dtype=torch.float32,
+                    )
+                    if self.context.world_size > 1:
+                        dist.all_reduce(mask_load_max, op=dist.ReduceOp.MAX)
                     sample_count = max(1.0, global_counts["samples"])
                     benchmark_count = max(1.0, global_counts["benchmark_lane"])
                     interval_seconds_value = torch.tensor(
@@ -1151,7 +1224,22 @@ class KimodoTrainer:
                         "sparse_constraint_load_mean": (
                             global_counts["sparse_constraint_load_sum"] / sample_count
                         ),
+                        "conditioning/mask_channel_load_mean": (
+                            global_counts["mask_channel_load_sum"] / sample_count
+                        ),
+                        "conditioning/mask_channel_load_max": float(mask_load_max.item()),
                         "optimizer/learning_rate": float(self.optimizer.param_groups[0]["lr"]),
+                        "optimizer/weight_decay": float(
+                            self.optimizer.param_groups[0].get(
+                                "weight_decay", self.config.optimizer.weight_decay
+                            )
+                        ),
+                        "optimizer/update_norm": (
+                            interval_update_norm_sum / max(interval_optimizer_steps, 1)
+                        ),
+                        "optimizer/update_param_ratio": (
+                            interval_update_ratio_sum / max(interval_optimizer_steps, 1)
+                        ),
                         "optimizer/gradient_norm_before_clip": (
                             float(optimization_values[0].item()) / gradient_observations
                         ),
@@ -1189,6 +1277,9 @@ class KimodoTrainer:
                         "system/peak_cuda_allocated_bytes": peak_allocated_bytes,
                         "system/peak_cuda_reserved_bytes": peak_reserved_bytes,
                     }
+                    denom = max(interval_optimizer_steps, 1)
+                    for name, value in interval_body_layer_sums.items():
+                        record[f"optimizer/{name}"] = value / denom
                     for branch in ("joint", "constraint_only", "text_only", "unconditional"):
                         record[f"conditioning/{branch}_fraction"] = global_counts[branch] / sample_count
                     for pattern in self.constraint_sampler.ALL_PATTERNS:
@@ -1219,6 +1310,9 @@ class KimodoTrainer:
                     interval_extreme_skips = 0
                     interval_gradient_norm_sum = 0.0
                     interval_gradient_clip_hits = 0
+                    interval_update_norm_sum = 0.0
+                    interval_update_ratio_sum = 0.0
+                    interval_body_layer_sums.clear()
                     if self.context.device.type == "cuda":
                         torch.cuda.reset_peak_memory_stats(self.context.device)
 

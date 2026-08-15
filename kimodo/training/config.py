@@ -87,6 +87,10 @@ class CurriculumConfig:
     mix_two_probability: float = 0.25
     sparse_keyframes_min: int = 1
     sparse_keyframes_max: int = 20
+    # Clip sampled Kmax without rescaling the 1→max ramp. Zero keeps the
+    # paper schedule. A positive value freezes support at that integer
+    # (695k is already past 8; hard_cap 7 blocks 8- and 9-frame draws).
+    sparse_keyframes_hard_cap: int = 0
     # ``round`` is the paper reconstruction: Kmax jumps at half-integers.
     # ``adjacent_mix`` keeps the same continuous ramp to sparse_keyframes_max,
     # but each sample draws floor(u) or ceil(u) with probability equal to the
@@ -100,6 +104,16 @@ class CurriculumConfig:
     # extra load onto the high-density events.
     sparse_load_baseline: int = 7
     sparse_tail_power: float = 2.0
+    # Hard cap on sparse channel load. Zero keeps the paper reconstruction
+    # (draw counts, then a no-op total×full-body budget). A positive value
+    # switches to affordable sampling: pick patterns first, then draw each
+    # kind's keyframe count only up to what the remaining budget can pay.
+    # 800 = 8 full-body frames plus one EE frame, or 20 EE frames.
+    sparse_channel_budget: int = 0
+    # Among paper two-pattern samples with at least two sparse kinds, this
+    # fraction forces the smaller keyframe set to sit on the larger set so
+    # some frames carry both constraints. Zero keeps independent frame draws.
+    sparse_same_frame_overlap_probability: float = 0.0
     dense_path_min_fraction: float = 0.2
     dense_path_max_fraction: float = 0.8
     root_heading_probability: float = 0.5
@@ -144,6 +158,14 @@ class OptimizerConfig:
     # over a log window exceeds skip_gradient_abort_fraction.
     skip_gradient_norm: float | None = None
     skip_gradient_abort_fraction: float = 0.1
+    # 0 disables warmup. Warmup is relative to lr_schedule_start_step so a
+    # 650k fork can warm the reset Adam state without rewriting global_step.
+    warmup_steps: int = 0
+    warmup_start_lr: float | None = None
+    # If set, linearly decay from peak LR to this value after warmup, until
+    # the configured total_steps (1M). None keeps a constant peak.
+    lr_end: float | None = None
+    lr_schedule_start_step: int = 0
 
 
 @dataclass
@@ -170,6 +192,9 @@ class RuntimeConfig:
     # ``fork`` explicitly resumes into a new empty output directory and records
     # the parent checkpoint lineage.
     resume_mode: str = "in_place"
+    # Fork-only: drop parent Adam m/v and rebuild moments. In-place resume of
+    # the child still loads optimizer state. EMA is always restored.
+    reset_optimizer: bool = False
     initial_global_step: int = 0
     distributed: str = "auto"
     # Optional deployment contract. Unlike paper_method_strict, these checks
@@ -243,6 +268,7 @@ class TrainingConfig:
             "mix_two_probability",
             "root_heading_probability",
             "benchmark_coverage_probability",
+            "sparse_same_frame_overlap_probability",
         ):
             value = getattr(self.curriculum, name)
             if not 0.0 <= value <= 1.0:
@@ -269,10 +295,22 @@ class TrainingConfig:
             raise ValueError("sparse_keyframes_min must be at least 1")
         if self.curriculum.sparse_keyframes_max < self.curriculum.sparse_keyframes_min:
             raise ValueError("sparse_keyframes_max must be >= sparse_keyframes_min")
+        if self.curriculum.sparse_keyframes_hard_cap < 0:
+            raise ValueError("sparse_keyframes_hard_cap must be >= 0")
+        if (
+            self.curriculum.sparse_keyframes_hard_cap > 0
+            and self.curriculum.sparse_keyframes_hard_cap
+            < self.curriculum.sparse_keyframes_min
+        ):
+            raise ValueError(
+                "sparse_keyframes_hard_cap must be 0 or >= sparse_keyframes_min"
+            )
         if self.curriculum.sparse_keyframe_cap_mode not in {"round", "adjacent_mix"}:
             raise ValueError("sparse_keyframe_cap_mode must be 'round' or 'adjacent_mix'")
         if self.curriculum.sparse_load_baseline < self.curriculum.sparse_keyframes_min:
             raise ValueError("sparse_load_baseline must be >= sparse_keyframes_min")
+        if self.curriculum.sparse_channel_budget < 0:
+            raise ValueError("sparse_channel_budget must be >= 0")
         if (
             not math.isfinite(self.curriculum.sparse_tail_power)
             or self.curriculum.sparse_tail_power <= 0
@@ -332,6 +370,16 @@ class TrainingConfig:
             raise ValueError("optimizer.skip_gradient_norm must be positive when set")
         if not 0.0 < self.optimizer.skip_gradient_abort_fraction <= 1.0:
             raise ValueError("optimizer.skip_gradient_abort_fraction must be in (0, 1]")
+        if self.optimizer.warmup_steps < 0:
+            raise ValueError("optimizer.warmup_steps must be >= 0")
+        if self.optimizer.warmup_start_lr is not None and self.optimizer.warmup_start_lr <= 0:
+            raise ValueError("optimizer.warmup_start_lr must be positive when set")
+        if self.optimizer.lr_end is not None and self.optimizer.lr_end <= 0:
+            raise ValueError("optimizer.lr_end must be positive when set")
+        if self.optimizer.lr_schedule_start_step < 0:
+            raise ValueError("optimizer.lr_schedule_start_step must be >= 0")
+        if self.optimizer.weight_decay < 0:
+            raise ValueError("optimizer.weight_decay must be >= 0")
         if self.loss.smooth_l1_beta <= 0:
             raise ValueError("loss.smooth_l1_beta must be positive")
         if self.ema.enabled and (not 0.0 < self.ema.decay < 1.0 or self.ema.update_every < 1):

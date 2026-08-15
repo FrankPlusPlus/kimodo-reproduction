@@ -6,6 +6,7 @@ This host has no GPU. It will not run the benchmark itself. It emails:
   - a gradient/health snapshot every 10k from 610k
   - a benchmark-only analysis when stratified-10pct summary_rows.json appears
     at each 50k from 650k (same metrics as the previous 100k eval mails)
+  - one Official SEED-v1.1 vs 695k head-to-head once both summaries exist
 
 SMTP 授权码 can be added to PVC .env after start; the loop reloads empty env keys.
 """
@@ -32,14 +33,37 @@ import watch_train_loss_alert as watch  # noqa: E402
 
 DEFAULT_EVAL_ROOT = (
     "/home/share/yezitao-kimodo-reproduction/eval-results/"
-    "v2-1m-hostnet-kf-smooth-lr1e5-stratified10pct"
+    "v2-1m-hostnet-cap800-from695k-stratified10pct"
 )
 DEFAULT_PRIOR_EVAL_ROOT = (
-    "/home/share/yezitao-kimodo-reproduction/eval-results/v2-1m-hostnet-stratified10pct"
+    "/home/share/yezitao-kimodo-reproduction/eval-results/"
+    "v2-1m-hostnet-kf-smooth-lr1e5-stratified10pct"
 )
-FORK_BASELINE_STEP = 600_000
-MILESTONES = tuple(range(650_000, 1_000_001, 50_000))
-HEALTH_10K_START = 610_000
+DEFAULT_OFFICIAL_EVAL_SUMMARY = (
+    "/home/share/yezitao-kimodo-reproduction/eval-results/"
+    "official-seed-v1-stratified10pct/summary_rows.json"
+)
+DEFAULT_695K_EVAL_SUMMARY = (
+    "/home/share/yezitao-kimodo-reproduction/eval-results/"
+    "v2-1m-hostnet-kf-smooth-lr1e5-step695k-stratified10pct/"
+    "step-000695000/summary_rows.json"
+)
+CONTEXT_EVAL_SUMMARIES = (
+    (
+        "600k original",
+        "/home/share/yezitao-kimodo-reproduction/eval-results/"
+        "v2-1m-hostnet-stratified10pct/step-000600000/summary_rows.json",
+    ),
+    (
+        "650k kf-smooth",
+        "/home/share/yezitao-kimodo-reproduction/eval-results/"
+        "v2-1m-hostnet-kf-smooth-lr1e5-stratified10pct/"
+        "step-000650000/summary_rows.json",
+    ),
+)
+FORK_BASELINE_STEP = 695_000
+MILESTONES = tuple(range(700_000, 1_000_001, 50_000))
+HEALTH_10K_START = 700_000
 HEALTH_10K_EVERY = 10_000
 CONTENT_KEYS = (
     "Full-Body Pos (gen, cm)",
@@ -91,15 +115,17 @@ def _walk_numbers(obj: Any, prefix: str = "") -> list[tuple[str, float]]:
     return found
 
 
-def extract_eval_highlights(summary: dict[str, Any]) -> dict[str, float]:
+def extract_eval_highlights(
+    summary: dict[str, Any], split: str = "content"
+) -> dict[str, float]:
     highlights: dict[str, float] = {}
     tables = summary.get("tables") or {}
-    content = tables.get("content") if isinstance(tables, dict) else None
-    if not isinstance(content, dict):
+    block = tables.get(split) if isinstance(tables, dict) else None
+    if not isinstance(block, dict):
         return highlights
     preferred: list[tuple[str, float]] = []
     fallback: list[tuple[str, float]] = []
-    for path, value in _walk_numbers(content, "content"):
+    for path, value in _walk_numbers(block, split):
         for key in CONTENT_KEYS:
             if key not in path:
                 continue
@@ -128,9 +154,14 @@ def classify_delta(key: str, current: float, previous: float) -> str:
 
 
 def compare_eval_highlights(
-    current: dict[str, float], previous: dict[str, float], *, prior_step: int, milestone: int
+    current: dict[str, float],
+    previous: dict[str, float],
+    *,
+    prior_step: int,
+    milestone: int,
+    title: str | None = None,
 ) -> str:
-    lines = [f"Phase 2 对照 {prior_step} -> {milestone}"]
+    lines = [title or f"Phase 2 对照 {prior_step} -> {milestone}"]
 
     def _block(title: str, keys: tuple[str, ...], *, prior_watch: bool) -> None:
         lines.append(title)
@@ -317,8 +348,14 @@ def training_window_report(records: list[dict[str, Any]], milestone: int) -> str
     )
 
 
-def deterministic_eval_analysis(*, milestone: int, eval_text: str) -> str:
-    prior = previous_eval_step(milestone)
+def deterministic_eval_analysis(
+    *,
+    milestone: int,
+    eval_text: str,
+    milestones: tuple[int, ...] | None = None,
+    baseline: int | None = None,
+) -> str:
+    prior = previous_eval_step(milestone, milestones=milestones, baseline=baseline)
     notes = [
         "Phase 2 测评口径（stratified 10%，与此前每 100k 同一协议）：",
         f"- 本档 {milestone}，对照上一档 {prior}。",
@@ -334,6 +371,15 @@ EVAL_MIMO_SYSTEM = (
     "主看约束（全身/末端/2D root）有没有往官方约 4cm 收。"
     "FID、R@3、接触只判断相对上一档有没有退步。"
     "足滑看有没有进步。不要编造没有出现的数字。"
+)
+HEAD_TO_HEAD_SYSTEM = (
+    "你是 Kimodo 评测对照助手。用中文写全面对比分析，分短段落。"
+    "对象是：官方 SEED-v1.1 vs 我们 695k 健康档，同一套 stratified 10% / paper protocol。"
+    "必须覆盖 content 和 repetition：全身/末端/2D root 约束、足滑、FID、R@3、接触。"
+    "对照官方约 4cm 约束。不要编造未出现的数字。"
+    "若文中有 600k/650k，只作为轨迹补充，不要喧宾夺主。"
+    "最后给一句明确结论：695k 相对官方是接近、部分接近还是明显落后，"
+    "以及值不值得在 695k 继续 fork。"
 )
 HEALTH_MIMO_SYSTEM = (
     "你是 Kimodo 训练健康助手。用中文、短段落。"
@@ -418,15 +464,142 @@ def eval_summary_path(eval_root: Path, step: int) -> Path:
     return eval_root / f"step-{step:09d}" / "summary_rows.json"
 
 
-def previous_eval_step(milestone: int) -> int:
-    if milestone in MILESTONES:
-        index = MILESTONES.index(milestone)
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    return int(raw)
+
+
+def _env_flag(name: str, default: str = "1") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def previous_eval_step(
+    milestone: int,
+    *,
+    milestones: tuple[int, ...] | None = None,
+    baseline: int | None = None,
+) -> int:
+    miles = MILESTONES if milestones is None else milestones
+    base = FORK_BASELINE_STEP if baseline is None else baseline
+    if milestone in miles:
+        index = miles.index(milestone)
         if index > 0:
-            return MILESTONES[index - 1]
-    return FORK_BASELINE_STEP
+            return miles[index - 1]
+    return base
 
 
-def compose_eval_text(eval_root: Path, prior_root: Path, milestone: int) -> str:
+def load_eval_summary(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict) or "tables" not in payload:
+        return None
+    return payload
+
+
+def compose_head_to_head_text(
+    *,
+    official: dict[str, Any],
+    fork: dict[str, Any],
+    extra: list[tuple[str, dict[str, Any]]],
+) -> str:
+    chunks = [
+        "全面对照：Official SEED-v1.1 vs 695k（同一 stratified 10%，paper protocol，100 steps）。",
+        "官方窗口 17:30–17:50；695k 窗口 17:45–18:05。",
+        "主看约束距离官方约 4cm；足滑 / FID / R@3 / 接触一并对照。",
+        "compare 方向：Official -> 695k。进步表示 695k 优于官方。",
+    ]
+    for split, title in (("content", "content（主表）"), ("repetition", "repetition")):
+        official_h = extract_eval_highlights(official, split=split)
+        fork_h = extract_eval_highlights(fork, split=split)
+        chunks.append(f"\n## {title}")
+        chunks.append(
+            compare_eval_highlights(
+                fork_h,
+                official_h,
+                prior_step=0,
+                milestone=695_000,
+                title=f"{title}: Official SEED-v1.1 -> 695k",
+            )
+        )
+        chunks.append(format_highlights("Official SEED-v1.1", official_h))
+        chunks.append(format_highlights("695k kf-smooth", fork_h))
+        for label, summary in extra:
+            chunks.append(
+                format_highlights(label, extract_eval_highlights(summary, split=split))
+            )
+    return "\n".join(chunks)
+
+
+def maybe_email_official_vs_695k(
+    *,
+    state: dict[str, Any],
+    official_path: Path,
+    fork_path: Path,
+    extra_paths: tuple[tuple[str, str], ...],
+    run_dir: Path,
+    to_addr: str,
+    from_addr: str,
+    now: float,
+) -> bool:
+    if state.get("emailed_official_vs_695k"):
+        return False
+    official = load_eval_summary(official_path)
+    fork = load_eval_summary(fork_path)
+    if official is None or fork is None:
+        last = float(state.get("paired_wait_log_unix") or 0)
+        if now - last >= 600:
+            state["paired_wait_log_unix"] = now
+            watch.log(
+                "waiting official_v1="
+                f"{'ready' if official else 'pending'} "
+                f"695k={'ready' if fork else 'pending'}"
+            )
+        return False
+    extra: list[tuple[str, dict[str, Any]]] = []
+    for label, raw in extra_paths:
+        summary = load_eval_summary(Path(raw))
+        if summary is not None:
+            extra.append((label, summary))
+    eval_text = compose_head_to_head_text(
+        official=official, fork=fork, extra=extra
+    )
+    llm = llm_analysis(
+        "下面是 Official SEED-v1.1 与 695k 的同一协议对照。"
+        "请做全面对比分析，不要讨论 train loss。\n\n" + eval_text,
+        system=HEAD_TO_HEAD_SYSTEM,
+    )
+    if not llm:
+        watch.log("defer official-vs-695k: waiting for MiMo analysis")
+        return False
+    sent = send_report(
+        subject_kind="official-vs-695k",
+        alerts=[watch.Alert("eval_ready", "Official SEED-v1.1 vs 695k head-to-head")],
+        body=eval_text + "\n\nMiMo 全面对比分析：\n" + llm,
+        run_dir=run_dir,
+        to_addr=to_addr,
+        from_addr=from_addr,
+        record=None,
+    )
+    if sent:
+        state["emailed_official_vs_695k"] = True
+        watch.log("emailed official-vs-695k head-to-head")
+    return sent
+
+
+def compose_eval_text(
+    eval_root: Path,
+    prior_root: Path,
+    milestone: int,
+    *,
+    milestones: tuple[int, ...] | None = None,
+    baseline: int | None = None,
+) -> str:
     current = eval_summary_path(eval_root, milestone)
     if not current.is_file():
         return (
@@ -437,7 +610,9 @@ def compose_eval_text(eval_root: Path, prior_root: Path, milestone: int) -> str:
     summary = json.loads(current.read_text(encoding="utf-8"))
     current_h = extract_eval_highlights(summary)
     chunks = [format_highlights(f"current eval {milestone}", current_h)]
-    prior_step = previous_eval_step(milestone)
+    prior_step = previous_eval_step(
+        milestone, milestones=milestones, baseline=baseline
+    )
     prior = eval_summary_path(eval_root, prior_step)
     if not prior.is_file():
         prior = eval_summary_path(prior_root, prior_step)
@@ -505,12 +680,24 @@ def parse_args() -> argparse.Namespace:
         default=Path(os.environ.get("KIMODO_PRIOR_EVAL_ROOT", DEFAULT_PRIOR_EVAL_ROOT)),
     )
     parser.add_argument(
+        "--official-eval-summary",
+        type=Path,
+        default=Path(
+            os.environ.get("KIMODO_OFFICIAL_EVAL_SUMMARY", DEFAULT_OFFICIAL_EVAL_SUMMARY)
+        ),
+    )
+    parser.add_argument(
+        "--fork-695k-eval-summary",
+        type=Path,
+        default=Path(os.environ.get("KIMODO_695K_EVAL_SUMMARY", DEFAULT_695K_EVAL_SUMMARY)),
+    )
+    parser.add_argument(
         "--watch-dir",
         type=Path,
         default=Path(
             os.environ.get(
                 "KIMODO_WATCH_DIR",
-                str(Path(os.environ.get("KIMODO_CODE_ROOT", "/home/share/yzt/kimodo-reproduction")) / "watch" / "v2-1m-hostnet-kf-smooth-lr1e5"),
+                str(Path(os.environ.get("KIMODO_CODE_ROOT", "/home/share/yzt/kimodo-reproduction")) / "watch" / "v2-1m-hostnet-cap800-from695k"),
             )
         ),
     )
@@ -521,6 +708,47 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--from-addr",
         default=os.environ.get("KIMODO_ALERT_SMTP_USER", watch.DEFAULT_TO),
+    )
+    parser.add_argument(
+        "--health-start",
+        type=int,
+        default=_env_int("KIMODO_HEALTH_10K_START", HEALTH_10K_START),
+    )
+    parser.add_argument(
+        "--health-every",
+        type=int,
+        default=_env_int("KIMODO_HEALTH_10K_EVERY", HEALTH_10K_EVERY),
+    )
+    parser.add_argument(
+        "--eval-start",
+        type=int,
+        default=_env_int("KIMODO_EVAL_MILESTONE_START", MILESTONES[0]),
+    )
+    parser.add_argument(
+        "--eval-every",
+        type=int,
+        default=_env_int("KIMODO_EVAL_MILESTONE_EVERY", 50_000),
+    )
+    parser.add_argument(
+        "--eval-stop",
+        type=int,
+        default=_env_int("KIMODO_EVAL_MILESTONE_STOP", MILESTONES[-1]),
+    )
+    parser.add_argument(
+        "--fork-baseline",
+        type=int,
+        default=_env_int("KIMODO_FORK_BASELINE_STEP", FORK_BASELINE_STEP),
+    )
+    parser.add_argument(
+        "--head-to-head",
+        dest="head_to_head",
+        action="store_true",
+        default=_env_flag("KIMODO_HEAD_TO_HEAD", "1"),
+    )
+    parser.add_argument(
+        "--no-head-to-head",
+        dest="head_to_head",
+        action="store_false",
     )
     return parser.parse_args()
 
@@ -533,8 +761,22 @@ def main() -> int:
     state_path = watch_dir / "state.json"
     watch_dir.mkdir(parents=True, exist_ok=True)
     watch.load_env_files()
+    milestones = tuple(
+        range(args.eval_start, args.eval_stop + 1, max(1, args.eval_every))
+    )
     watch.log(f"daemon watching {jsonl}")
     watch.log(f"eval root {args.eval_root} mail={args.to}")
+    watch.log(
+        f"health every {args.health_every} from {args.health_start}; "
+        f"eval {list(milestones[:3])}... baseline={args.fork_baseline}"
+    )
+    if args.head_to_head:
+        watch.log(
+            f"head-to-head official={args.official_eval_summary} "
+            f"695k={args.fork_695k_eval_summary}"
+        )
+    else:
+        watch.log("head-to-head disabled")
     state = watch.load_state(state_path)
     state.setdefault("emailed_milestones", [])
     state.setdefault("emailed_evals", [])
@@ -562,7 +804,8 @@ def main() -> int:
                 body = (
                     "开发机守护已启动。电脑可以带走。\n"
                 f"当前 step={current_step}。loss 异常会立即发信；"
-                "每 10k 发梯度健康；650k 起每 50k 只发 benchmark 指标分析。\n"
+                f"每 {args.health_every // 1000}k 发梯度健康；"
+                f"{args.eval_start // 1000}k 起每 {args.eval_every // 1000}k 只发 benchmark 指标分析。\n"
                     "开发机无 GPU，benchmark 需另开 1xH200。"
                 )
                 sent = send_report(
@@ -607,16 +850,16 @@ def main() -> int:
             for step in crossed_grid(
                 previous_step,
                 current_step,
-                start=HEALTH_10K_START,
-                stop=1_000_000,
-                every=HEALTH_10K_EVERY,
+                start=args.health_start,
+                stop=args.eval_stop,
+                every=args.health_every,
                 skip=(),
             )
             if step not in emailed_10k
         ]
-        if not due_10k and not emailed_10k and current_step >= HEALTH_10K_START:
-            aligned = current_step - (current_step % HEALTH_10K_EVERY)
-            if aligned >= HEALTH_10K_START:
+        if not due_10k and not emailed_10k and current_step >= args.health_start:
+            aligned = current_step - (current_step % args.health_every)
+            if aligned >= args.health_start:
                 due_10k = [aligned]
         if due_10k:
             rows = read_jsonl_tail(jsonl, 2_500)
@@ -647,14 +890,25 @@ def main() -> int:
         state["emailed_10k"] = emailed_10k
 
         emailed_evals = [int(value) for value in state.get("emailed_evals", [])]
-        for milestone in MILESTONES:
+        for milestone in milestones:
             if milestone in emailed_evals:
                 continue
             summary = eval_summary_path(args.eval_root, milestone)
             if not summary.is_file():
                 continue
-            eval_text = compose_eval_text(args.eval_root, args.prior_eval_root, milestone)
-            rule = deterministic_eval_analysis(milestone=milestone, eval_text=eval_text)
+            eval_text = compose_eval_text(
+                args.eval_root,
+                args.prior_eval_root,
+                milestone,
+                milestones=milestones,
+                baseline=args.fork_baseline,
+            )
+            rule = deterministic_eval_analysis(
+                milestone=milestone,
+                eval_text=eval_text,
+                milestones=milestones,
+                baseline=args.fork_baseline,
+            )
             llm = llm_analysis(
                 "下面是 Phase 2 的 stratified 10% 测评。"
                 "主写约束有没有收；先验指标只说有没有退步；足滑只说有没有进步。"
@@ -678,6 +932,17 @@ def main() -> int:
                 emailed_evals.append(milestone)
                 watch.log(f"emailed {milestone} eval")
         state["emailed_evals"] = emailed_evals
+        if args.head_to_head:
+            maybe_email_official_vs_695k(
+                state=state,
+                official_path=args.official_eval_summary.expanduser(),
+                fork_path=args.fork_695k_eval_summary.expanduser(),
+                extra_paths=CONTEXT_EVAL_SUMMARIES,
+                run_dir=run_dir,
+                to_addr=args.to,
+                from_addr=args.from_addr,
+                now=now,
+            )
         watch.save_state(state_path, state)
         time.sleep(max(5.0, args.poll_seconds))
 

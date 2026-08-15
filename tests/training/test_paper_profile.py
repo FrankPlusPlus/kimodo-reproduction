@@ -148,6 +148,85 @@ def test_company_v2_1m_profile_is_complete_and_does_not_need_a_hardware_overlay(
         training_engine.validate_paper_runtime_scale(config, SimpleNamespace(world_size=8))
 
 
+def test_v2_1m_600k_fork_overlay_halves_lr_and_keeps_more_checkpoints():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",
+        ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/v2_1m_from600k_kf_smooth.yaml"],
+    )
+
+    assert config.curriculum.sparse_keyframes_max == 20
+    assert config.curriculum.sparse_keyframe_cap_mode == "adjacent_mix"
+    assert config.curriculum.benchmark_coverage_probability == 0.25
+    assert config.optimizer.learning_rate == 1.0e-5
+    assert config.optimizer.gradient_clip_norm == 1.0
+    assert config.optimizer.skip_gradient_norm == 2.0
+    assert config.runtime.checkpoint_every == 5_000
+    assert config.runtime.keep_last_checkpoints == 20
+    assert config.runtime.milestone_every == 100_000
+    assert config.model.detach_root_for_body is True
+    assert config.curriculum.sparse_load_baseline == 7
+    assert config.curriculum.sparse_tail_power == 2.0
+    assert config.curriculum.sparse_channel_budget == 800
+    assert config.curriculum.sparse_same_frame_overlap_probability == 0.0
+
+
+def test_v2_1m_k7_fork_overlay_freezes_sampled_cap_and_keeps_paper_max():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",
+        ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/v2_1m_k7_from695k.yaml"],
+    )
+
+    assert config.curriculum.sparse_keyframes_max == 20
+    assert config.curriculum.sparse_keyframes_hard_cap == 7
+    assert config.curriculum.sparse_keyframe_cap_mode == "adjacent_mix"
+    assert config.curriculum.sparse_channel_budget == 0
+    assert config.optimizer.learning_rate == 1.0e-5
+    assert config.optimizer.skip_gradient_norm == 5.0
+    assert config.runtime.checkpoint_every == 1_000
+    assert config.runtime.keep_last_checkpoints == 20
+
+
+def test_v2_1m_wd03_from650k_overlay_keeps_k20_and_sets_stability_knobs():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",
+        ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/v2_1m_wd03_from650k.yaml"],
+    )
+
+    assert config.curriculum.sparse_keyframes_max == 20
+    assert config.curriculum.sparse_keyframes_hard_cap == 0
+    assert config.curriculum.sparse_keyframe_cap_mode == "adjacent_mix"
+    assert config.curriculum.sparse_channel_budget == 0
+    assert config.optimizer.learning_rate == 1.0e-5
+    assert config.optimizer.weight_decay == pytest.approx(0.3)
+    assert config.optimizer.warmup_steps == 2000
+    assert config.optimizer.warmup_start_lr == pytest.approx(1.0e-6)
+    assert config.optimizer.lr_end == pytest.approx(2.0e-6)
+    assert config.optimizer.lr_schedule_start_step == 650_000
+    assert config.optimizer.skip_gradient_norm is None
+    assert config.runtime.reset_optimizer is True
+    assert config.runtime.checkpoint_every == 5_000
+    assert config.runtime.milestone_every == 50_000
+    assert config.runtime.keep_last_checkpoints == 20
+
+
+def test_v2_1m_k7_reseed696k_overlay_changes_seed_and_stops_at_698k():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",
+        ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/v2_1m_k7_reseed696k.yaml"],
+    )
+
+    assert config.runtime.seed == 4321
+    assert config.runtime.max_steps_override == 698_000
+    assert config.total_steps == 698_000
+    assert config.curriculum.sparse_keyframes_hard_cap == 7
+    assert config.curriculum.sparse_keyframes_max == 20
+    assert config.optimizer.learning_rate == 1.0e-5
+
+
 def test_public_profile_plus_hardware_overlay_differs_only_in_unavailable_data_claims():
     strict = load_training_config(
         PROJECT_ROOT / "configs/training/kimodo_soma_seed_reproduction.yaml",

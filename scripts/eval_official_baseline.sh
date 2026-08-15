@@ -10,7 +10,18 @@ official_model="${KIMODO_OFFICIAL_MODEL:-Kimodo-SOMA-SEED-v1.1}"
 device="${KIMODO_EVAL_DEVICE:-cuda}"
 
 cd "${project_root}"
-python_bin="${project_root}/.venv/bin/python"
+python_bin="${KIMODO_PYTHON:-}"
+if [[ -z "${python_bin}" ]]; then
+  if [[ -x "${project_root}/.venv/bin/python" ]]; then
+    python_bin="${project_root}/.venv/bin/python"
+  else
+    python_bin="$(command -v python)"
+  fi
+fi
+if [[ ! -x "${python_bin}" ]]; then
+  echo "Python interpreter is not executable: ${python_bin}" >&2
+  exit 2
+fi
 export PYTHONPATH="${project_root}:${PYTHONPATH:-}"
 text_encoder_args=()
 if [[ "${KIMODO_EVAL_TEXT_ENCODER_FP32:-0}" == 1 ]]; then

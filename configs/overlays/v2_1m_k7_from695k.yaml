@@ -1,0 +1,23 @@
+# Freeze sampled Kmax at 7. Apply on
+# configs/training/kimodo_soma_seed_v2_1m_16h200.yaml.
+# Parent should be kf-smooth 690k (runway before the 696.6k climb) or 695k.
+#
+# Do not set sparse_keyframes_max: 7 — that rescales the whole 1→20 ramp
+# and would drop scheduled K at 695k from ~8.4 to ~3.3. hard_cap clips
+# only the sampled support; scheduled_sparse_keyframes still logs 8.4.
+# Channel budget stays 0 so this is not confounded with the 800 experiment.
+# skip=5 matches the kf-smooth fork (skip=2 aborted at the 696.9k climb).
+curriculum:
+  sparse_keyframe_cap_mode: adjacent_mix
+  sparse_keyframes_hard_cap: 7
+  sparse_channel_budget: 0
+  sparse_same_frame_overlap_probability: 0.0
+
+optimizer:
+  learning_rate: 1.0e-5
+  skip_gradient_norm: 5.0
+  skip_gradient_abort_fraction: 0.1
+
+runtime:
+  checkpoint_every: 1000
+  keep_last_checkpoints: 20
