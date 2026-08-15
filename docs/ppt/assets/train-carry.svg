@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 16 1536 214" preserveAspectRatio="xMidYMid meet" role="img">
+  <defs>
+    <style>.en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}</style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3d4a42"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8a6d3b"/>
+    </marker>
+  </defs>
+    <text id="map-mode-label" class="en" x="800" y="34" text-anchor="middle" font-size="20" font-weight="700" fill="#1f6b4a">TRAIN</text>
+
+  <g id="node-in" class="node">
+    <rect x="40" y="55" width="200" height="88" rx="12" fill="#eef6f0" stroke="#1f6b4a" stroke-width="2.8"/>
+    <text class="en" x="140" y="110" text-anchor="middle" font-size="26" font-weight="700" fill="#14201a">GT Pose  x₀</text>
+  </g>
+  <line x1="240" y1="99" x2="276" y2="99" stroke="#3d4a42" stroke-width="3" marker-end="url(#a)"/>
+
+  <g id="node-diff" class="node">
+    <rect x="280" y="55" width="160" height="88" rx="12" fill="#f7f8f7" stroke="#7a857e" stroke-width="2.6"/>
+    <text class="en" x="360" y="110" text-anchor="middle" font-size="24" font-weight="700" fill="#14201a">Noise</text>
+  </g>
+  <line x1="440" y1="99" x2="476" y2="99" stroke="#3d4a42" stroke-width="3" marker-end="url(#a)"/>
+
+  <g id="node-const" class="node">
+    <rect x="480" y="55" width="180" height="88" rx="12" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2.6"/>
+    <text class="en" x="570" y="110" text-anchor="middle" font-size="22" font-weight="700" fill="#5b4d8a">Overwrite</text>
+  </g>
+
+  <g id="node-text" class="node">
+    <rect x="40" y="170" width="200" height="55" rx="12" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2.6"/>
+    <text class="en" x="140" y="206" text-anchor="middle" font-size="22" font-weight="700" fill="#8a6d3b">Text</text>
+  </g>
+  <line x1="240" y1="197" x2="276" y2="197" stroke="#8a6d3b" stroke-width="3" marker-end="url(#at)"/>
+
+  <g id="node-llm" class="node">
+    <rect x="280" y="170" width="160" height="55" rx="12" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2.6"/>
+    <text class="en" x="360" y="206" text-anchor="middle" font-size="20" font-weight="700" fill="#8a6d3b">LLM2Vec</text>
+  </g>
+  <line x1="440" y1="197" x2="476" y2="197" stroke="#8a6d3b" stroke-width="3" marker-end="url(#at)"/>
+
+  <g id="node-prefix" class="node">
+    <rect x="480" y="170" width="180" height="55" rx="12" fill="#fff3d6" stroke="#8a6d3b" stroke-width="2.6"/>
+    <text class="en" x="570" y="206" text-anchor="middle" font-size="20" font-weight="700" fill="#8a6d3b">52 prefix</text>
+  </g>
+
+  <!-- motion into concat: right, down, right (all 90deg) -->
+  <path d="M660 99 H700 V120 H730" stroke="#3d4a42" stroke-width="3" fill="none" marker-end="url(#a)"/>
+  <!-- text into concat: right, up, right (all 90deg) -->
+  <path d="M660 197 H700 V160 H730" stroke="#8a6d3b" stroke-width="3" fill="none" marker-end="url(#at)"/>
+
+  <g id="node-cat" class="node">
+    <rect x="734" y="100" width="150" height="80" rx="12" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.8"/>
+    <text class="en" x="809" y="134" text-anchor="middle" font-size="17" font-weight="700" fill="#1f6b4a">seq concat</text>
+    <text class="en" x="809" y="160" text-anchor="middle" font-size="15" fill="#3d4a42">prefix || frames</text>
+  </g>
+
+  <line x1="884" y1="140" x2="920" y2="140" stroke="#3d4a42" stroke-width="3" marker-end="url(#a)"/>
+
+  <g id="node-denoise" class="node">
+    <rect x="924" y="55" width="320" height="170" rx="14" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="3"/>
+    <text class="en" x="1084" y="130" text-anchor="middle" font-size="30" font-weight="700" fill="#1f6b4a">Denoiser</text>
+    <text class="en" x="1084" y="172" text-anchor="middle" font-size="22" fill="#3d4a42">predict  x̂₀</text>
+  </g>
+  <line x1="1244" y1="140" x2="1280" y2="140" stroke="#3d4a42" stroke-width="3" marker-end="url(#a)"/>
+
+  <g id="node-loss" class="node">
+    <rect x="1284" y="75" width="276" height="130" rx="14" fill="#fff6ea" stroke="#9a5b1a" stroke-width="2.8"/>
+    <text class="en" x="1422" y="155" text-anchor="middle" font-size="30" font-weight="700" fill="#9a5b1a">Loss</text>
+  </g>
+
+  <g id="node-root" class="node"></g>
+  <g id="node-g2l" class="node"></g>
+  <g id="node-body" class="node"></g>
+  <g id="node-attn" class="node"></g>
+  <g id="node-feat" class="node"></g>
+  <g id="node-tok" class="node"></g>
+  <g id="node-repr" class="node"></g>
+</svg>

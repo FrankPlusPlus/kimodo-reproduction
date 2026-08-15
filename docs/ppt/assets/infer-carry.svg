@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 180" role="img">
+  <defs>
+    <style>.en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}</style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#4a554e"/>
+    </marker>
+  </defs>
+  <text class="en" x="28" y="32" font-size="16" font-weight="700" fill="#2f6f8f">INFER</text>
+  <text class="en" x="100" y="32" font-size="14" fill="#6a756e">highlight = this slide</text>
+
+  <g id="node-uin" class="node">
+    <rect x="28" y="50" width="200" height="100" rx="10" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2.2"/>
+    <text class="en" x="128" y="110" text-anchor="middle" font-size="20" font-weight="700" fill="#2f6f8f">User Input</text>
+  </g>
+  <line x1="228" y1="100" x2="258" y2="100" stroke="#4a554e" stroke-width="2.2" marker-end="url(#a)"/>
+
+  <g id="node-init" class="node">
+    <rect x="262" y="50" width="180" height="100" rx="10" fill="#f7f8f7" stroke="#7a857e" stroke-width="2"/>
+    <text class="en" x="352" y="110" text-anchor="middle" font-size="20" font-weight="700" fill="#14201a">Init noise</text>
+  </g>
+  <line x1="442" y1="100" x2="472" y2="100" stroke="#4a554e" stroke-width="2.2" marker-end="url(#a)"/>
+
+  <g id="node-loop" class="node">
+    <rect x="476" y="42" width="780" height="116" rx="12" fill="#f2f8fb" stroke="#2f6f8f" stroke-width="2.4" stroke-dasharray="8 5"/>
+    <text class="en" x="530" y="70" font-size="13" font-weight="700" fill="#2f6f8f">DDIM loop</text>
+
+    <g id="node-i-const" class="node">
+      <rect x="520" y="82" width="150" height="58" rx="8" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2"/>
+      <text class="en" x="595" y="118" text-anchor="middle" font-size="16" font-weight="700" fill="#5b4d8a">Overwrite</text>
+    </g>
+    <line x1="670" y1="111" x2="698" y2="111" stroke="#4a554e" stroke-width="2" marker-end="url(#a)"/>
+
+    <g id="node-i-denoise" class="node">
+      <rect x="702" y="82" width="160" height="58" rx="8" fill="#eef6f0" stroke="#1f6b4a" stroke-width="2"/>
+      <text class="en" x="782" y="118" text-anchor="middle" font-size="16" font-weight="700" fill="#1f6b4a">Denoiser</text>
+    </g>
+    <line x1="862" y1="111" x2="890" y2="111" stroke="#4a554e" stroke-width="2" marker-end="url(#a)"/>
+
+    <g id="node-i-cfg" class="node">
+      <rect x="894" y="82" width="110" height="58" rx="8" fill="#fff" stroke="#8a6d3b" stroke-width="2"/>
+      <text class="en" x="949" y="118" text-anchor="middle" font-size="16" font-weight="700" fill="#8a6d3b">CFG</text>
+    </g>
+    <line x1="1004" y1="111" x2="1032" y2="111" stroke="#4a554e" stroke-width="2" marker-end="url(#a)"/>
+
+    <g id="node-i-ddim" class="node">
+      <rect x="1036" y="82" width="180" height="58" rx="8" fill="#2f6f8f"/>
+      <text class="en" x="1126" y="118" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">DDIM step</text>
+    </g>
+  </g>
+  <line x1="1256" y1="100" x2="1286" y2="100" stroke="#4a554e" stroke-width="2.2" marker-end="url(#a)"/>
+
+  <g id="node-out" class="node">
+    <rect x="1290" y="50" width="280" height="100" rx="10" fill="#eef6f0" stroke="#1f6b4a" stroke-width="2.2"/>
+    <text class="en" x="1430" y="110" text-anchor="middle" font-size="20" font-weight="700" fill="#1f6b4a">Motion Out</text>
+  </g>
+</svg>

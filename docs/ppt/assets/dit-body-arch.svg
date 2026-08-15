@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 70 1552 814" preserveAspectRatio="xMidYMid meet" role="img">
+  <defs>
+    <style>.en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}</style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3d4a42"/>
+    </marker>
+    <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#5b4d8a"/>
+    </marker>
+  </defs>
+
+  <!-- ========== TOP: Root output ========== -->
+  <rect x="28" y="74" width="280" height="120" rx="12" fill="#2f6f8f"/>
+  <text class="en" x="168" y="112" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">① Root TF 输出</text>
+  <text class="en" x="168" y="140" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">r̂ ∈ ℝ^{B×T×5}</text>
+  <text class="en" x="168" y="168" text-anchor="middle" font-size="12" fill="#d0e4ef">[p_x, p_y, p_z, cosθ, sinθ]</text>
+
+  <path d="M308 134 L348 134" stroke="#5b4d8a" stroke-width="3" marker-end="url(#ap)"/>
+
+  <!-- ========== G2L pipeline ========== -->
+  <rect x="356" y="74" width="900" height="400" rx="14" fill="#f7f4fb" stroke="#5b4d8a" stroke-width="2.5"/>
+  <text class="en" x="376" y="106" font-size="16" font-weight="700" fill="#5b4d8a">② Global → Local 数学特征变换（论文紫块）</text>
+
+  <!-- step boxes -->
+  <rect x="376" y="124" width="200" height="88" rx="10" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="476" y="156" text-anchor="middle" font-size="13" font-weight="700" fill="#5b4d8a">unnormalize</text>
+  <text class="en" x="476" y="180" text-anchor="middle" font-size="12" fill="#3d4a42">用 global-root stats</text>
+  <text class="en" x="476" y="198" text-anchor="middle" font-size="12" fill="#6a756e">回到物理尺度</text>
+
+  <path d="M576 168 L608 168" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#a)"/>
+
+  <rect x="616" y="124" width="280" height="88" rx="10" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="756" y="152" text-anchor="middle" font-size="13" font-weight="700" fill="#5b4d8a">拆分量</text>
+  <text class="en" x="756" y="176" text-anchor="middle" font-size="12" fill="#3d4a42">pos = (p_x,p_y,p_z)</text>
+  <text class="en" x="756" y="196" text-anchor="middle" font-size="12" fill="#3d4a42">θ = atan2(sinθ, cosθ)</text>
+
+  <path d="M896 168 L928 168" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#a)"/>
+
+  <rect x="936" y="124" width="296" height="88" rx="10" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="1084" y="152" text-anchor="middle" font-size="13" font-weight="700" fill="#5b4d8a">有限差分（×fps）</text>
+  <text class="en" x="1084" y="176" text-anchor="middle" font-size="12" fill="#3d4a42">ω = Δθ · fps</text>
+  <text class="en" x="1084" y="196" text-anchor="middle" font-size="12" fill="#3d4a42">(ẋ,ż) = Δ(p_x,p_z)·fps</text>
+
+  <!-- formulas row -->
+  <rect x="376" y="230" width="856" height="130" rx="10" fill="#fff" stroke="#d5ddd7"/>
+  <text class="en" x="396" y="258" font-size="13" font-weight="700" fill="#14201a">得到 local-root 4 维（再 normalize）</text>
+  <text class="en" x="396" y="290" font-size="15" fill="#3d4a42">local = [ ω ,  ẋ ,  ż ,  p_y ]</text>
+  <text class="en" x="396" y="320" font-size="13" fill="#6a756e">ω：朝向角速度 · (ẋ,ż)：水平面速度 · p_y：保留全局高度（不是速度）</text>
+  <text class="en" x="396" y="346" font-size="13" fill="#6a756e">然后 local_root_stats.normalize → 与 Body 特征同一归一化世界</text>
+
+  <path d="M804 360 L804 388" stroke="#5b4d8a" stroke-width="2.5" marker-end="url(#ap)"/>
+
+  <rect x="616" y="390" width="376" height="64" rx="10" fill="#5b4d8a"/>
+  <text class="en" x="804" y="418" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">local-root ∈ ℝ^{B×T×4}</text>
+  <text class="en" x="804" y="440" text-anchor="middle" font-size="12" fill="#ddd6ee">训练默认 detach(local-root)</text>
+
+  <!-- why box right of root -->
+  <rect x="1280" y="74" width="292" height="400" rx="14" fill="#fff8ef" stroke="#9a5b1a" stroke-width="2"/>
+  <text class="en" x="1300" y="108" font-size="15" font-weight="700" fill="#9a5b1a">为什么要 G→L？</text>
+  <text class="en" x="1300" y="142" font-size="13" fill="#3d4a42">Body 在「相对根」坐标</text>
+  <text class="en" x="1300" y="166" font-size="13" fill="#3d4a42">里建模更稳：去全局漂。</text>
+  <text class="en" x="1300" y="202" font-size="13" fill="#3d4a42">Root 先给出全局轨迹，</text>
+  <text class="en" x="1300" y="226" font-size="13" fill="#3d4a42">再转成局部运动学量</text>
+  <text class="en" x="1300" y="250" font-size="13" fill="#3d4a42">当 Body 的条件。</text>
+  <text class="en" x="1300" y="286" font-size="13" fill="#3d4a42">detach：两阶段解耦，</text>
+  <text class="en" x="1300" y="310" font-size="13" fill="#3d4a42">Body loss 不搅乱 Root。</text>
+  <text class="en" x="1300" y="346" font-size="13" fill="#3d4a42">不用 Root hidden：</text>
+  <text class="en" x="1300" y="370" font-size="13" fill="#3d4a42">只传可解释的 4 维</text>
+  <text class="en" x="1300" y="394" font-size="13" fill="#3d4a42">局部根状态。</text>
+  <text class="en" x="1300" y="430" font-size="12" fill="#6a756e">推理可不开 detach</text>
+  <text class="en" x="1300" y="452" font-size="12" fill="#6a756e">以便 guidance 回传</text>
+
+  <!-- ========== BOTTOM: concat into Body ========== -->
+  <rect x="28" y="496" width="1544" height="384" rx="14" fill="#f8ecef" stroke="#a84d62" stroke-width="2.5"/>
+  <text class="en" x="48" y="530" font-size="16" font-weight="700" fill="#a84d62">③ 拼什么扔进 Body Transformer · ④ 同款双向 Encoder</text>
+
+  <!-- three sources -->
+  <rect x="48" y="552" width="200" height="86" rx="10" fill="#5b4d8a"/>
+  <text class="en" x="148" y="586" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">local-root</text>
+  <text class="en" x="148" y="612" text-anchor="middle" font-size="13" fill="#ddd6ee">4 维</text>
+
+  <text class="en" x="268" y="602" font-size="26" font-weight="700" fill="#a84d62">‖</text>
+
+  <rect x="296" y="552" width="220" height="86" rx="10" fill="#2f6f8f"/>
+  <text class="en" x="406" y="586" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">noisy body</text>
+  <text class="en" x="406" y="612" text-anchor="middle" font-size="13" fill="#d0e4ef">x̃_t 的 364 维切片</text>
+
+  <text class="en" x="536" y="602" font-size="26" font-weight="700" fill="#a84d62">‖</text>
+
+  <rect x="564" y="552" width="200" height="86" rx="10" fill="#8a6d3b"/>
+  <text class="en" x="664" y="586" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">mask m</text>
+  <text class="en" x="664" y="612" text-anchor="middle" font-size="13" fill="#f0e6d4">完整 369 维</text>
+
+  <path d="M784 595 L824 595" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#a)"/>
+
+  <rect x="832" y="552" width="280" height="86" rx="10" fill="#fff" stroke="#a84d62" stroke-width="2.5"/>
+  <text class="en" x="972" y="586" text-anchor="middle" font-size="15" font-weight="700" fill="#a84d62">帧侧 x_in</text>
+  <text class="en" x="972" y="612" text-anchor="middle" font-size="14" fill="#3d4a42">[B,T,737]</text>
+
+  <path d="M1122 595 L1162 595" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#a)"/>
+
+  <rect x="1170" y="552" width="370" height="86" rx="10" fill="#eaf3f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="1355" y="586" text-anchor="middle" font-size="14" font-weight="700" fill="#2f6f8f">Linear 737→1024</text>
+  <text class="en" x="1355" y="612" text-anchor="middle" font-size="13" fill="#3d4a42">再 ‖ 52 prefix → Encoder×16</text>
+
+  <!-- why concat -->
+  <rect x="48" y="660" width="740" height="196" rx="10" fill="#fff" stroke="#d5ddd7"/>
+  <text class="en" x="68" y="692" font-size="14" font-weight="700" fill="#14201a">为什么这样拼？</text>
+  <text class="en" x="68" y="724" font-size="13" fill="#3d4a42">· local-root4：告诉 Body「根现在怎么动 / 多高」</text>
+  <text class="en" x="68" y="750" font-size="13" fill="#3d4a42">· noisy body364：当前扩散噪声下的身体特征（待去噪）</text>
+  <text class="en" x="68" y="776" font-size="13" fill="#3d4a42">· mask369：哪些维是硬约束（与 Root 阶段同一套 m）</text>
+  <text class="en" x="68" y="802" font-size="13" fill="#3d4a42">· 通道拼接一次投影：保持与特征维对齐，避免再拆 token</text>
+  <text class="en" x="68" y="834" font-size="13" fill="#6a756e">52 prefix 仍序列拼接：文本 / t / heading 全局条件共享</text>
+
+  <rect x="812" y="660" width="728" height="196" rx="10" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2"/>
+  <text class="en" x="832" y="692" font-size="14" font-weight="700" fill="#1f6b4a">Body Encoder 与输出</text>
+  <text class="en" x="832" y="724" font-size="13" fill="#3d4a42">同 Root：双向 Self-Attn · 16L · 8H · 1024 · FFN2048</text>
+  <text class="en" x="832" y="750" font-size="13" fill="#3d4a42">参数独立，不读 Root hidden</text>
+  <text class="en" x="832" y="776" font-size="13" fill="#3d4a42">drop 前 52 → Linear 1024→364</text>
+  <text class="en" x="832" y="810" font-size="15" font-weight="700" fill="#a84d62">x̂₀ = r̂₅  ‖  bodŷ₃₆₄   ∈ ℝ^{B×T×369}</text>
+  <text class="en" x="832" y="838" font-size="12" fill="#6a756e">两阶段：先全局轨迹，再局部身体；中间靠可解释的 local-root 衔接</text>
+</svg>

@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img">
+  <defs>
+    <style>
+      .en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3d4a42"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <text class="en" x="40" y="42" font-size="26" font-weight="700" fill="#1f6b4a">Prefix 按论文原意：52 = 1 text + 49 zero-pad + timestep + heading</text>
+  <text class="en" x="40" y="72" font-size="16" fill="#3d4a42">承接上一页：帧侧 738/737 与条件侧 52 已拼成 [B,52+T,1024]。本页看 TF 内部与两套输出头。</text>
+
+  <!-- ========== A. build 50 text slots ========== -->
+  <rect x="40" y="95" width="1520" height="210" rx="12" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2.5"/>
+  <text class="en" x="60" y="130" font-size="20" font-weight="700" fill="#8a6d3b">A. Text slots → 固定 50（论文 / 配置 num_text_tokens=50）</text>
+
+  <rect x="60" y="150" width="280" height="120" rx="10" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2"/>
+  <text class="en" x="80" y="185" font-size="17" font-weight="700" fill="#1f6b4a">1 × LLM2Vec</text>
+  <text class="en" x="80" y="215" font-size="15" fill="#14201a">sentence embedding</text>
+  <text class="en" x="80" y="245" font-size="18" font-weight="700" fill="#1f6b4a">[B, 1, 4096]</text>
+
+  <text class="en" x="370" y="215" font-size="28" font-weight="700" fill="#8a6d3b">+</text>
+
+  <rect x="410" y="150" width="320" height="120" rx="10" fill="#f3f1ec" stroke="#9a9080" stroke-width="2" stroke-dasharray="6 4"/>
+  <text class="en" x="430" y="185" font-size="17" font-weight="700" fill="#6a5f4e">49 × zero pad</text>
+  <text class="en" x="430" y="215" font-size="15" fill="#14201a">all-zero extra / register slots</text>
+  <text class="en" x="430" y="245" font-size="18" font-weight="700" fill="#6a5f4e">[B, 49, 4096]</text>
+
+  <text class="en" x="760" y="215" font-size="28" font-weight="700" fill="#8a6d3b">→</text>
+
+  <rect x="800" y="150" width="340" height="120" rx="10" fill="#fff3d6" stroke="#8a6d3b" stroke-width="2.5"/>
+  <text class="en" x="820" y="185" font-size="17" font-weight="700" fill="#8a6d3b">50 text slots</text>
+  <text class="en" x="820" y="215" font-size="15" fill="#14201a">Linear(4096→1024) 逐 slot</text>
+  <text class="en" x="820" y="245" font-size="18" font-weight="700" fill="#8a6d3b">[B, 50, 1024]</text>
+
+  <text class="en" x="1160" y="175" font-size="14" fill="#3d4a42">use_text_mask=false：</text>
+  <text class="en" x="1160" y="200" font-size="14" fill="#3d4a42">50 个 slot 全部可 attend</text>
+  <text class="en" x="1160" y="225" font-size="14" fill="#3d4a42">（含 zero；靠 PE+attn 分化）</text>
+  <text class="en" x="1160" y="255" font-size="14" fill="#6a756e">无文本时：整段 embedding 清零</text>
+
+  <!-- ========== B. + t + heading ========== -->
+  <rect x="40" y="325" width="1520" height="175" rx="12" fill="#f7f8f7" stroke="#d5ddd7" stroke-width="2"/>
+  <text class="en" x="60" y="360" font-size="20" font-weight="700" fill="#14201a">B. 再拼两个条件 token → prefix = 52</text>
+
+  <rect x="60" y="380" width="360" height="95" rx="10" fill="#fff3d6" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="80" y="415" font-size="16" font-weight="700" fill="#8a6d3b">50 text slots</text>
+  <text class="en" x="80" y="445" font-size="15" fill="#14201a">1 real + 49 zero</text>
+
+  <text class="en" x="445" y="430" font-size="28" font-weight="700" fill="#14201a">+</text>
+
+  <rect x="480" y="380" width="300" height="95" rx="10" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="500" y="415" font-size="16" font-weight="700" fill="#2f6f8f">1 × timestep t</text>
+  <text class="en" x="500" y="445" font-size="14" fill="#14201a">sin PE → Linear→SiLU→Linear</text>
+
+  <text class="en" x="805" y="430" font-size="28" font-weight="700" fill="#14201a">+</text>
+
+  <rect x="840" y="380" width="320" height="95" rx="10" fill="#f8ecef" stroke="#a84d62" stroke-width="2"/>
+  <text class="en" x="860" y="415" font-size="16" font-weight="700" fill="#a84d62">1 × heading</text>
+  <text class="en" x="860" y="445" font-size="14" fill="#14201a">(cos θ, sin θ) → Linear(2→1024)</text>
+
+  <text class="en" x="1190" y="410" font-size="22" font-weight="700" fill="#1f6b4a">= 52</text>
+  <text class="en" x="1190" y="445" font-size="18" font-weight="700" fill="#1f6b4a">[B, 52, 1024]</text>
+
+  <!-- ========== C. visual token strip ========== -->
+  <text class="en" x="40" y="540" font-size="18" font-weight="700" fill="#6a756e">C. 序列顺序（checkpoint 敏感）</text>
+
+  <!-- draw token cells -->
+  <!-- 1 real -->
+  <rect x="40" y="560" width="56" height="70" rx="4" fill="#1f6b4a"/>
+  <text class="en" x="68" y="600" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">txt</text>
+  <!-- 49 pads as band -->
+  <rect x="100" y="560" width="520" height="70" rx="4" fill="#e8e4dc" stroke="#9a9080" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <text class="en" x="360" y="590" text-anchor="middle" font-size="16" font-weight="700" fill="#6a5f4e">49 × zero pad</text>
+  <text class="en" x="360" y="615" text-anchor="middle" font-size="13" fill="#6a5f4e">slots 1 … 49</text>
+  <!-- t -->
+  <rect x="640" y="560" width="70" height="70" rx="4" fill="#2f6f8f"/>
+  <text class="en" x="675" y="600" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">t</text>
+  <!-- heading -->
+  <rect x="720" y="560" width="80" height="70" rx="4" fill="#a84d62"/>
+  <text class="en" x="760" y="600" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">head</text>
+
+  <text class="en" x="830" y="600" font-size="28" font-weight="700" fill="#1f6b4a">∥</text>
+
+  <!-- motion band -->
+  <rect x="870" y="560" width="520" height="70" rx="4" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="1130" y="590" text-anchor="middle" font-size="17" font-weight="700" fill="#2f6f8f">T 个 motion tokens</text>
+  <text class="en" x="1130" y="615" text-anchor="middle" font-size="14" fill="#14201a">Linear(C→1024)，C=738 Root / 737 Body</text>
+
+  <text class="en" x="1410" y="600" font-size="20" font-weight="700" fill="#1f6b4a">→</text>
+  <text class="en" x="1440" y="590" font-size="16" font-weight="700" fill="#1f6b4a">[B,52+T,</text>
+  <text class="en" x="1440" y="615" font-size="16" font-weight="700" fill="#1f6b4a">1024]</text>
+
+  <!-- ========== D. attn + outputs ========== -->
+  <rect x="40" y="660" width="1520" height="100" rx="12" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.5"/>
+  <text class="en" x="60" y="695" font-size="18" font-weight="700" fill="#1f6b4a">D. 双向 Self-Attention（不是 cross-attn）→ drop 前 52 → 只留 T 帧</text>
+  <text class="en" x="60" y="730" font-size="15" fill="#14201a">+ sinusoidal PE · padding mask = prefix_mask ∥ frame_pad_mask · 然后 output_linear：Root 1024→5 · Body 1024→364</text>
+
+  <rect x="40" y="780" width="740" height="95" rx="10" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="60" y="815" font-size="17" font-weight="700" fill="#2f6f8f">Root TF：x_in 通道 738</text>
+  <text class="en" x="60" y="845" font-size="15" fill="#14201a">369 motion ∥ 369 mask → clean global root [B,T,5]</text>
+
+  <rect x="820" y="780" width="740" height="95" rx="10" fill="#f8ecef" stroke="#a84d62" stroke-width="2"/>
+  <text class="en" x="840" y="815" font-size="17" font-weight="700" fill="#a84d62">Body TF：x_in 通道 737</text>
+  <text class="en" x="840" y="845" font-size="15" fill="#14201a">(local-root4 ∥ body364) ∥ mask369 → clean body [B,T,364]</text>
+</svg>

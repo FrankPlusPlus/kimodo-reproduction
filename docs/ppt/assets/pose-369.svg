@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1400 720" role="img">
+  <defs>
+    <style>
+      .en { font-family: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    </style>
+  </defs>
+  <rect width="1400" height="720" fill="#ffffff"/>
+
+  <text class="en" x="40" y="42" font-size="24" font-weight="700" fill="#14201a">SOMA skeleton · per-frame motion features</text>
+  <text class="en" x="40" y="68" font-size="15" fill="#5a635c">Paper figure (joints). Labels = what Kimodo predicts — not hand-drawn markers on the body.</text>
+
+  <!-- clean paper figure, no overlay dots -->
+  <rect x="420" y="88" width="560" height="590" rx="12" fill="#f7f8f7" stroke="#d5ddd7"/>
+  <image xlink:href="soma.png" href="soma.png" x="450" y="110" width="500" height="540" preserveAspectRatio="xMidYMid meet"/>
+
+  <!-- LEFT: Root + body geometry -->
+  <g>
+    <rect x="40" y="100" width="340" height="118" rx="10" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2"/>
+    <text class="en" x="60" y="132" font-size="18" font-weight="700" fill="#2f6f8f">Root  (5-d)</text>
+    <text class="en" x="60" y="160" font-size="15" fill="#14201a">smooth root xyz  ·  heading (cos,sin)</text>
+    <text class="en" x="60" y="186" font-size="14" fill="#5a635c">where the character is / faces</text>
+  </g>
+
+  <g>
+    <rect x="40" y="240" width="340" height="118" rx="10" fill="#f8ecef" stroke="#a84d62" stroke-width="2"/>
+    <text class="en" x="60" y="272" font-size="18" font-weight="700" fill="#a84d62">Local joint pos  (90-d)</text>
+    <text class="en" x="60" y="300" font-size="15" fill="#14201a">30 joints × xyz, root-relative</text>
+    <text class="en" x="60" y="326" font-size="14" fill="#5a635c">body layout in root frame</text>
+  </g>
+
+  <g>
+    <rect x="40" y="380" width="340" height="118" rx="10" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+    <text class="en" x="60" y="412" font-size="18" font-weight="700" fill="#8a6d3b">Global 6D rot  (180-d)</text>
+    <text class="en" x="60" y="440" font-size="15" fill="#14201a">30 joints × continuous 6D rotation</text>
+    <text class="en" x="60" y="466" font-size="14" fill="#5a635c">avoids Euler singularities</text>
+  </g>
+
+  <g>
+    <rect x="40" y="520" width="340" height="118" rx="10" fill="#eef6f0" stroke="#1f6b4a" stroke-width="2"/>
+    <text class="en" x="60" y="552" font-size="18" font-weight="700" fill="#1f6b4a">Joint velocity  (90-d)</text>
+    <text class="en" x="60" y="580" font-size="15" fill="#14201a">30 joints × global xyz velocity</text>
+    <text class="en" x="60" y="606" font-size="14" fill="#5a635c">temporal smoothness</text>
+  </g>
+
+  <!-- RIGHT: foot + stage split -->
+  <g>
+    <rect x="1020" y="140" width="340" height="130" rx="10" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2"/>
+    <text class="en" x="1040" y="176" font-size="18" font-weight="700" fill="#5b4d8a">Foot contact  (4-d)</text>
+    <text class="en" x="1040" y="208" font-size="15" fill="#14201a">toe / heel style channels</text>
+    <text class="en" x="1040" y="236" font-size="14" fill="#5a635c">grounding · less foot skate</text>
+  </g>
+
+  <g>
+    <rect x="1020" y="300" width="340" height="200" rx="10" fill="#ffffff" stroke="#7a857e" stroke-width="2"/>
+    <text class="en" x="1040" y="340" font-size="18" font-weight="700" fill="#14201a">Two-stage split</text>
+    <text class="en" x="1040" y="380" font-size="16" fill="#2f6f8f">Root TF  →  5-d root</text>
+    <text class="en" x="1040" y="414" font-size="16" fill="#a84d62">Body TF  →  364-d body</text>
+    <text class="en" x="1040" y="456" font-size="15" fill="#5a635c">5 + 364 = 369 per frame</text>
+  </g>
+
+  <g>
+    <rect x="1020" y="530" width="340" height="108" rx="10" fill="#f7f8f7" stroke="#d5ddd7"/>
+    <text class="en" x="1040" y="570" font-size="15" fill="#3d4a42">Center image = official SOMA</text>
+    <text class="en" x="1040" y="598" font-size="15" fill="#3d4a42">rig figure from the paper / repo.</text>
+  </g>
+</svg>

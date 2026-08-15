@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="24 76 1552 828" preserveAspectRatio="xMidYMid meet" role="img">
+  <defs>
+    <style>
+      .en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}
+      .serif{font-family:"Source Serif 4","Noto Serif SC",serif;}
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3d4a42"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1f6b4a"/>
+    </marker>
+  </defs>
+
+  <!-- ========== LEFT: input assembly ========== -->
+  <rect x="28" y="80" width="420" height="820" rx="14" fill="#f7faf8" stroke="#d5ddd7"/>
+  <text class="en" x="48" y="112" font-size="17" font-weight="700" fill="#1f6b4a">① 输入装配</text>
+
+  <!-- motion path -->
+  <rect x="48" y="130" width="180" height="56" rx="8" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="138" y="154" text-anchor="middle" font-size="14" font-weight="700" fill="#2f6f8f">x̃_t ‖ m</text>
+  <text class="en" x="138" y="174" text-anchor="middle" font-size="12" fill="#6a756e">[B,T,738]</text>
+
+  <path d="M138 186 L138 208" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="48" y="210" width="180" height="48" rx="8" fill="#eaf3f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="138" y="240" text-anchor="middle" font-size="13" font-weight="700" fill="#2f6f8f">Linear 738→1024</text>
+
+  <path d="M138 258 L138 280" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="48" y="282" width="180" height="48" rx="8" fill="#2f6f8f"/>
+  <text class="en" x="138" y="302" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">frames</text>
+  <text class="en" x="138" y="320" text-anchor="middle" font-size="12" fill="#d0e4ef">[B,T,1024]</text>
+
+  <!-- condition path -->
+  <rect x="250" y="130" width="176" height="40" rx="8" fill="#1f6b4a"/>
+  <text class="en" x="338" y="155" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">text 1×4096</text>
+  <rect x="250" y="178" width="176" height="40" rx="8" fill="#e8e4dc" stroke="#9a9080" stroke-dasharray="4 3"/>
+  <text class="en" x="338" y="203" text-anchor="middle" font-size="13" font-weight="700" fill="#6a5f4e">zero ×49</text>
+  <path d="M338 218 L338 236" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="250" y="238" width="176" height="40" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="338" y="263" text-anchor="middle" font-size="12" font-weight="700" fill="#8a6d3b">Linear 4096→1024</text>
+
+  <rect x="250" y="300" width="80" height="40" rx="8" fill="#2f6f8f"/>
+  <text class="en" x="290" y="325" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">t</text>
+  <rect x="346" y="300" width="80" height="40" rx="8" fill="#a84d62"/>
+  <text class="en" x="386" y="325" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">head</text>
+  <text class="en" x="290" y="358" text-anchor="middle" font-size="11" fill="#6a756e">PE[t]→MLP</text>
+  <text class="en" x="386" y="358" text-anchor="middle" font-size="11" fill="#6a756e">(cos,sin)→Lin</text>
+
+  <path d="M338 368 L338 390" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="250" y="392" width="176" height="48" rx="8" fill="#8a6d3b"/>
+  <text class="en" x="338" y="412" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">prefix</text>
+  <text class="en" x="338" y="430" text-anchor="middle" font-size="12" fill="#f0e6d4">[B,52,1024]</text>
+
+  <!-- seq concat -->
+  <path d="M138 330 L138 470" stroke="#3d4a42" stroke-width="2"/>
+  <path d="M338 440 L338 470" stroke="#3d4a42" stroke-width="2"/>
+  <path d="M138 470 L338 470" stroke="#3d4a42" stroke-width="2"/>
+  <path d="M238 470 L238 492" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="78" y="494" width="320" height="56" rx="10" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.5"/>
+  <text class="en" x="238" y="518" text-anchor="middle" font-size="15" font-weight="700" fill="#1f6b4a">seq-concat · prefix ‖ frames</text>
+  <text class="en" x="238" y="538" text-anchor="middle" font-size="13" fill="#3d4a42">[B, 52+T, 1024]</text>
+
+  <path d="M238 550 L238 572" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="78" y="574" width="320" height="48" rx="8" fill="#fff" stroke="#1f6b4a" stroke-width="2"/>
+  <text class="en" x="238" y="604" text-anchor="middle" font-size="14" font-weight="700" fill="#1f6b4a">+ sinusoidal PE</text>
+
+  <path d="M238 622 L238 648" stroke="#3d4a42" stroke-width="2" marker-end="url(#ag)"/>
+  <rect x="78" y="650" width="320" height="64" rx="10" fill="#1f6b4a"/>
+  <text class="en" x="238" y="678" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">x_seq 进 Encoder</text>
+  <text class="en" x="238" y="698" text-anchor="middle" font-size="12" fill="#cfe5d8">+ src_key_padding_mask</text>
+
+  <text class="en" x="48" y="750" font-size="13" font-weight="700" fill="#3d4a42">关键点</text>
+  <text class="en" x="48" y="774" font-size="13" fill="#3d4a42">· 条件与帧同一条序列 → self-attn</text>
+  <text class="en" x="48" y="796" font-size="13" fill="#3d4a42">· 不是 cross-attn，也不是 adaLN</text>
+  <text class="en" x="48" y="818" font-size="13" fill="#3d4a42">· mask 只挡 padding，不挡未来帧</text>
+  <text class="en" x="48" y="840" font-size="13" fill="#3d4a42">· Root 读全身 noisy+mask（738）</text>
+  <text class="en" x="48" y="870" font-size="12" fill="#6a756e">Body 同结构，帧侧改 737，头改 364</text>
+
+  <!-- ========== CENTER: encoder block ========== -->
+  <rect x="470" y="80" width="700" height="820" rx="14" fill="#ffffff" stroke="#1f6b4a" stroke-width="2.5"/>
+  <text class="en" x="490" y="112" font-size="17" font-weight="700" fill="#1f6b4a">② Encoder Layer ×16（展开一层）</text>
+  <text class="en" x="490" y="136" font-size="13" fill="#6a756e">d_model=1024 · nhead=8 · FFN=2048 · activation=gelu · norm_first=false（post-norm）</text>
+
+  <!-- stack hint -->
+  <rect x="500" y="152" width="36" height="700" rx="6" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="1.5"/>
+  <text class="en" x="518" y="480" text-anchor="middle" font-size="13" font-weight="700" fill="#1f6b4a" transform="rotate(-90 518 480)">× 16 layers</text>
+
+  <!-- layer box -->
+  <rect x="560" y="160" width="580" height="680" rx="12" fill="#f4f7f5" stroke="#1f6b4a" stroke-width="2"/>
+  <text class="en" x="850" y="190" text-anchor="middle" font-size="15" font-weight="700" fill="#1f6b4a">TransformerEncoderLayer</text>
+
+  <!-- input -->
+  <rect x="620" y="210" width="460" height="44" rx="8" fill="#fff" stroke="#3d4a42" stroke-width="1.5"/>
+  <text class="en" x="850" y="238" text-anchor="middle" font-size="14" font-weight="700" fill="#14201a">h ∈ ℝ^{B × (52+T) × 1024}</text>
+
+  <path d="M850 254 L850 278" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- MHSA -->
+  <rect x="620" y="280" width="460" height="236" rx="10" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="850" y="302" text-anchor="middle" font-size="15" font-weight="700" fill="#2f6f8f">Multi-Head Self-Attention · 头切分数据流</text>
+
+  <rect x="640" y="314" width="420" height="36" rx="7" fill="#eaf3f7" stroke="#2f6f8f"/>
+  <text class="en" x="850" y="337" text-anchor="middle" font-size="13" font-weight="700" fill="#2f6f8f">Q, K, V = h W_Q, h W_K, h W_V   ∈ ℝ^{B×L×1024}</text>
+
+  <path d="M850 350 L850 362" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="640" y="364" width="420" height="36" rx="7" fill="#f3f0f9" stroke="#5b4d8a"/>
+  <text class="en" x="850" y="387" text-anchor="middle" font-size="13" font-weight="700" fill="#5b4d8a">reshape  (B,L,1024) → (B, 8, L, 128)    d_h = 1024/8</text>
+
+  <path d="M850 400 L850 412" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="640" y="414" width="420" height="44" rx="7" fill="#e8f3ec" stroke="#1f6b4a"/>
+  <text class="en" x="850" y="433" text-anchor="middle" font-size="13" font-weight="700" fill="#1f6b4a">Attn_i = softmax( Q_i K_i^T / √128 ) V_i</text>
+  <text class="en" x="850" y="450" text-anchor="middle" font-size="12" fill="#3d4a42">i = 1…8 · 每头独立 · 双向看见整段 L = 52+T</text>
+
+  <path d="M850 458 L850 470" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="640" y="472" width="420" height="36" rx="7" fill="#1f6b4a"/>
+  <text class="en" x="850" y="495" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Concat(Attn_1…8) W^O  →  ℝ^{B×L×1024}</text>
+
+  <path d="M850 516 L850 534" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- residual + LN -->
+  <rect x="620" y="536" width="460" height="44" rx="8" fill="#eaf3f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="850" y="564" text-anchor="middle" font-size="14" font-weight="700" fill="#2f6f8f">Add &amp; LayerNorm（post-norm）</text>
+
+  <path d="M850 580 L850 598" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <!-- FFN -->
+  <rect x="620" y="600" width="460" height="96" rx="10" fill="#fff" stroke="#8a6d3b" stroke-width="2.5"/>
+  <text class="en" x="850" y="628" text-anchor="middle" font-size="15" font-weight="700" fill="#8a6d3b">Feed-Forward Network</text>
+  <text class="en" x="850" y="652" text-anchor="middle" font-size="14" fill="#3d4a42">Linear 1024 → 2048 → GELU → Linear 2048 → 1024</text>
+  <text class="en" x="850" y="676" text-anchor="middle" font-size="12" fill="#6a756e">逐 token · 位置间不混合（混合只在 Attention）</text>
+
+  <path d="M850 696 L850 714" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="620" y="716" width="460" height="44" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="850" y="744" text-anchor="middle" font-size="14" font-weight="700" fill="#8a6d3b">Add &amp; LayerNorm（post-norm）</text>
+
+  <path d="M850 760 L850 778" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+  <rect x="680" y="780" width="340" height="36" rx="8" fill="#1f6b4a"/>
+  <text class="en" x="850" y="804" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">→ 下一层 / 或出栈</text>
+
+  <!-- ========== RIGHT: output ========== -->
+  <rect x="1192" y="80" width="380" height="820" rx="14" fill="#f7faf8" stroke="#d5ddd7"/>
+  <text class="en" x="1212" y="112" font-size="17" font-weight="700" fill="#1f6b4a">③ 输出头</text>
+
+  <rect x="1220" y="140" width="324" height="70" rx="10" fill="#fff" stroke="#1f6b4a" stroke-width="2"/>
+  <text class="en" x="1382" y="170" text-anchor="middle" font-size="14" font-weight="700" fill="#1f6b4a">Encoder 输出</text>
+  <text class="en" x="1382" y="192" text-anchor="middle" font-size="13" fill="#3d4a42">[B, 52+T, 1024]</text>
+
+  <path d="M1382 210 L1382 236" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="1220" y="238" width="324" height="90" rx="10" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2.5"/>
+  <text class="en" x="1382" y="272" text-anchor="middle" font-size="15" font-weight="700" fill="#5b4d8a">drop 前 52 prefix</text>
+  <text class="en" x="1382" y="298" text-anchor="middle" font-size="13" fill="#3d4a42">output[:, 52: ]</text>
+  <text class="en" x="1382" y="318" text-anchor="middle" font-size="12" fill="#6a756e">条件 token 用完即弃</text>
+
+  <path d="M1382 328 L1382 354" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="1220" y="356" width="324" height="70" rx="10" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="1382" y="386" text-anchor="middle" font-size="14" font-weight="700" fill="#2f6f8f">只留 T 个帧 token</text>
+  <text class="en" x="1382" y="408" text-anchor="middle" font-size="13" fill="#3d4a42">[B, T, 1024]</text>
+
+  <path d="M1382 426 L1382 452" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="1220" y="454" width="324" height="80" rx="10" fill="#2f6f8f"/>
+  <text class="en" x="1382" y="488" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">output_linear</text>
+  <text class="en" x="1382" y="512" text-anchor="middle" font-size="13" fill="#d0e4ef">1024 → 5（Root）</text>
+
+  <path d="M1382 534 L1382 560" stroke="#3d4a42" stroke-width="2" marker-end="url(#a)"/>
+
+  <rect x="1220" y="562" width="324" height="80" rx="10" fill="#1f6b4a"/>
+  <text class="en" x="1382" y="596" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">global root  r̂</text>
+  <text class="en" x="1382" y="620" text-anchor="middle" font-size="13" fill="#cfe5d8">[B, T, 5] = pos3 + heading2</text>
+
+  <rect x="1220" y="680" width="324" height="180" rx="10" fill="#fff" stroke="#d5ddd7"/>
+  <text class="en" x="1236" y="710" font-size="14" font-weight="700" fill="#14201a">与 Body 的对照</text>
+  <text class="en" x="1236" y="740" font-size="13" fill="#3d4a42">Body：同 16×Encoder</text>
+  <text class="en" x="1236" y="764" font-size="13" fill="#3d4a42">输入通道 737，头 1024→364</text>
+  <text class="en" x="1236" y="788" font-size="13" fill="#3d4a42">参数独立，不共享</text>
+  <text class="en" x="1236" y="812" font-size="13" fill="#3d4a42">注意力同为双向 self-attn</text>
+  <text class="en" x="1236" y="836" font-size="13" fill="#6a756e">Loss：root pos(10)+heading(2)</text>
+</svg>

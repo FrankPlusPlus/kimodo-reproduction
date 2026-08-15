@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img">
+  <defs>
+    <style>.en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}</style>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3d4a42"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <text class="en" x="40" y="40" font-size="24" font-weight="700" fill="#1f6b4a">Before two-stage TF: three lanes assemble, then enter Denoiser</text>
+  <text class="en" x="40" y="70" font-size="15" fill="#3d4a42">Paper left side: Inputs -&gt; Overwriting -&gt; concat -&gt; Denoiser. Shapes from code (Root example).</text>
+
+  <rect x="40" y="95" width="1520" height="175" rx="12" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="60" y="128" font-size="18" font-weight="700" fill="#2f6f8f">Lane 1  Motion feature (369 = Root5 + Body364 per frame)</text>
+
+  <rect x="60" y="150" width="150" height="90" rx="8" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="135" y="185" text-anchor="middle" font-size="16" font-weight="700" fill="#2f6f8f">GT x0</text>
+  <text class="en" x="135" y="215" text-anchor="middle" font-size="13" fill="#14201a">[B,T,369]</text>
+
+  <path d="M210 195 L245 195" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <rect x="250" y="150" width="150" height="90" rx="8" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="325" y="185" text-anchor="middle" font-size="16" font-weight="700" fill="#2f6f8f">Noise</text>
+  <text class="en" x="325" y="215" text-anchor="middle" font-size="13" fill="#14201a">x_t = q(x_t|x0)</text>
+
+  <path d="M400 195 L435 195" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <rect x="440" y="150" width="240" height="90" rx="8" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="560" y="178" text-anchor="middle" font-size="15" font-weight="700" fill="#5b4d8a">Constraint Overwrite</text>
+  <text class="en" x="560" y="205" text-anchor="middle" font-size="12" fill="#14201a">x~_t = m*x_tgt + (1-m)*x_t</text>
+  <text class="en" x="560" y="228" text-anchor="middle" font-size="13" fill="#5b4d8a">-&gt; x~_t [B,T,369]</text>
+
+  <path d="M680 195 L720 195" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <rect x="725" y="150" width="200" height="90" rx="8" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="825" y="185" text-anchor="middle" font-size="16" font-weight="700" fill="#2f6f8f">imputed x~_t</text>
+  <text class="en" x="825" y="215" text-anchor="middle" font-size="14" font-weight="700" fill="#2f6f8f">[B, T, 369]</text>
+
+  <text class="en" x="960" y="175" font-size="14" fill="#3d4a42">Train has GT; Overwrite writes constraints into features;</text>
+  <text class="en" x="960" y="200" font-size="14" fill="#3d4a42">network still predicts full clean 369, not only constrained dims.</text>
+  <text class="en" x="960" y="225" font-size="14" fill="#6a756e">Body later: local-root4 || noisy-body364 = 368</text>
+
+  <rect x="40" y="290" width="1520" height="130" rx="12" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="60" y="322" font-size="18" font-weight="700" fill="#5b4d8a">Lane 2  Constraint mask (same shape; channel-concat, not token-concat)</text>
+
+  <rect x="60" y="345" width="200" height="55" rx="8" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="160" y="378" text-anchor="middle" font-size="15" font-weight="700" fill="#5b4d8a">m  [B, T, 369]</text>
+
+  <path d="M260 372 L300 372" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <rect x="305" y="345" width="360" height="55" rx="8" fill="#efeaf8" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="485" y="378" text-anchor="middle" font-size="15" font-weight="700" fill="#5b4d8a">channel concat:  x~_t  ||  m</text>
+
+  <path d="M665 372 L710 372" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <rect x="715" y="340" width="280" height="65" rx="8" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="855" y="370" text-anchor="middle" font-size="17" font-weight="700" fill="#2f6f8f">Root frame x_in</text>
+  <text class="en" x="855" y="393" text-anchor="middle" font-size="16" font-weight="700" fill="#2f6f8f">[B, T, 738]</text>
+
+  <text class="en" x="1020" y="365" font-size="14" fill="#3d4a42">738 = 369||369 · not token count</text>
+  <text class="en" x="1020" y="390" font-size="14" fill="#3d4a42">Body: 368||369 -&gt; [B,T,737]</text>
+
+  <rect x="40" y="440" width="1520" height="130" rx="12" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="60" y="472" font-size="18" font-weight="700" fill="#8a6d3b">Lane 3  Condition prefix (1 text + 49 zero + t + heading = 52)</text>
+
+  <rect x="60" y="495" width="130" height="55" rx="8" fill="#1f6b4a"/>
+  <text class="en" x="125" y="528" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">1 text</text>
+  <rect x="200" y="495" width="200" height="55" rx="8" fill="#e8e4dc" stroke="#9a9080" stroke-dasharray="5 3"/>
+  <text class="en" x="300" y="528" text-anchor="middle" font-size="14" font-weight="700" fill="#6a5f4e">49 zero-pad</text>
+  <rect x="410" y="495" width="90" height="55" rx="8" fill="#2f6f8f"/>
+  <text class="en" x="455" y="528" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">t</text>
+  <rect x="510" y="495" width="100" height="55" rx="8" fill="#a84d62"/>
+  <text class="en" x="560" y="528" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">heading</text>
+
+  <text class="en" x="640" y="528" font-size="22" font-weight="700" fill="#8a6d3b">-&gt;</text>
+
+  <rect x="680" y="495" width="240" height="55" rx="8" fill="#fff3d6" stroke="#8a6d3b" stroke-width="2.5"/>
+  <text class="en" x="800" y="528" text-anchor="middle" font-size="16" font-weight="700" fill="#8a6d3b">prefix [B, 52, 1024]</text>
+
+  <text class="en" x="950" y="515" font-size="14" fill="#3d4a42">After Linear, seq-concat with frame tokens</text>
+  <text class="en" x="950" y="540" font-size="14" fill="#6a756e">52 != 738: condition tokens vs channel width</text>
+
+  <rect x="40" y="590" width="1520" height="195" rx="14" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="3"/>
+  <text class="en" x="60" y="625" font-size="20" font-weight="700" fill="#1f6b4a">Merge  project to 1024, seq-concat, enter two-stage Transformer</text>
+
+  <rect x="60" y="650" width="280" height="100" rx="10" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="200" y="685" text-anchor="middle" font-size="15" font-weight="700" fill="#2f6f8f">frames: Linear(738-&gt;1024)</text>
+  <text class="en" x="200" y="715" text-anchor="middle" font-size="16" font-weight="700" fill="#2f6f8f">[B, T, 1024]</text>
+  <text class="en" x="200" y="738" text-anchor="middle" font-size="12" fill="#6a756e">1 motion token / frame</text>
+
+  <text class="en" x="360" y="705" font-size="28" font-weight="700" fill="#1f6b4a">||</text>
+  <text class="en" x="360" y="730" font-size="12" fill="#6a756e">seq</text>
+
+  <rect x="400" y="650" width="240" height="100" rx="10" fill="#fff" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="520" y="695" text-anchor="middle" font-size="15" font-weight="700" fill="#8a6d3b">prefix already 1024</text>
+  <text class="en" x="520" y="725" text-anchor="middle" font-size="16" font-weight="700" fill="#8a6d3b">[B, 52, 1024]</text>
+
+  <text class="en" x="665" y="705" font-size="28" font-weight="700" fill="#1f6b4a">-&gt;</text>
+
+  <rect x="700" y="650" width="320" height="100" rx="10" fill="#d8efe0" stroke="#1f6b4a" stroke-width="2.5"/>
+  <text class="en" x="860" y="685" text-anchor="middle" font-size="16" font-weight="700" fill="#1f6b4a">cat(prefix, frames)</text>
+  <text class="en" x="860" y="715" text-anchor="middle" font-size="18" font-weight="700" fill="#1f6b4a">[B, 52+T, 1024]</text>
+  <text class="en" x="860" y="738" text-anchor="middle" font-size="12" fill="#3d4a42">+ PE · padding mask</text>
+
+  <text class="en" x="1045" y="705" font-size="28" font-weight="700" fill="#1f6b4a">-&gt;</text>
+
+  <rect x="1080" y="645" width="440" height="110" rx="12" fill="#1f6b4a"/>
+  <text class="en" x="1300" y="690" text-anchor="middle" font-size="18" font-weight="700" fill="#fff">Two-Stage Transformer</text>
+  <text class="en" x="1300" y="720" text-anchor="middle" font-size="15" fill="#d8efe0">Root TF first -&gt; Global to Local</text>
+  <text class="en" x="1300" y="745" text-anchor="middle" font-size="15" fill="#d8efe0">then Body TF (input width 737)</text>
+
+  <text class="en" x="40" y="820" font-size="15" fill="#14201a">Mnemonic: 369=feature · 738/737=channel||mask · 52=cond tokens · T=frame tokens · 52+T enters attn.</text>
+  <text class="en" x="40" y="850" font-size="15" fill="#6a756e">Next slides: Root / Body. Inside Self-Attn + drop prefix: Token page.</text>
+</svg>

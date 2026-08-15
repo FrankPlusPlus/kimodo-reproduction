@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img">
+  <defs>
+    <style>.en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}</style>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3d4a42"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="900" fill="#ffffff"/>
+
+  <text class="en" x="40" y="40" font-size="28" font-weight="700" fill="#1f6b4a">Forward noise: Markov chain + one-step formula</text>
+  <text class="en" x="40" y="72" font-size="18" fill="#3d4a42">Training supervises on noisy motion; Kimodo predicts clean x0, not epsilon. Shape stays [B,T,369].</text>
+
+  <rect x="40" y="95" width="1520" height="230" rx="12" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="60" y="132" font-size="24" font-weight="700" fill="#2f6f8f">1. Forward process = Markov chain</text>
+  <text class="en" x="60" y="168" font-size="18" fill="#14201a">Each step depends only on previous: q(x_t | x_{t-1}). Noise grows; end ~ pure Gaussian.</text>
+
+  <rect x="70" y="195" width="140" height="90" rx="10" fill="#1f6b4a"/>
+  <text class="en" x="140" y="235" text-anchor="middle" font-size="26" font-weight="700" fill="#fff">x0</text>
+  <text class="en" x="140" y="265" text-anchor="middle" font-size="16" fill="#d8efe0">clean</text>
+
+  <path d="M210 240 L255 240" stroke="#3d4a42" stroke-width="3" marker-end="url(#arr)"/>
+  <text class="en" x="232" y="225" text-anchor="middle" font-size="15" fill="#6a756e">beta1</text>
+
+  <rect x="260" y="195" width="120" height="90" rx="10" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="320" y="250" text-anchor="middle" font-size="26" font-weight="700" fill="#2f6f8f">x1</text>
+
+  <path d="M380 240 L425 240" stroke="#3d4a42" stroke-width="3" marker-end="url(#arr)"/>
+
+  <rect x="430" y="195" width="120" height="90" rx="10" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="490" y="250" text-anchor="middle" font-size="26" font-weight="700" fill="#2f6f8f">...</text>
+
+  <path d="M550 240 L595 240" stroke="#3d4a42" stroke-width="3" marker-end="url(#arr)"/>
+  <text class="en" x="572" y="225" text-anchor="middle" font-size="15" fill="#6a756e">beta_t</text>
+
+  <rect x="600" y="195" width="140" height="90" rx="10" fill="#2f6f8f"/>
+  <text class="en" x="670" y="235" text-anchor="middle" font-size="26" font-weight="700" fill="#fff">x_t</text>
+  <text class="en" x="670" y="265" text-anchor="middle" font-size="16" fill="#d0e4ef">noisy</text>
+
+  <path d="M740 240 L785 240" stroke="#3d4a42" stroke-width="3" marker-end="url(#arr)"/>
+
+  <rect x="790" y="195" width="120" height="90" rx="10" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="850" y="250" text-anchor="middle" font-size="26" font-weight="700" fill="#2f6f8f">...</text>
+
+  <path d="M910 240 L955 240" stroke="#3d4a42" stroke-width="3" marker-end="url(#arr)"/>
+
+  <rect x="960" y="195" width="150" height="90" rx="10" fill="#5b4d8a"/>
+  <text class="en" x="1035" y="235" text-anchor="middle" font-size="26" font-weight="700" fill="#fff">x_N</text>
+  <text class="en" x="1035" y="265" text-anchor="middle" font-size="16" fill="#ddd6ee">~ noise</text>
+
+  <text class="en" x="1140" y="230" font-size="17" fill="#3d4a42">N = 1000</text>
+  <text class="en" x="1140" y="258" font-size="17" fill="#3d4a42">cosine schedule</text>
+  <text class="en" x="1140" y="286" font-size="16" fill="#6a756e">Train: no full walk</text>
+
+  <rect x="40" y="345" width="1520" height="255" rx="12" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="60" y="382" font-size="24" font-weight="700" fill="#8a6d3b">2. Training: one closed-form jump x0 -&gt; any t</text>
+  <text class="en" x="60" y="414" font-size="18" fill="#14201a">Chain collapses to q(x_t | x0). Sample once; no need to run t steps.</text>
+
+  <rect x="60" y="435" width="720" height="140" rx="10" fill="#fff" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="80" y="475" font-size="20" font-weight="700" fill="#8a6d3b">One-step formula (DDPM)</text>
+  <text class="en" x="80" y="520" font-size="26" font-weight="700" fill="#14201a">x_t = sqrt(a_bar_t)*x0 + sqrt(1-a_bar_t)*eps</text>
+  <text class="en" x="80" y="555" font-size="16" fill="#3d4a42">eps ~ N(0,I)  ·  a_bar_t = product of alphas</text>
+
+  <rect x="810" y="435" width="710" height="140" rx="10" fill="#fff" stroke="#8a6d3b" stroke-width="2"/>
+  <text class="en" x="830" y="475" font-size="20" font-weight="700" fill="#8a6d3b">What training does</text>
+  <text class="en" x="830" y="512" font-size="18" fill="#14201a">1) sample t in {0..999}</text>
+  <text class="en" x="830" y="542" font-size="18" fill="#14201a">2) sample eps, form x_t</text>
+  <text class="en" x="830" y="572" font-size="18" fill="#14201a">3) Denoiser once -&gt; predict x0_hat</text>
+
+  <rect x="40" y="620" width="1520" height="170" rx="12" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.5"/>
+  <text class="en" x="60" y="658" font-size="24" font-weight="700" fill="#1f6b4a">3. Shapes unchanged by noise</text>
+
+  <rect x="60" y="680" width="300" height="85" rx="8" fill="#fff" stroke="#1f6b4a" stroke-width="2"/>
+  <text class="en" x="210" y="715" text-anchor="middle" font-size="18" font-weight="700" fill="#1f6b4a">x0 clean</text>
+  <text class="en" x="210" y="745" text-anchor="middle" font-size="24" font-weight="700" fill="#1f6b4a">[B, T, 369]</text>
+
+  <text class="en" x="390" y="730" font-size="28" font-weight="700" fill="#1f6b4a">=</text>
+
+  <rect x="430" y="680" width="300" height="85" rx="8" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="580" y="715" text-anchor="middle" font-size="18" font-weight="700" fill="#2f6f8f">eps noise</text>
+  <text class="en" x="580" y="745" text-anchor="middle" font-size="24" font-weight="700" fill="#2f6f8f">[B, T, 369]</text>
+
+  <text class="en" x="760" y="730" font-size="28" font-weight="700" fill="#1f6b4a">-&gt;</text>
+
+  <rect x="800" y="680" width="300" height="85" rx="8" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="950" y="715" text-anchor="middle" font-size="18" font-weight="700" fill="#2f6f8f">x_t noisy</text>
+  <text class="en" x="950" y="745" text-anchor="middle" font-size="24" font-weight="700" fill="#2f6f8f">[B, T, 369]</text>
+
+  <text class="en" x="1140" y="710" font-size="17" fill="#3d4a42">369 = Root5 + Body364</text>
+  <text class="en" x="1140" y="740" font-size="17" fill="#3d4a42">pad frames: noised, not in Loss</text>
+
+  <text class="en" x="40" y="830" font-size="17" fill="#14201a">Train map "Noise" = this page. Next Overwrite still [B,T,369]. Inference: multi-step DDIM; train: one t, one noise, one x0 pred.</text>
+  <text class="en" x="40" y="865" font-size="16" fill="#6a756e">Chain = why · formula = how · [B,T,369] = shape stays put.</text>
+</svg>

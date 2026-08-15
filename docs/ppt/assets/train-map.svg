@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 860" role="img">
+  <defs>
+    <style>
+      .en { font-family: "IBM Plex Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+    </style>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3d4a42"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="860" fill="#ffffff"/>
+
+  <text class="en" x="40" y="44" font-size="26" font-weight="700" fill="#1f6b4a">TRAINING</text>
+  <text class="en" x="200" y="44" font-size="18" fill="#3d4a42">GT in  →  one-step denoiser  →  Loss out</text>
+
+  <text class="en" x="40" y="88" font-size="15" font-weight="700" fill="#6a756e">A. Pipeline</text>
+
+  <g id="node-in" class="node">
+    <rect x="40" y="108" width="200" height="118" rx="12" fill="#eef6f0" stroke="#1f6b4a" stroke-width="2.5"/>
+    <text class="en" x="140" y="155" text-anchor="middle" font-size="22" font-weight="700" fill="#14201a">GT</text>
+    <text class="en" x="140" y="190" text-anchor="middle" font-size="16" fill="#3d4a42">motion + text</text>
+  </g>
+  <line x1="240" y1="167" x2="275" y2="167" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <g id="node-repr" class="node">
+    <rect x="280" y="108" width="170" height="118" rx="12" fill="#f7f8f7" stroke="#7a857e" stroke-width="2"/>
+    <text class="en" x="365" y="155" text-anchor="middle" font-size="22" font-weight="700" fill="#14201a">Rep</text>
+    <text class="en" x="365" y="190" text-anchor="middle" font-size="15" fill="#3d4a42">pose features</text>
+  </g>
+  <line x1="450" y1="167" x2="485" y2="167" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <g id="node-diff" class="node">
+    <rect x="490" y="108" width="170" height="118" rx="12" fill="#f7f8f7" stroke="#7a857e" stroke-width="2"/>
+    <text class="en" x="575" y="155" text-anchor="middle" font-size="22" font-weight="700" fill="#14201a">Noise</text>
+    <text class="en" x="575" y="190" text-anchor="middle" font-size="15" fill="#3d4a42">x0 → xt</text>
+  </g>
+  <line x1="660" y1="167" x2="695" y2="167" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <g id="node-const" class="node">
+    <rect x="700" y="108" width="200" height="118" rx="12" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2.5"/>
+    <text class="en" x="800" y="155" text-anchor="middle" font-size="22" font-weight="700" fill="#5b4d8a">Overwrite</text>
+    <text class="en" x="800" y="190" text-anchor="middle" font-size="15" fill="#3d4a42">constraints from GT</text>
+  </g>
+  <line x1="900" y1="167" x2="935" y2="167" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <g id="node-denoise" class="node">
+    <rect x="940" y="100" width="280" height="134" rx="12" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="3"/>
+    <text class="en" x="1080" y="150" text-anchor="middle" font-size="22" font-weight="700" fill="#1f6b4a">Denoiser</text>
+    <text class="en" x="1080" y="185" text-anchor="middle" font-size="16" fill="#14201a">Root then Body</text>
+    <text class="en" x="1080" y="212" text-anchor="middle" font-size="15" fill="#3d4a42">see zoom below</text>
+  </g>
+  <line x1="1220" y1="167" x2="1255" y2="167" stroke="#3d4a42" stroke-width="2.5" marker-end="url(#arr)"/>
+
+  <g id="node-loss" class="node">
+    <rect x="1260" y="108" width="300" height="118" rx="12" fill="#fff6ea" stroke="#9a5b1a" stroke-width="2.5"/>
+    <text class="en" x="1410" y="155" text-anchor="middle" font-size="22" font-weight="700" fill="#9a5b1a">Loss</text>
+    <text class="en" x="1410" y="190" text-anchor="middle" font-size="16" fill="#3d4a42">vs GT  ·  Opt + EMA</text>
+  </g>
+
+  <text class="en" x="40" y="290" font-size="15" font-weight="700" fill="#6a756e">B. Inside Root / Body Transformer</text>
+  <rect x="40" y="308" width="1520" height="510" rx="14" fill="#f7faf8" stroke="#1f6b4a" stroke-width="2.5"/>
+
+  <g id="node-feat" class="node">
+    <rect x="70" y="350" width="320" height="170" rx="12" fill="#ffffff" stroke="#5b4d8a" stroke-width="2.5"/>
+    <text class="en" x="230" y="400" text-anchor="middle" font-size="22" font-weight="700" fill="#5b4d8a">Channel concat</text>
+    <text class="en" x="230" y="440" text-anchor="middle" font-size="17" fill="#14201a">widen each frame</text>
+    <text class="en" x="230" y="475" text-anchor="middle" font-size="16" fill="#6a756e">motion ∥ mask</text>
+  </g>
+  <line x1="390" y1="435" x2="430" y2="435" stroke="#3d4a42" stroke-width="3" marker-end="url(#arr)"/>
+
+  <g id="node-tok" class="node">
+    <rect x="440" y="350" width="280" height="170" rx="12" fill="#ffffff" stroke="#2f6f8f" stroke-width="2.5"/>
+    <text class="en" x="580" y="400" text-anchor="middle" font-size="22" font-weight="700" fill="#2f6f8f">To tokens</text>
+    <text class="en" x="580" y="440" text-anchor="middle" font-size="17" fill="#14201a">one token / frame</text>
+    <text class="en" x="580" y="475" text-anchor="middle" font-size="16" fill="#6a756e">Linear project</text>
+  </g>
+  <line x1="720" y1="435" x2="760" y2="435" stroke="#3d4a42" stroke-width="3" marker-end="url(#arr)"/>
+
+  <g id="node-prefix" class="node">
+    <rect x="770" y="350" width="280" height="170" rx="12" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2.5"/>
+    <text class="en" x="910" y="400" text-anchor="middle" font-size="22" font-weight="700" fill="#8a6d3b">Prefix</text>
+    <text class="en" x="910" y="440" text-anchor="middle" font-size="15" fill="#14201a">1 text + 49 zero</text>
+    <text class="en" x="910" y="470" text-anchor="middle" font-size="15" fill="#14201a">+ t + heading</text>
+  </g>
+
+  <g id="node-attn" class="node">
+    <rect x="70" y="560" width="1450" height="230" rx="12" fill="#ffffff" stroke="#1f6b4a" stroke-width="3"/>
+    <text class="en" x="795" y="605" text-anchor="middle" font-size="22" font-weight="700" fill="#1f6b4a">Sequence concat  then  Bidirectional Self-Attention</text>
+
+    <rect x="140" y="640" width="360" height="70" rx="8" fill="#fff1d6" stroke="#8a6d3b" stroke-width="2"/>
+    <text class="en" x="320" y="682" text-anchor="middle" font-size="22" font-weight="700" fill="#8a6d3b">prefix tokens</text>
+
+    <text class="en" x="540" y="685" text-anchor="middle" font-size="34" font-weight="700" fill="#1f6b4a">+</text>
+
+    <rect x="580" y="640" width="360" height="70" rx="8" fill="#e8f2f7" stroke="#2f6f8f" stroke-width="2"/>
+    <text class="en" x="760" y="682" text-anchor="middle" font-size="22" font-weight="700" fill="#2f6f8f">frame tokens</text>
+
+    <text class="en" x="980" y="685" text-anchor="middle" font-size="34" font-weight="700" fill="#1f6b4a">→</text>
+
+    <rect x="1020" y="640" width="440" height="70" rx="8" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.5"/>
+    <text class="en" x="1240" y="682" text-anchor="middle" font-size="20" font-weight="700" fill="#1f6b4a">TransformerEncoder</text>
+
+    <text class="en" x="795" y="755" text-anchor="middle" font-size="17" fill="#3d4a42">drop prefix outputs  →  keep frame tokens  →  Linear to Root / Body</text>
+  </g>
+
+  <path d="M580 520 L580 560" fill="none" stroke="#2f6f8f" stroke-width="2.5" marker-end="url(#arr)"/>
+  <path d="M910 520 L910 560" fill="none" stroke="#8a6d3b" stroke-width="2.5" marker-end="url(#arr)"/>
+</svg>
