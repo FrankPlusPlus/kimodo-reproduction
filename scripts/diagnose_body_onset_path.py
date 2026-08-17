@@ -21,6 +21,7 @@ from kimodo.training.body_onset_path_probe import (
     probe_onset_slope,
     probe_virtual_steps,
     summarize_onset_path,
+    summarize_term_slope_timeline,
 )
 from kimodo.training.config import load_training_config
 from kimodo.training.losses import KimodoLoss
@@ -100,6 +101,7 @@ def diagnose(args) -> dict:
     )
     variants = ("atan2", "detach_sigma", "adam", "atan2_last_wd1")
     rows: list[dict] = []
+    slopes_only = bool(getattr(args, "slopes_only", False))
 
     for checkpoint in args.checkpoints:
         path = Path(checkpoint).expanduser().resolve()
@@ -131,6 +133,8 @@ def diagnose(args) -> dict:
                 ),
                 flush=True,
             )
+        if slopes_only:
+            continue
         for variant in variants:
             probe = probe_virtual_steps(
                 model,
@@ -165,6 +169,7 @@ def diagnose(args) -> dict:
                 flush=True,
             )
 
+    term_timeline = summarize_term_slope_timeline(rows)
     verdict = summarize_onset_path(
         rows,
         preflip_step=int(args.preflip_step),
@@ -177,9 +182,11 @@ def diagnose(args) -> dict:
         "seed": int(args.seed),
         "samples": int(args.samples),
         "constraint_step": constraint_step,
-        "virtual_steps": n_steps,
+        "virtual_steps": 0 if slopes_only else n_steps,
+        "slopes_only": slopes_only,
         "device": str(device),
         "rows": rows,
+        "term_slope_timeline": term_timeline,
         "verdict": verdict,
     }
     print(json.dumps({"verdict": verdict}, indent=2), flush=True)
@@ -211,6 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--preflip-step", type=int, default=690000)
     parser.add_argument("--flipped-step", type=int, default=695000)
     parser.add_argument("--virtual-steps", type=int, default=20)
+    parser.add_argument("--slopes-only", action="store_true")
     parser.add_argument("--layer", type=int, default=15)
     parser.add_argument("--device", default="auto")
     parser.add_argument("--output")

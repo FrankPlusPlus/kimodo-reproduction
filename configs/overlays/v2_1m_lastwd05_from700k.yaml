@@ -1,0 +1,35 @@
+# Smoke fork from wd03 parent 700k (attn cos +0.29, flip not yet).
+# Not an unpublished NVIDIA recipe.
+#
+# Hypothesis: moderate last-layer wd delays cos≈0 past 750k without the
+# text cliff of lastwd1@1.0; curriculum bias counters constraint-only updates.
+# Keep parent peak LR schedule (1e-5 from fork step, decay to 2e-6 by 850k).
+# Do not reuse lr=3e-6 rescue or last_layer wd=1.0.
+#
+# Parent: runs/v2-1m-hostnet-wd03-from650k/checkpoints/step-000700000.pt
+curriculum:
+  sparse_keyframe_cap_mode: adjacent_mix
+  sparse_keyframes_max: 20
+  sparse_channel_budget: 0
+  sparse_same_frame_overlap_probability: 0.0
+  text_dropout_probability: 0.05
+  no_constraint_probability: 0.18
+
+optimizer:
+  name: adam_atan2
+  learning_rate: 1.0e-5
+  weight_decay: 0.3
+  last_layer_weight_decay: 0.5
+  warmup_steps: 2000
+  warmup_start_lr: 1.0e-6
+  lr_end: 2.0e-6
+  lr_schedule_start_step: 700000
+  gradient_clip_norm: 1.0
+  skip_gradient_norm: null
+
+runtime:
+  reset_optimizer: true
+  max_steps_override: 850000
+  checkpoint_every: 5000
+  keep_last_checkpoints: 20
+  milestone_every: 20000

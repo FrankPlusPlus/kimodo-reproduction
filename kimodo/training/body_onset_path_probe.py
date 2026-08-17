@@ -225,11 +225,13 @@ def measure_last_layer(
             )
     last = (hooks.summarize() or [{}])[0]
     ffn = last.get("ffn") if isinstance(last.get("ffn"), dict) else {}
+    in_proj = _body_layer(bare, layer_index).self_attn.in_proj_weight
     return {
         "attn_cosine": _safe_float(last.get("mean_token_cosine")),
         "attn_sigma": _safe_float(last.get("ln_sigma_mean")),
         "ffn_cosine": _safe_float(ffn.get("mean_token_cosine")),
         "ffn_sigma": _safe_float(ffn.get("ln_sigma_mean")),
+        "in_proj_rms": _safe_float(in_proj.detach().float().pow(2).mean().sqrt()),
     }
 
 
@@ -297,6 +299,20 @@ def probe_onset_slope(
     }
 
 
+def _variant_optimizer_knobs(variant: str, *, default_lambda: float) -> dict[str, Any]:
+    if variant == "adam":
+        return {"kind": "adam", "weight_decay": 0.0, "last_decay": 0.0, "atan2_lambda": default_lambda}
+    if variant == "atan2_last_wd1":
+        return {"kind": "atan2", "weight_decay": 0.0, "last_decay": 1.0, "atan2_lambda": default_lambda}
+    if variant == "atan2_wd03":
+        return {"kind": "atan2", "weight_decay": 0.3, "last_decay": 0.3, "atan2_lambda": default_lambda}
+    if variant == "atan2_lambda1":
+        return {"kind": "atan2", "weight_decay": 0.0, "last_decay": 0.0, "atan2_lambda": 1.0}
+    if variant in {"atan2", "detach_sigma", "atan2_clip1"}:
+        return {"kind": "atan2", "weight_decay": 0.0, "last_decay": 0.0, "atan2_lambda": default_lambda}
+    raise ValueError(f"unsupported virtual-step variant: {variant}")
+
+
 def _build_virtual_optimizer(
     model: nn.Module,
     *,
@@ -308,19 +324,21 @@ def _build_virtual_optimizer(
 ) -> torch.optim.Optimizer:
     last = _last_layer_params(model, layer_index)
     rest = _other_params(model, layer_index)
-    if variant == "adam":
-        return torch.optim.Adam(
-            [{"params": rest, "weight_decay": 0.0}, {"params": last, "weight_decay": 0.0}],
-            lr=lr,
-            betas=betas,
-        )
-    last_decay = 1.0 if variant == "atan2_last_wd1" else 0.0
+    knobs = _variant_optimizer_knobs(variant, default_lambda=atan2_lambda)
+    rest_decay = float(knobs["weight_decay"])
+    last_decay = float(knobs["last_decay"])
+    groups = [
+        {"params": rest, "weight_decay": rest_decay},
+        {"params": last, "weight_decay": last_decay},
+    ]
+    if knobs["kind"] == "adam":
+        return torch.optim.Adam(groups, lr=lr, betas=betas)
     return AdamAtan2(
-        [{"params": rest, "weight_decay": 0.0}, {"params": last, "weight_decay": last_decay}],
+        groups,
         lr=lr,
         betas=betas,
         weight_decay=0.0,
-        atan2_lambda=atan2_lambda,
+        atan2_lambda=float(knobs["atan2_lambda"]),
     )
 
 
@@ -344,13 +362,12 @@ def probe_virtual_steps(
     layer_index: int = 15,
     n_steps: int = 20,
     log_every: int = 5,
+    clip_norm: float | None = None,
 ) -> dict[str, Any]:
     """Take ``n_steps`` in memory, photograph cosine, restore weights."""
     from kimodo.training.modeling import set_model_dropout, unwrap_model
 
-    allowed = {"atan2", "detach_sigma", "adam", "atan2_last_wd1"}
-    if variant not in allowed:
-        raise ValueError(f"unsupported virtual-step variant: {variant}")
+    _variant_optimizer_knobs(variant, default_lambda=1.0)
     bare = unwrap_model(model)
     set_model_dropout(bare, 0.0)
     bare.train()
@@ -401,6 +418,8 @@ def probe_virtual_steps(
                 prediction = _call_denoiser(bare, **forward)
                 losses = loss_function(prediction, target, valid_frames)
                 losses.frame_sums["total"].backward()
+            if clip_norm is not None and float(clip_norm) > 0:
+                torch.nn.utils.clip_grad_norm_(bare.parameters(), float(clip_norm))
             optimizer.step()
             if step % int(log_every) == 0 or step == int(n_steps):
                 row = measure_last_layer(bare, layer_index=layer_index, **forward)
@@ -453,6 +472,35 @@ def _slope_verdict(d_mean: float, cut: float) -> str:
     if d_mean >= cut:
         return "loss_punishes_local_cancel"
     return "loss_flat_local"
+
+
+def summarize_term_slope_timeline(
+    rows: Sequence[dict[str, Any]],
+    *,
+    slope_cut: float = 0.005,
+) -> list[dict[str, Any]]:
+    """Per-checkpoint dL/dα for total and each loss term (experiment S)."""
+    timeline: list[dict[str, Any]] = []
+    for row in rows:
+        if row.get("kind") != "slope":
+            continue
+        probe = _probe(row)
+        target = (row.get("targets") or ["?"])[0]
+        d_mean = _safe_float(probe.get("d_loss_mean_d_alpha"))
+        entry: dict[str, Any] = {
+            "global_step": row.get("global_step"),
+            "target": target,
+            "d_loss_mean_d_alpha": d_mean,
+            "slope_verdict": _slope_verdict(d_mean, float(slope_cut)),
+            "loss_total_mean": probe.get("loss_total_mean"),
+            "term_d_sum_d_alpha": probe.get("term_d_sum_d_alpha") or {},
+        }
+        terms = entry["term_d_sum_d_alpha"]
+        if isinstance(terms, dict):
+            for name, value in terms.items():
+                entry[f"term_{name}_d_alpha"] = value
+        timeline.append(entry)
+    return timeline
 
 
 def _drive_verdict(delta: float, cut: float) -> bool:

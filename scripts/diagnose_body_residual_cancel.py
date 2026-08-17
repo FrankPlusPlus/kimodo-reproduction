@@ -16,8 +16,10 @@ import torch
 
 from kimodo.training.body_residual_cancel_probe import (
     compare_residual_rows,
+    full_stack_timeline,
     probe_residual_cancel,
     residual_timeline,
+    summarize_attn_ffn_asymmetry,
     summarize_residual_cancel,
 )
 from kimodo.training.config import load_training_config
@@ -38,6 +40,8 @@ _jacobian = _load_jacobian_diagnose()
 
 
 def _layers(args) -> list[int]:
+    if getattr(args, "all_layers", False):
+        return list(range(16))
     if args.layers:
         return [int(index) for index in args.layers]
     return [0, 7, 13, 14, 15]
@@ -116,6 +120,8 @@ def diagnose(args) -> dict:
                     json.dumps(row, indent=2, sort_keys=True) + "\n", encoding="utf-8"
                 )
     timeline = residual_timeline(rows)
+    full_stack = full_stack_timeline(rows, constraint_step=constraint_steps[-1]) if getattr(args, "all_layers", False) else []
+    asymmetry = summarize_attn_ffn_asymmetry(full_stack) if full_stack else {}
     same_clock = [row for row in rows if row.get("constraint_step") == constraint_steps[-1]]
     ratios = (
         compare_residual_rows(same_clock[-1]["probe"], same_clock[0]["probe"])
@@ -133,10 +139,12 @@ def diagnose(args) -> dict:
         "layers": layers,
         "rows": rows,
         "timeline": timeline,
+        "full_stack_timeline": full_stack,
+        "asymmetry": asymmetry,
         "ratios": ratios,
         "verdict": verdict,
     }
-    print(json.dumps({"timeline": timeline, "verdict": verdict}, indent=2), flush=True)
+    print(json.dumps({"timeline": timeline, "asymmetry": asymmetry, "verdict": verdict}, indent=2), flush=True)
     if output_dir is not None:
         (output_dir / f"rank-{rank:02d}.json").write_text(
             json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
@@ -144,7 +152,7 @@ def diagnose(args) -> dict:
         if rank == 0:
             (output_dir / "verdict.json").write_text(
                 json.dumps(
-                    {"verdict": verdict, "ratios": ratios, "timeline": timeline},
+                    {"verdict": verdict, "ratios": ratios, "timeline": timeline, "asymmetry": asymmetry},
                     indent=2,
                     sort_keys=True,
                 )
@@ -168,6 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--constraint-step", type=int, default=795000)
     parser.add_argument("--constraint-steps", nargs="+", type=int)
     parser.add_argument("--layers", nargs="+", type=int)
+    parser.add_argument("--all-layers", action="store_true")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--output")
     parser.add_argument("--output-dir")

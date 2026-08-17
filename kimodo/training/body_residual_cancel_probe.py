@@ -227,6 +227,111 @@ def residual_timeline(rows: Sequence[dict[str, Any]], layer_indices: Sequence[in
     return timeline
 
 
+def _branch_stats(layer: dict[str, Any], branch: str) -> dict[str, float | None]:
+    if branch == "attn":
+        return {
+            "cosine": layer.get("mean_token_cosine"),
+            "sigma": layer.get("ln_sigma_mean"),
+            "sum_over_residual_rms": layer.get("sum_over_residual_rms"),
+        }
+    nested = layer.get(branch)
+    if not isinstance(nested, dict):
+        return {"cosine": None, "sigma": None, "sum_over_residual_rms": None}
+    return {
+        "cosine": nested.get("mean_token_cosine"),
+        "sigma": nested.get("ln_sigma_mean"),
+        "sum_over_residual_rms": nested.get("sum_over_residual_rms"),
+    }
+
+
+def full_stack_timeline(
+    rows: Sequence[dict[str, Any]],
+    *,
+    num_layers: int = 16,
+    constraint_step: int | None = None,
+) -> list[dict[str, Any]]:
+    """Per-checkpoint attn/ffn cosine and σ for every body layer (experiment R)."""
+    timeline: list[dict[str, Any]] = []
+    for row in rows:
+        if constraint_step is not None and int(row.get("constraint_step") or -1) != int(constraint_step):
+            continue
+        named = {
+            int(layer["index"]): layer
+            for layer in (row.get("probe") or {}).get("layers") or []
+            if "index" in layer
+        }
+        entry: dict[str, Any] = {
+            "global_step": row.get("global_step"),
+            "constraint_step": row.get("constraint_step"),
+        }
+        for index in range(int(num_layers)):
+            layer = named.get(index) or {}
+            prefix = f"L{index:02d}"
+            attn = _branch_stats(layer, "attn")
+            ffn = _branch_stats(layer, "ffn")
+            entry[f"{prefix}_attn_cosine"] = attn["cosine"]
+            entry[f"{prefix}_attn_sigma"] = attn["sigma"]
+            entry[f"{prefix}_ffn_cosine"] = ffn["cosine"]
+            entry[f"{prefix}_ffn_sigma"] = ffn["sigma"]
+        timeline.append(entry)
+    return timeline
+
+
+def summarize_attn_ffn_asymmetry(
+    timeline: Sequence[dict[str, Any]],
+    *,
+    last_layer: int = 15,
+    sigma_cut: float = 0.90,
+    cosine_flip: float = 0.0,
+) -> dict[str, Any]:
+    """Compare when L15 attn vs FFN cross flip thresholds across checkpoints."""
+    prefix = f"L{int(last_layer):02d}"
+    attn_cross: int | None = None
+    ffn_cross: int | None = None
+    attn_sigma_drop: int | None = None
+    ffn_sigma_drop: int | None = None
+    for row in timeline:
+        step = row.get("global_step")
+        try:
+            step_i = int(step)
+        except (TypeError, ValueError):
+            continue
+        attn_cos = row.get(f"{prefix}_attn_cosine")
+        ffn_cos = row.get(f"{prefix}_ffn_cosine")
+        attn_sig = row.get(f"{prefix}_attn_sigma")
+        ffn_sig = row.get(f"{prefix}_ffn_sigma")
+        if attn_cross is None and isinstance(attn_cos, (int, float)) and float(attn_cos) <= cosine_flip:
+            attn_cross = step_i
+        if ffn_cross is None and isinstance(ffn_cos, (int, float)) and float(ffn_cos) <= cosine_flip:
+            ffn_cross = step_i
+        if attn_sigma_drop is None and isinstance(attn_sig, (int, float)) and float(attn_sig) < sigma_cut:
+            attn_sigma_drop = step_i
+        if ffn_sigma_drop is None and isinstance(ffn_sig, (int, float)) and float(ffn_sig) < sigma_cut:
+            ffn_sigma_drop = step_i
+    same_flip = attn_cross is not None and attn_cross == ffn_cross
+    verdict = "incomplete"
+    if attn_cross is not None and ffn_cross is not None:
+        if attn_cross > ffn_cross:
+            verdict = "attn_flips_after_ffn"
+        elif attn_cross < ffn_cross:
+            verdict = "attn_flips_before_ffn"
+        else:
+            verdict = "attn_ffn_flip_together"
+    elif attn_cross is not None:
+        verdict = "attn_flipped_ffn_never"
+    elif ffn_cross is not None:
+        verdict = "ffn_flipped_attn_never"
+    return {
+        "verdict": verdict,
+        "l15_attn_flip_step": attn_cross,
+        "l15_ffn_flip_step": ffn_cross,
+        "l15_attn_sigma_drop_step": attn_sigma_drop,
+        "l15_ffn_sigma_drop_step": ffn_sigma_drop,
+        "sigma_cut": float(sigma_cut),
+        "cosine_flip": float(cosine_flip),
+    }
+
+
 def summarize_residual_cancel(
     ratios: dict[str, dict[str, float]],
     *,
