@@ -8,12 +8,14 @@ This script recursively embeds generated motions, ground-truth motions, and text
 """
 
 import argparse
+import os
 from pathlib import Path
 
 import numpy as np
 import torch
 from tqdm import tqdm
 
+from kimodo.evaluation.text_gallery import GALLERY_ENV, stamp_text_gallery
 from kimodo.meta import parse_prompts_from_meta
 from kimodo.model.load_model import load_model
 from kimodo.tools import load_json
@@ -74,11 +76,24 @@ def main():
         action="store_true",
         help="Uses fp32 for the text encoder rather than default bfloat16.",
     )
+    parser.add_argument(
+        "--text-gallery",
+        default=os.environ.get(GALLERY_ENV, ""),
+        help="Frozen TMR text_embedding.npy tree. When set, prompts are copied not re-encoded.",
+    )
     args = parser.parse_args()
 
     folder = args.folder.resolve()
     if not folder.is_dir():
         raise SystemExit(f"Folder does not exist or is not a directory: {folder}")
+
+    gallery = str(args.text_gallery or "").strip()
+    if gallery:
+        stamped = stamp_text_gallery(Path(gallery), folder, required=True)
+        print(
+            f"Stamped {stamped['copied']} text embeddings from {stamped['gallery']} "
+            f"(fingerprint {stamped['fingerprint'][:12]})"
+        )
 
     device = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model(modelname=args.model, device=device, default_family="TMR", text_encoder_fp32=args.text_encoder_fp32)
@@ -122,7 +137,7 @@ def main():
                 np.save(sample_dir / "gt_motion_embedding.npy", gt_motion_emb.cpu().numpy())
 
         # Embed text -> text_embedding.npy
-        if not args.overwrite and (sample_dir / "text_embedding.npy").is_file():
+        if gallery or (not args.overwrite and (sample_dir / "text_embedding.npy").is_file()):
             skipped_text += 1
         else:
             with torch.inference_mode():

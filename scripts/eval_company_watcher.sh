@@ -27,4 +27,25 @@ if [[ "${KIMODO_EVAL_TEXT_ENCODER_FP32:-0}" == 1 ]]; then
   args+=(--text-encoder-fp32)
 fi
 
+asset_root="${KIMODO_EVAL_ASSET_ROOT:-${storage_root}/yezitao-kimodo-eval-v2}"
+if [[ -z "${KIMODO_EVAL_TEXT_GALLERY:-}" && "${benchmark_root}" == *stratified-10pct* ]]; then
+  frozen="${asset_root}/galleries/tmr-text-wd03-750k"
+  parent="${storage_root}/eval-results/v2-1m-hostnet-wd03-from650k-stratified10pct/step-000750000/generated"
+  if [[ -d "${frozen}" ]]; then
+    export KIMODO_EVAL_TEXT_GALLERY="${frozen}"
+  elif [[ -d "${parent}" ]]; then
+    export KIMODO_EVAL_TEXT_GALLERY="${parent}"
+  fi
+fi
+if [[ "${benchmark_root}" == *stratified-10pct* ]]; then
+  if [[ -z "${KIMODO_EVAL_TEXT_GALLERY:-}" || ! -d "${KIMODO_EVAL_TEXT_GALLERY}" ]]; then
+    echo "stratified-10pct eval needs the frozen 750k TMR text gallery." >&2
+    echo "Copy parent 750k text_embedding.npy to ${asset_root}/galleries/tmr-text-wd03-750k" >&2
+    echo "or set KIMODO_EVAL_TEXT_GALLERY." >&2
+    exit 2
+  fi
+  args+=(--text-gallery "${KIMODO_EVAL_TEXT_GALLERY}")
+  echo "eval: text_gallery=${KIMODO_EVAL_TEXT_GALLERY}"
+fi
+
 exec python -m kimodo.evaluation.eval_monitor_cli "${args[@]}" "$@"

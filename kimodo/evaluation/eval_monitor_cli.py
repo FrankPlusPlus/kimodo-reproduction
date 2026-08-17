@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from kimodo.evaluation.text_gallery import GALLERY_ENV, stamp_text_gallery
 from kimodo.monitoring import WandbMonitor
 from kimodo.training.checkpoint import atomic_text_write
 
@@ -208,6 +209,19 @@ def _load_completed(output_root: Path) -> list[dict[str, Any]]:
     return completed
 
 
+def resolve_text_gallery(args: argparse.Namespace) -> Path | None:
+    raw = str(getattr(args, "text_gallery", None) or os.environ.get(GALLERY_ENV, "") or "").strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    benchmark = str(Path(args.benchmark).expanduser())
+    if "stratified-10pct" in benchmark:
+        raise SystemExit(
+            "stratified-10pct eval requires a frozen TMR text gallery "
+            f"(--text-gallery or {GALLERY_ENV})"
+        )
+    return None
+
+
 def evaluate_export(
     args: argparse.Namespace,
     step: int,
@@ -258,6 +272,15 @@ def evaluate_export(
             generate.append("--text_encoder_fp32")
         _run(generate, cwd=project_root, log_path=log_path)
 
+        gallery = resolve_text_gallery(args)
+        gallery_record = None
+        if gallery is not None:
+            gallery_record = stamp_text_gallery(gallery, generated, required=True)
+            with log_path.open("a", encoding="utf-8") as log:
+                log.write(
+                    f"stamped {gallery_record['copied']} text embeddings from {gallery}\n"
+                )
+
         embed = [
             python,
             "benchmark/embed_folder.py",
@@ -267,6 +290,8 @@ def evaluate_export(
         ]
         if args.text_encoder_fp32:
             embed.append("--text_encoder_fp32")
+        if gallery is not None:
+            embed.extend(["--text-gallery", str(gallery)])
         _run(embed, cwd=project_root, log_path=log_path)
 
         evaluate = [
@@ -307,6 +332,7 @@ def evaluate_export(
             "generation_batch_size": args.batch_size,
             "text_encoder_precision": "fp32" if args.text_encoder_fp32 else "bf16",
             "paper_protocol": bool(args.paper_protocol),
+            "text_gallery": gallery_record,
             "summary": summary,
         }
         if args.baseline_summary:
@@ -407,6 +433,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--diffusion-steps", type=int, default=100)
     parser.add_argument("--text-encoder-fp32", action="store_true")
     parser.add_argument("--paper-protocol", action="store_true")
+    parser.add_argument(
+        "--text-gallery",
+        default=os.environ.get(GALLERY_ENV, ""),
+        help="Frozen TMR text_embedding.npy tree used instead of live prompt encoding",
+    )
     return parser
 
 
