@@ -82,7 +82,12 @@
   .slide.noise-page,
   .slide.loss-page,
   .slide.body-page,
-  .slide.infer-pe-page {
+  .slide.infer-pe-page,
+  .slide.loss-flow-page,
+  .slide.lineage-page,
+  .slide.outlook-page,
+  .slide.scene,
+  .slide.chapter-open {
     overflow-x: hidden !important;
     overflow-y: auto !important;
   }
@@ -98,7 +103,10 @@
   .slide.pose-page .pose-board,
   .slide.noise-page .noise-board,
   .slide.gap-page .map-annotated,
-  .slide.curriculum-page .curr-board {
+  .slide.curriculum-page .curr-board,
+  .slide.lineage-page .lineage-board,
+  .slide.outlook-page .outlook-board,
+  .slide.loss-flow-page .loss-flow-board {
     overflow: visible;
     min-height: min-content;
     flex-shrink: 0;
@@ -831,13 +839,134 @@
     margin: 0 0 10px;
   }
 
+  .slide.lineage-page .lineage-board {
+    flex: 1 0 auto; min-height: min-content;
+    display: grid;
+    grid-template-columns: minmax(220px, 0.86fr) minmax(360px, 1.25fr) minmax(250px, 0.95fr);
+    gap: 18px; align-items: stretch;
+  }
+  .slide.lineage-page .lineage-list { border-left: 2px solid var(--line); }
+  .slide.lineage-page .lineage-item {
+    padding: 3px 8px 3px 12px; cursor: pointer;
+    border-bottom: 1px solid var(--line);
+    transition: background .15s ease, box-shadow .15s ease;
+    position: relative;
+  }
+  .slide.lineage-page .lineage-item h3 { margin: 1px 0 0; font-size: clamp(12.5px, 0.95vw, 14.5px); }
+  .slide.lineage-page .lineage-item .when { font-size: 10px; }
+  .slide.lineage-page .lineage-item.live {
+    background: linear-gradient(90deg, rgba(46, 255, 163, 0.26), rgba(46, 255, 163, 0.05) 48%, transparent 82%);
+    box-shadow: inset 3px 0 0 #2dff9a, 0 0 12px rgba(45, 255, 154, 0.32);
+  }
+  .slide.lineage-page .lineage-item.live .when { color: #0f7a4a; }
+  .slide.lineage-page .lineage-item.live h3 { color: #0d5c3a; }
+  .slide.lineage-page .lineage-item.live:hover,
+  .slide.lineage-page .lineage-item.live.active {
+    background: linear-gradient(90deg, rgba(46, 255, 163, 0.42), #e7f1eb 78%);
+    box-shadow: inset 3px 0 0 #14ff88, 0 0 18px rgba(20, 255, 136, 0.55);
+  }
+  .slide.lineage-page .lineage-item.gan { border-left: 3px solid #c45c26; }
+  .slide.lineage-page .lineage-item p { margin: 0; font-size: 12px; color: var(--ink-soft); line-height: 1.3; }
+  .slide.lineage-page .lineage-item:last-child { border-bottom: 0; }
+  .slide.lineage-page .lineage-item:hover,
+  .slide.lineage-page .lineage-item.active { background: #f3f7f4; }
+  .slide.lineage-page .lineage-item .when {
+    font: 700 11px/1 "IBM Plex Sans", sans-serif; color: var(--muted);
+    letter-spacing: .04em; text-transform: uppercase;
+  }
+  .slide.lineage-page .lineage-item.here { border-left: 3px solid var(--accent); }
+  .slide.lineage-page .lineage-item.active.here { background: var(--accent-soft); }
+  .slide.lineage-page .lineage-item.live.active.here {
+    background: linear-gradient(90deg, rgba(46, 255, 163, 0.42), #e7f1eb 78%);
+    box-shadow: inset 3px 0 0 #14ff88, 0 0 18px rgba(20, 255, 136, 0.55);
+  }
+  .slide.lineage-page .lineage-item.map { border-left: 3px solid var(--ink); }
+  .slide.lineage-page .lineage-item.graph { border-left: 3px solid var(--noise); }
+  .slide.lineage-page .lineage-item.rnn { border-left: 3px solid var(--body); }
+  .slide.lineage-page .lineage-item.vae { border-left: 3px solid var(--textc); }
+  .slide.lineage-page .lineage-item.t2m { border-left: 3px solid var(--root); }
+  .slide.lineage-page .lineage-item.llm { border-left: 3px solid var(--const); }
+  .slide.lineage-page .lineage-item.explicit { border-left: 3px solid var(--accent); }
+  .slide.lineage-page .lineage-item.latent { border-left: 3px solid var(--root); }
+  .slide.lineage-page .lineage-item.discrete { border-left: 3px solid var(--const); }
+  .slide.lineage-page .lineage-item.mask { border-left: 3px solid var(--textc); }
+  .slide.lineage-page .lineage-item.flow { border-left: 3px solid var(--body); }
+  .slide.lineage-page .lineage-item.stream { border-left: 3px solid var(--noise); }
+  .slide.lineage-page .lineage-item.phys { border-left: 3px solid var(--warn); }
+  .place-card .where {
+    font: 700 11px/1 "IBM Plex Sans", sans-serif; color: var(--muted);
+    letter-spacing: .04em; text-transform: uppercase; margin-bottom: 8px;
+  }
+  .place-card.here { border-top: 3px solid var(--accent); }
+  .place-card.out { border-top: 3px solid var(--line); }
+  .place-card.side { border-top: 3px solid var(--root); }
+  .place-card.down { border-top: 3px solid var(--const); }
+  .slide.era-page table.data { font-size: 13px; }
+  .slide.era-page table.data td.pick { color: var(--accent); font-weight: 700; }
+  .slide.lineage-page .lineage-stage {
+    display: flex; flex-direction: column; min-height: 0;
+    border: 1px solid var(--line); background: #fff; padding: 8px 10px 6px;
+  }
+  .slide.lineage-page .era-fig,
+  .slide.outlook-page .era-fig { display: none; width: 100%; height: auto; flex: 1; min-height: 190px; }
+  .slide.lineage-page .era-fig.on,
+  .slide.outlook-page .era-fig.on { display: block; }
+  .slide.lineage-page .lineage-note h3,
+  .slide.outlook-page .outlook-note h3 { margin: 0 0 8px; font-size: 17px; }
+  .slide.lineage-page .lineage-note p,
+  .slide.outlook-page .outlook-note p {
+    margin: 0 0 8px; font-size: 14px; color: var(--ink-soft); line-height: 1.4;
+  }
+  .slide.lineage-page .lineage-note ul.clean,
+  .slide.outlook-page .outlook-note ul.clean { margin: 0; }
+  .slide.lineage-page .src,
+  .slide.outlook-page .src { margin-top: 10px; font-size: 11.5px; color: var(--muted); }
+  .slide.lineage-page .lineage-note .note-panel,
+  .slide.outlook-page .outlook-note .note-panel { display: none; }
+  .slide.lineage-page .lineage-note .note-panel.on,
+  .slide.outlook-page .outlook-note .note-panel.on { display: block; }
+
+  .slide.outlook-page .outlook-board {
+    flex: 1 0 auto; min-height: min-content;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .slide.outlook-page .outlook-rail {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    gap: 0; border-top: 2px solid var(--ink); padding-top: 12px; flex: 0 0 auto;
+  }
+  .slide.outlook-page .outlook-item {
+    cursor: pointer; padding: 0 12px 8px 0; border-right: 1px solid var(--line);
+    min-height: 92px;
+  }
+  .slide.outlook-page .outlook-item:last-child { border-right: 0; padding-right: 0; }
+  .slide.outlook-page .outlook-item .when {
+    font: 700 11px/1 "IBM Plex Sans", sans-serif; color: var(--muted); letter-spacing: .04em;
+  }
+  .slide.outlook-page .outlook-item h3 { margin: 6px 0 4px; font-size: 16px; }
+  .slide.outlook-page .outlook-item p { margin: 0; font-size: 12.5px; color: var(--ink-soft); line-height: 1.3; }
+  .slide.outlook-page .outlook-item:hover,
+  .slide.outlook-page .outlook-item.active { background: #f3f7f4; margin-top: -12px; padding-top: 12px; }
+  .slide.outlook-page .outlook-item.ours.active { background: var(--accent-soft); }
+  .slide.outlook-page .outlook-item.expert { box-shadow: inset 0 3px 0 var(--const); }
+  .slide.outlook-page .outlook-item.expert.active { background: #f7f4fb; }
+  .slide.outlook-page .outlook-body {
+    display: grid; grid-template-columns: 1.35fr 0.9fr; gap: 18px; flex: 1; min-height: 0;
+  }
+  .slide.outlook-page .outlook-stage {
+    border: 1px solid var(--line); background: #fff; padding: 8px 10px;
+    display: flex; min-height: 210px;
+  }
+
   .slide.figfirst .below.dense { grid-template-columns: 1.15fr 0.85fr; }
 
   /* —— Loss + two-stage curriculum —— */
   .slide.loss-page .below.loss-layout {
-    grid-template-columns: minmax(0,.88fr) minmax(0,1.12fr);
-    grid-template-rows: minmax(220px,1.3fr) minmax(150px,.8fr);
-    gap: 12px 16px;
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0,1fr);
+    gap: 12px;
+    align-items: stretch;
   }
   .loss-page .loss-table-card { grid-column:1/-1; padding:8px 12px!important; }
   .loss-page .loss-table-card table.data th,
@@ -852,7 +981,12 @@
   }
   .loss-route.root { color:var(--root); background:#e9f3f8; }
   .loss-route.body { color:var(--body); background:#f8edf0; }
-  .loss-page .loss-impl-card,.loss-page .smooth-card { padding:10px 14px!important; }
+  .loss-page .loss-impl-card,.loss-page .smooth-card { padding:10px 14px!important; min-height:0; }
+  .slide.loss-page .smooth-card {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
   .loss-impl-card { border-top:3px solid var(--accent); }
   .loss-impl-steps { display:grid; grid-template-rows:repeat(3,minmax(0,1fr)); min-height:0; flex:1; }
   .loss-impl-step {
@@ -880,12 +1014,62 @@
     margin:-1px 0 1px; text-align:center; color:var(--ink-soft);
     font:500 clamp(12px,1vw,14.5px)/1.2 "Source Serif 4",serif; flex:0 0 auto;
   }
-  .smooth-plot { display:block; width:100%; min-height:80px; flex:1 1 auto; }
+  .smooth-plot-wrap {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    position: relative;
+    margin: 6px 0 4px;
+  }
+  .smooth-plot {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    margin: 0;
+  }
+  .smooth-plot line,
+  .smooth-plot polyline {
+    vector-effect: non-scaling-stroke;
+  }
+  .smooth-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    font: 600 clamp(11px, 0.95vw, 13px)/1 "IBM Plex Sans", "Noto Sans SC", sans-serif;
+    color: var(--muted);
+  }
+  .smooth-labels span {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+  }
+  .smooth-labels .quad { color: var(--accent); font-weight: 700; }
+  .smooth-labels .sym { font-family: "Source Serif 4", serif; font-weight: 600; }
   .smooth-takeaway {
     display:flex; justify-content:center; gap:18px; color:var(--muted);
     font-size:clamp(11px,.85vw,13px); line-height:1.2; flex:0 0 auto;
   }
   .smooth-takeaway strong { color:var(--ink-soft); }
+
+  .slide.loss-flow-page {
+    padding-top: 18px;
+    padding-bottom: 12px;
+  }
+  .slide.loss-flow-page .kicker { margin-bottom: 2px; }
+  .slide.loss-flow-page .title { font-size: clamp(22px, 2.2vw, 30px); margin: 0; }
+  .loss-flow-board {
+    display:flex; flex-direction:column; flex:1 1 auto; min-height:0;
+  }
+  .loss-flow-board .flow-fig {
+    flex:1 1 auto; min-height:0; display:flex; align-items:stretch; justify-content:center;
+    margin: 4px 0 0;
+  }
+  .loss-flow-board .flow-fig img {
+    display:block; width:100%; height:100%; max-height:min(88vh, 980px); object-fit:contain;
+  }
 
   .slide.curriculum-page { }
   .curriculum-page .title,.curriculum-page .lead { max-width:none; }
@@ -983,7 +1167,6 @@
   }
   @media (max-height:820px) {
     .loss-page .loss-impl-card,.loss-page .smooth-card { padding:8px 12px!important; }
-    .loss-page .smooth-plot { min-height:62px; }
     .slide.loss-page .below .loss-table-card table.data th,
     .slide.loss-page .below .loss-table-card table.data td {
       padding-top:3px!important; padding-bottom:3px!important;
@@ -1161,6 +1344,57 @@
     text-align: center;
     font-size: 13px;
   }
+  .gap-verify-grid {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-top: 10px;
+    border: 1px solid var(--line);
+    background: #fff;
+    overflow: hidden;
+  }
+  .gap-verify-head,
+  .gap-verify-row {
+    display: grid;
+    grid-template-columns: 1.05fr 1.35fr 1.15fr .62fr .52fr;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 14px;
+    font-size: clamp(12px, .92vw, 14px);
+    line-height: 1.35;
+  }
+  .gap-verify-head {
+    background: #f3f6f4;
+    color: var(--muted);
+    font: 700 11px/1.2 "IBM Plex Sans", "Noto Sans SC", sans-serif;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+  }
+  .gap-verify-row {
+    border-top: 1px solid var(--line);
+    color: var(--ink-soft);
+  }
+  .gap-verify-row .axis {
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .gap-verify-row.input .axis { color: var(--root); }
+  .gap-verify-row.constraint .axis { color: var(--const); }
+  .gap-verify-row.detach .axis { color: var(--body); }
+  .gap-verify-row.loss .axis { color: var(--warn); }
+  .gap-verify-row.full .axis { color: var(--accent); }
+  .gap-verify-row .status {
+    justify-self: start;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font: 700 11px/1.2 "IBM Plex Sans", "Noto Sans SC", sans-serif;
+    white-space: nowrap;
+  }
+  .gap-verify-row .status.done { color: var(--accent); background: var(--accent-soft); }
+  .gap-verify-row .status.todo { color: var(--warn); background: #fff7ec; }
+  .gap-verify-row .status.bg { color: var(--muted); background: #f1f5f2; }
+  .gap-verify-row .status.full { color: #fff; background: var(--accent); }
 
   .gap-detail-grid {
     display: grid;
@@ -3046,42 +3280,245 @@
 
   .cover {
     justify-content: flex-end;
-    /* solid fallback first — never rely on remote/local image alone */
-    background-color: #132019 !important;
+    background-color: #101814 !important;
     background-image:
-      linear-gradient(180deg, rgba(14,20,17,.25), rgba(14,20,17,.82)),
+      linear-gradient(180deg, rgba(16,24,20,.35) 0%, rgba(16,24,20,.88) 58%, #101814 100%),
       url("assets/overview.png");
-    background-position: center;
+    background-position: center 28%;
     background-size: cover;
     background-repeat: no-repeat;
     color: #f4f7f5;
   }
   .cover::before { display: none; }
-  .cover .kicker { color: #b7d8c6; }
-  .cover .title { max-width: 16ch; font-size: clamp(36px, 5vw, 58px); color: #fff; }
-  .cover .subtitle { color: #d7e4dc; max-width: 46ch; }
-  .cover .meta { margin-top: 28px; display: flex; gap: 24px; font-size: 14px; color: #c5d4cb; flex-wrap: wrap; }
-  .cover .meta span { border-left: 2px solid #6f9b82; padding-left: 10px; }
-
-  .agenda-list { counter-reset: ag; margin-top: 18px; }
-  .agenda-list li {
-    counter-increment: ag;
-    display: grid;
-    grid-template-columns: 48px 1fr;
-    gap: 16px;
-    padding: 14px 0;
-    border-bottom: 1px solid var(--line);
-    align-items: start;
+  .cover-copy {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    border-left: 3px solid var(--accent);
+    padding-left: clamp(16px, 2vw, 24px);
+    max-width: 42rem;
   }
-  .agenda-list li::before {
-    content: counter(ag, decimal-leading-zero);
+  .cover .kicker {
+    color: #8fbfa3;
+    margin-bottom: 16px;
+  }
+  .cover .cover-brand {
     font-family: "Source Serif 4", serif;
-    font-size: 28px;
-    color: var(--accent);
-    line-height: 1;
+    font-size: clamp(18px, 2vw, 22px);
+    font-weight: 600;
+    color: #b7d8c6;
+    letter-spacing: 0.16em;
+    margin: 0 0 8px;
   }
-  .agenda-list strong { display: block; font-size: 18px; margin-bottom: 2px; }
-  .agenda-list span { color: var(--muted); font-size: 14px; }
+  .cover .title {
+    max-width: 8em;
+    font-size: clamp(40px, 5.2vw, 62px);
+    color: #fff;
+  }
+  .cover .meta {
+    margin-top: 28px;
+    display: flex;
+    gap: 22px;
+    font-size: 14px;
+    color: #c5d4cb;
+    flex-wrap: wrap;
+  }
+  .cover .meta span {
+    border-left: 2px solid #6f9b82;
+    padding-left: 10px;
+  }
+
+  .slide.chapter.chapter-open {
+    justify-content: flex-end;
+  }
+  .chapter-open-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 0.72fr);
+    gap: 32px;
+    align-items: end;
+    flex: 1;
+    min-height: 0;
+  }
+  .chapter-open-copy .chapter-num { margin-bottom: 6px; }
+  .chapter-open-fig {
+    margin: 0;
+    height: min(52vh, 420px);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  .chapter-open-fig img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    filter: saturate(.85);
+  }
+
+  .slide.scene .scene-board {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: 16px;
+    margin-top: 12px;
+  }
+  .scene-shot {
+    flex: 1.05;
+    min-height: 0;
+    background: #121916;
+    border: 1px solid #24302a;
+    padding: 8px 8px 10px;
+    display: flex;
+    flex-direction: column;
+  }
+  .scene-shot img {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    object-fit: contain;
+    object-position: center top;
+    background: #0e1411;
+  }
+  .scene-shot .cap {
+    margin: 8px 6px 2px;
+    font-size: 12px;
+    color: #c5d4cb;
+  }
+  .scene-args {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    flex: 0 0 auto;
+  }
+  .scene-arg {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-top: 3px solid var(--accent);
+    padding: 14px 16px 16px;
+  }
+  .scene-arg .idx {
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .scene-arg h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+  }
+  .scene-arg p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: 15px;
+    line-height: 1.45;
+  }
+  .scene-follow {
+    display: grid;
+    grid-template-columns: auto repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    align-items: stretch;
+    flex: 0 0 auto;
+  }
+  .scene-follow .lab {
+    display: flex;
+    align-items: center;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    padding-right: 8px;
+    white-space: nowrap;
+  }
+  .scene-follow .step {
+    background: #fff;
+    border: 1px solid var(--line);
+    padding: 10px 12px;
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.4;
+  }
+  .scene-follow .step strong {
+    display: block;
+    color: var(--ink);
+    font-size: 15px;
+    margin-bottom: 2px;
+  }
+
+  .slide.chapter {
+    justify-content: center;
+    background:
+      radial-gradient(900px 420px at 0% 100%, rgba(31,107,74,.10), transparent 55%),
+      linear-gradient(180deg, #ffffff 0%, var(--paper) 100%);
+  }
+  .slide.chapter::before { display: none; }
+  .slide.chapter .chapter-kicker {
+    font-family: "IBM Plex Sans", "Noto Sans SC", sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    margin-bottom: 12px;
+  }
+  .slide.chapter .chapter-num {
+    font-family: "Source Serif 4", serif;
+    font-size: clamp(96px, 14vw, 168px);
+    font-weight: 600;
+    color: var(--accent);
+    line-height: 0.82;
+    letter-spacing: -0.05em;
+    margin: 0 0 12px;
+  }
+  .slide.chapter .title {
+    max-width: 16ch;
+    font-size: clamp(40px, 5vw, 64px);
+  }
+  .slide.chapter .subtitle {
+    max-width: 38ch;
+    font-size: 20px;
+    margin-top: 16px;
+  }
+  .chapter-track {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 10px;
+    list-style: none;
+    margin: 56px 0 0;
+    padding: 0;
+    width: min(100%, 1080px);
+  }
+  .chapter-track li {
+    border-top: 2px solid var(--line);
+    padding-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .chapter-track li .n {
+    display: block;
+    font-family: "IBM Plex Sans", sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+    color: var(--muted);
+  }
+  .chapter-track li.on {
+    border-top-color: var(--accent);
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .chapter-track li.on .n { color: var(--accent); }
+  @media (max-width: 900px) {
+    .chapter-track { grid-template-columns: 1fr 1fr; }
+    .slide.chapter .title { max-width: none; }
+    .chapter-open-grid { grid-template-columns: 1fr; }
+    .chapter-open-fig { height: 180px; }
+    .scene-args { grid-template-columns: 1fr; }
+    .scene-follow { grid-template-columns: 1fr; }
+  }
 
   .formula {
     font-family: "Source Serif 4", serif;
@@ -3328,55 +3765,83 @@
 
   <!-- 0 Cover -->
   <section class="slide cover active" data-title="封面">
-    <div class="kicker">Kimodo Reproduction · Clean-room Training</div>
-    <h1 class="title">Kimodo 完整训练管线复现</h1>
-    <p class="subtitle">论文数据流 · 影响效果的未公开细节 · 消融与全量验证</p>
-    <div class="meta">
-      <span>对象：Kimodo-SOMA-SEED</span>
-      <span>用途：游戏场景动作数据生产</span>
-      <span>初版 · 按终稿结构</span>
+    <div class="cover-copy">
+      <div class="kicker">Clean-room Training</div>
+      <p class="cover-brand">Kimodo</p>
+      <h1 class="title">完整训练管线复现</h1>
+      <div class="meta">
+        <span>对象：Kimodo-SOMA-SEED</span>
+        <span>用途：游戏美术精准骨架动画</span>
+      </div>
     </div>
   </section>
 
-  <!-- 1 Agenda -->
-  <section class="slide" data-title="议程">
-    <div class="kicker">议程</div>
-    <h2 class="title">今天怎么讲</h2>
-    <p class="subtitle">主线是论文数据流与因果实验，不是工程交付清单。</p>
-    <ol class="agenda-list">
-      <li><div><strong>目标与场景</strong><span>模型能力一笔带过；复现管线服务于游戏动作数据</span></div></li>
-      <li><div><strong>论文原理（重点）</strong><span>训练总图与推理总图分开；逐模块挂回对应总图</span></div></li>
-      <li><div><strong>未公开但关键的细节</strong><span>只挑足以改训练效果的几项，为消融铺垫</span></div></li>
-      <li><div><strong>消融与全量结果</strong><span>先把指标讲成人话，再看选择如何落到 1M 步实验</span></div></li>
-      <li><div><strong>方法谱系与短期规划</strong><span>我们在历史方位的哪一段，下一步做什么</span></div></li>
+  <section class="slide chapter chapter-open" data-title="Part 1">
+    <div class="chapter-open-grid">
+      <div class="chapter-open-copy">
+        <div class="chapter-num">01</div>
+        <h1 class="title">目标与场景</h1>
+      </div>
+      <figure class="chapter-open-fig">
+        <img src="assets/soma.png" alt="SOMA skeleton"/>
+      </figure>
+    </div>
+    <ol class="chapter-track">
+      <li class="on"><span class="n">01</span>目标与场景</li>
+      <li><span class="n">02</span>论文原理</li>
+      <li><span class="n">03</span>关键细节</li>
+      <li><span class="n">04</span>预消融</li>
+      <li><span class="n">05</span>全量结果</li>
+      <li><span class="n">06</span>方法谱系</li>
     </ol>
   </section>
 
   <!-- 2 Business -->
-  <section class="slide" data-title="业务价值">
-    <div class="kicker">Part 1 · 目标与业务价值</div>
-    <h2 class="title">我们要的是动作数据生产能力</h2>
-    <div class="grid-2" style="margin-top:18px">
-      <div class="col">
-        <div class="fig" style="flex:1">
-          <img src="assets/overview.png" alt="Kimodo demo overview" />
-          <div class="cap">官方界面：文本 + 时间线上的 root / end-effector / full-body 约束 → 全身动作</div>
-        </div>
+  <section class="slide scene" data-title="业务价值">
+    <div class="kicker">Part 1 · 目标与场景</div>
+    <h2 class="title">用生成与约束，给游戏美术做精准骨架动画</h2>
+    <div class="scene-board">
+      <figure class="scene-shot">
+        <img src="assets/overview.png" alt="Kimodo interface: text prompt and timeline constraints"/>
+        <figcaption class="cap">看上的是生成能力与约束能力：文本 + Root / 末端 / 全身关键帧 → 可精控的骨架动画</figcaption>
+      </figure>
+      <div class="scene-args">
+        <article class="scene-arg">
+          <div class="idx">01 · 看上什么</div>
+          <h3>生成 + 约束</h3>
+          <p>Kimodo 能同时吃自然语言和运动学约束，产出精准骨架动画。用它给游戏美术降本增效。</p>
+        </article>
+        <article class="scene-arg">
+          <div class="idx">02 · 卡在哪里</div>
+          <h3>特征绑在骨架上</h3>
+          <p>单帧 369 维特征绑定特定骨架。游戏里骨架种类很多，公开权重无法直接迁到别的骨架。</p>
+        </article>
+        <article class="scene-arg">
+          <div class="idx">03 · 因此要什么</div>
+          <h3>自己训出媲美官方的管线</h3>
+          <p>必须完全复现训练，性能对得上官方，才能为其他骨架训定制模型，而不是只会跑 Demo。</p>
+        </article>
       </div>
-      <div class="col">
-        <div class="card" style="margin-bottom:12px">
-          <h3>模型能力（一句话）</h3>
-          <p>同一扩散模型同时接受自然语言与多种运动学约束，生成时序连续、可精控的 3D 人体动作。</p>
-        </div>
-        <div class="card" style="margin-bottom:12px">
-          <h3>业务落点</h3>
-          <p>不是再跑一遍官方 Demo，而是拿到可迭代的 <strong>训练 → 生成 → 评测</strong> 闭环，为游戏场景批量生产与精控动作资产。</p>
-        </div>
-        <div class="callout">
-          <strong>为什么必须复现训练：</strong>公开仓库以推理与 benchmark 为主。没有自主训练，就无法按游戏资产分布、文本风格、约束形态改数据与模型。
-        </div>
+      <div class="scene-follow">
+        <div class="lab">管线到手之后</div>
+        <div class="step"><strong>重定向</strong>把动作数据迁到各种游戏骨架</div>
+        <div class="step"><strong>定制训练</strong>为其他骨架训练专用 Kimodo</div>
+        <div class="step"><strong>风格后训练</strong>在不同骨架的基模上做动作风格适配</div>
       </div>
     </div>
+  </section>
+
+  <section class="slide chapter" data-title="Part 2">
+    <div class="chapter-num">02</div>
+    <h1 class="title">论文原理</h1>
+    <ol class="chapter-track">
+      <li><span class="n">01</span>目标与场景</li>
+      <li class="on"><span class="n">02</span>论文原理</li>
+      <li><span class="n">03</span>关键细节</li>
+      <li><span class="n">04</span>预消融</li>
+      <li><span class="n">05</span>全量结果</li>
+      <li><span class="n">06</span>方法谱系</li>
+    </ol>
   </section>
 
   <!-- 4 Train master: paper original + our TRAIN flowchart -->
@@ -4194,24 +4659,6 @@
         </table>
       </div>
 
-      <div class="card loss-impl-card">
-        <h3>实现路径：先逐帧，再全局归一</h3>
-        <div class="loss-impl-steps">
-          <div class="loss-impl-step">
-            <span class="step-no">01</span>
-            <div><strong>六个 direct 项</strong><p>在各自 feature slice 上算 Smooth‑L1；默认使用 normalized 域。</p></div>
-          </div>
-          <div class="loss-impl-step">
-            <span class="step-no">02</span>
-            <div><strong>一个 FK 项</strong><p>先 unnormalize，再在米制骨架空间比较预测与目标关节位置。</p></div>
-          </div>
-          <div class="loss-impl-step">
-            <span class="step-no">03</span>
-            <div><strong>valid mask + DDP reduce</strong><p>去掉 padding；按全局有效帧数归一化，最后按表中权重求和。</p></div>
-          </div>
-        </div>
-      </div>
-
       <div class="card smooth-card">
         <div class="smooth-head">
           <h3>Smooth‑L1：小误差细抠，大误差不爆</h3>
@@ -4220,7 +4667,8 @@
         <div class="smooth-eq">
           \( |e|<\beta:\ \ell=e^2/(2\beta)\quad;\quad |e|\ge\beta:\ \ell=|e|-\beta/2 \)
         </div>
-        <svg class="smooth-plot" viewBox="0 0 640 170" role="img" aria-labelledby="smooth-l1-title smooth-l1-desc">
+        <div class="smooth-plot-wrap">
+        <svg class="smooth-plot" viewBox="0 0 640 170" preserveAspectRatio="none" role="img" aria-labelledby="smooth-l1-title smooth-l1-desc">
           <title id="smooth-l1-title">Smooth L1 loss curve</title>
           <desc id="smooth-l1-desc">The loss is quadratic between minus beta and beta, and linear outside that interval.</desc>
           <rect x="242" y="16" width="186" height="126" fill="#e7f1eb"/>
@@ -4234,24 +4682,35 @@
             <line x1="45" y1="142" x2="622" y2="142"/>
             <line x1="335" y1="151" x2="335" y2="12"/>
           </g>
-          <polyline points="55,22 102,46 148,70 195,94 242,118 265,128.5 288,136 312,140.5 335,142 358,140.5 382,136 405,128.5 428,118 475,94 522,70 568,46 615,22" fill="none" stroke="#5b4d8a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-          <g fill="#5b4d8a"><circle cx="242" cy="118" r="4"/><circle cx="428" cy="118" r="4"/></g>
-          <g font-family="IBM Plex Sans, Noto Sans SC, sans-serif" font-size="12" fill="#6a756e">
-            <text x="108" y="36">线性区</text>
-            <text x="312" y="36" text-anchor="middle" fill="#1f6b4a">二次区</text>
-            <text x="525" y="36">线性区</text>
-            <text x="242" y="161" text-anchor="middle">−β</text>
-            <text x="335" y="161" text-anchor="middle">0</text>
-            <text x="428" y="161" text-anchor="middle">β</text>
-            <text x="624" y="157">e</text>
-            <text x="343" y="14">ℓ</text>
-          </g>
+          <polyline points="55,22 102,46 148,70 195,94 242,118 265,128.5 288,136 312,140.5 335,142 358,140.5 382,136 405,128.5 428,118 475,94 522,70 568,46 615,22" fill="none" stroke="#5b4d8a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <g fill="#5b4d8a"><circle cx="242" cy="118" r="3.2"/><circle cx="428" cy="118" r="3.2"/></g>
         </svg>
+        <div class="smooth-labels" aria-hidden="true">
+          <span class="zone" style="left:16.9%;top:21%">线性区</span>
+          <span class="quad" style="left:52.3%;top:21%">二次区</span>
+          <span class="zone" style="left:82%;top:21%">线性区</span>
+          <span class="sym" style="left:53.6%;top:8%">ℓ</span>
+          <span style="left:37.8%;top:95%">−β</span>
+          <span style="left:52.3%;top:95%">0</span>
+          <span style="left:66.9%;top:95%">β</span>
+          <span class="sym" style="left:97.5%;top:92%">e</span>
+        </div>
+        </div>
         <div class="smooth-takeaway">
           <span><strong>中心：</strong>连续、精细优化</span>
           <span><strong>两侧：</strong>线性增长，降低离群帧影响</span>
         </div>
       </div>
+    </div>
+  </section>
+
+  <section class="slide loss-flow-page" data-title="Loss流向">
+    <div class="kicker">Part 2 · 训练 · Loss 流向</div>
+    <h2 class="title">两个 Transformer：前向通、回传在桥上分开</h2>
+    <div class="loss-flow-board">
+      <figure class="flow-fig">
+        <img src="assets/loss-flow.svg?v=7" alt="Body output goes to one loss, then two backprop paths to Root and Body"/>
+      </figure>
     </div>
   </section>
 
@@ -4329,38 +4788,6 @@
     </div>
   </section>
 
-  <!-- Train vs Infer contrast — right before inference section -->
-  <section class="slide" data-title="训练≠推理">
-    <div class="kicker">Part 2 · 进入推理</div>
-    <h2 class="title">对照一下：训练管线 ≠ 推理管线</h2>
-    <p class="lead">前面讲完训练（GT → Loss）。下面进推理前，先把两边输入/输出钉死——共享的只是中间 Denoiser。</p>
-    <div class="vs">
-      <div class="pane train">
-        <div class="who">Training · 刚才讲过</div>
-        <h3>训练：有 GT，算 Loss</h3>
-        <ul class="clean">
-          <li><strong>输入：</strong>数据集里的 clean motion \(x_0\) + 离线 text embedding</li>
-          <li><strong>约束：</strong>从 GT 在线采样 \(m, x_{tgt}\)（模拟用户条件）</li>
-          <li><strong>过程：</strong>随机 \(t\) 前向加噪 → 一次 denoiser 前向 → \(\hat{x}_0\)</li>
-          <li><strong>输出：</strong>七项 loss → backward → 更新参数 / EMA</li>
-        </ul>
-      </div>
-      <div class="pane infer">
-        <div class="who">Inference · 接下来</div>
-        <h3>推理：无 GT，DDIM 去噪</h3>
-        <ul class="clean">
-          <li><strong>输入：</strong>用户文本 + 用户给的约束；<em>没有</em> GT 动作</li>
-          <li><strong>初始化：</strong>\(x_T\sim\mathcal{N}(0,I)\)</li>
-          <li><strong>过程：</strong>多步循环：约束覆盖 → Root/Body → CFG → <strong>DDIM</strong> \(x_t\!\to\!x_{t-1}\)</li>
-          <li><strong>输出：</strong>最终动作序列（反归一化 → 骨架/资产）</li>
-        </ul>
-      </div>
-    </div>
-    <div class="callout" style="margin-top:14px">
-      共享的是中间的 <strong>Two-Stage Denoiser</strong>；两端的输入来源与出口完全不同。下一页看推理总图。
-    </div>
-  </section>
-
   <section class="slide" data-title="推理总图">
     <div class="kicker">Part 2 · 推理总图</div>
     <h2 class="title">推理总图：无 GT，DDIM 出动作</h2>
@@ -4379,7 +4806,7 @@
         <div class="chip-step">
           <div class="n">1 · 覆盖</div>
           <h3>写回用户约束</h3>
-          <p>\(\tilde{x}_t=m\odot x_{\mathrm{tgt}}+(1-m)\odot x_t\)</p>
+          <p>\(\tilde{x}_t=m\odot x_0+(1-m)\odot x_t\)</p>
         </div>
         <div class="chip-step">
           <div class="n">2 · Denoiser</div>
@@ -4403,10 +4830,24 @@
     </div>
   </section>
 
+  <section class="slide chapter" data-title="Part 3">
+    <div class="chapter-num">03</div>
+    <h1 class="title">论文未写死的训练旋钮</h1>
+    <p class="subtitle">架构图只说明信息怎么流；这些细节决定模型实际看见什么梯度、为哪些能力分配容量</p>
+    <ol class="chapter-track">
+      <li><span class="n">01</span>目标与场景</li>
+      <li><span class="n">02</span>论文原理</li>
+      <li class="on"><span class="n">03</span>关键细节</li>
+      <li><span class="n">04</span>预消融</li>
+      <li><span class="n">05</span>全量结果</li>
+      <li><span class="n">06</span>方法谱系</li>
+    </ol>
+  </section>
+
   <section class="slide gap-page" data-title="关键细节总览" data-mode="train">
     <div class="kicker">Part 3 · 关键细节</div>
-    <h2 class="title">前向流程公开了；真正决定训练结果的四条轴还要补齐</h2>
-    <p class="lead">这不是“实现风格”：数据边界决定模型看什么，约束采样决定练什么题，detach 决定梯度流到哪里，Loss 域决定每一维误差有多重。</p>
+    <h2 class="title">Part 2 讲清了前向；这四条轴才决定「模型实际学什么」</h2>
+    <p class="lead">论文和发布代码给出了架构与大类 recipe，但没有钉死若干会改梯度的工程选择。它们不是风格差异——搞错会直接改变约束精度、文本跟随和足部稳定性的优化方向。</p>
     <div class="map-annotated">
       <div class="map-carry" data-map-slot></div>
       <div class="map-pin input">① data / stats</div>
@@ -4419,40 +4860,87 @@
         <div class="gap-axis-head"><span class="gap-axis-no">①</span><h3>数据与统计边界</h3></div>
         <div class="source-line">公开 SEED 288h ≠ 论文 RP 700h</div>
         <div class="gap-facts">
-          <div><b>输入</b><span>动作、文本、骨架、时长与采样频率</span></div>
-          <div><b>统计</b><span>μ/σ 同时定义特征尺度与 Loss 梯度尺度</span></div>
-          <div><b>影响</b><span>覆盖范围、长尾能力与最终能力上限</span></div>
+          <div><b>论文</b><span>方法不依赖特定数据规模，但未披露完整 RP 训练集</span></div>
+          <div><b>为何重要</b><span>μ/σ 来自训练分布；数据边界同时决定特征尺度、Loss 梯度权重与能力上限</span></div>
+          <div><b>搞错后果</b><span>拿 Core10 小集外推 full-data；或 stats 混用导致覆盖/反归一化错位</span></div>
         </div>
       </article>
       <article class="gap-axis-card constraint">
         <div class="gap-axis-head"><span class="gap-axis-no">④</span><h3>约束题型分布</h3></div>
         <div class="source-line">论文给大类；内部概率没有钉死</div>
         <div class="gap-facts">
-          <div><b>变量</b><span>family、关键帧数、跨度、组合概率</span></div>
-          <div><b>本质</b><span>ℙ(mask) 就是训练的“出题器”</span></div>
-          <div><b>影响</b><span>EE / Root / FB 与有无文本的能力取舍</span></div>
+          <div><b>论文</b><span>5 families · 10% none · 25% 双 pattern；family 内概率未公开</span></div>
+          <div><b>为何重要</b><span>ℙ(mask) 就是训练「出题器」——没练过的拓扑几乎没有对应梯度</span></div>
+          <div><b>搞错后果</b><span>评测要的 13-leaf 形状从未曝光 → EE/FB 好、Timeline 回归，或反之</span></div>
         </div>
       </article>
       <article class="gap-axis-card detach">
         <div class="gap-axis-head"><span class="gap-axis-no">⑦</span><h3>Root→Body 梯度桥</h3></div>
-        <div class="source-line">发布代码有 detach；质量方向未消融</div>
+        <div class="source-line">发布代码有 detach；质量方向待验证</div>
         <div class="gap-facts">
-          <div><b>前向</b><span>Body 仍读取 Root 预测的 local root</span></div>
-          <div><b>反向</b><span>Body loss 是否穿桥更新 Root</span></div>
-          <div><b>影响</b><span>阶段解耦、协调能力与优化稳定性</span></div>
+          <div><b>论文</b><span>描述 Root→Local→Body 数值前向；未披露跨桥 autograd 策略</span></div>
+          <div><b>为何重要</b><span>决定 364D Body/FK 信号能不能更新 5D Root——两级监督是否耦合</span></div>
+          <div><b>搞错后果</b><span>Root 被 Body 梯度淹没，或两级不协调；与推理 <code>no_grad()</code> 不是一回事</span></div>
         </div>
       </article>
       <article class="gap-axis-card loss">
         <div class="gap-axis-head"><span class="gap-axis-no">⑨</span><h3>Direct Loss 域</h3></div>
         <div class="source-line">论文公开 γ；未公开 direct loss 所在域</div>
         <div class="gap-facts">
-          <div><b>选择</b><span>physical vs normalized Smooth-L1</span></div>
-          <div><b>本质</b><span>σⱼ 进入有效梯度权重与 β 拐点</span></div>
-          <div><b>影响</b><span>语义、Root/EE、足部之间的偏好</span></div>
+          <div><b>论文</b><span>七项 Smooth-L1 与 γ=10/2/10/10/3/4；六项 direct 在 physical 还是 normalized 未说明</span></div>
+          <div><b>为何重要</b><span>σ 进入有效梯度与 β=1 拐点——同一 γ 在不同域是两套优化目标</span></div>
+          <div><b>搞错后果</b><span>语义/足部 vs Root/EE 精控的偏好被隐式改写；total loss 不可横比</span></div>
         </div>
       </article>
     </div>
-    <div class="gap-thesis"><strong>读图：</strong>架构只说明信息如何前向；这四条轴决定模型实际看见什么梯度、为哪些能力分配容量。</div>
+    <div class="gap-thesis"><strong>本章任务：</strong>先把「为什么重要、论文缺什么、搞错会怎样」讲清；下一页映射到预消融/全量验证，再进 Part 4 用数据说话。</div>
+  </section>
+
+  <section class="slide gap-page" data-title="关键细节·验证映射" data-mode="train">
+    <div class="kicker">Part 3 · 关键细节 · 验证映射</div>
+    <h2 class="title">每条轴都要落到可验证实验——预消融定方向，全量再验真</h2>
+    <p class="lead">Part 4 的 Core10 40k 预消融负责<strong>单轴因果</strong>与默认配方选择；Part 5 的 1M 训练会在更大规模、更长 schedule 下<strong>复验、纠偏、补做</strong>预消融无法覆盖的问题。</p>
+    <div class="gap-verify-grid">
+      <div class="gap-verify-head">
+        <span>训练轴</span><span>若不先验证</span><span>验证方式</span><span>阶段</span><span>状态</span>
+      </div>
+      <div class="gap-verify-row input">
+        <span class="axis">① 数据 / stats</span>
+        <span>小集趋势被当成 full-data 结论；stats 与 manifest 混用</span>
+        <span>规模对照 · Official 复验 · stats 一致性</span>
+        <span>背景约束</span>
+        <span class="status bg">贯穿 Part 4–5</span>
+      </div>
+      <div class="gap-verify-row loss">
+        <span class="axis">⑨ Loss 域</span>
+        <span>γ 相同但优化目标不同；语义/足部 vs Root/EE 偏好被隐式改写</span>
+        <span><strong>A1</strong> physical ↔ normalized · Core10 40k</span>
+        <span>预消融</span>
+        <span class="status done">已完成</span>
+      </div>
+      <div class="gap-verify-row constraint">
+        <span class="axis">④ 约束采样</span>
+        <span>评测形状从未练过；或 Timeline 能力被题型重分配牺牲</span>
+        <span><strong>A2</strong> lane=0 ↔ 0.25 · Core10 40k</span>
+        <span>预消融</span>
+        <span class="status done">已完成</span>
+      </div>
+      <div class="gap-verify-row detach">
+        <span class="axis">⑦ detach</span>
+        <span>Root 与 Body 监督是否该耦合——发布代码默认 ON，质量未证</span>
+        <span><strong>A3</strong> detach ON ↔ OFF · Core10 40k</span>
+        <span>预消融</span>
+        <span class="status todo">待做</span>
+      </div>
+      <div class="gap-verify-row full">
+        <span class="axis">全量配方</span>
+        <span>预消融 defaults 在 1M / V2 数据 / 16 GPU 下是否仍成立</span>
+        <span>resume 分叉 · wd · Phase2 长度 · 数据 recipe 等</span>
+        <span>全量验证</span>
+        <span class="status full">Part 5</span>
+      </div>
+    </div>
+    <div class="gap-thesis"><strong>叙事顺序：</strong>Part 3 讲机制与风险 → Part 4 用 Core10 预消融选 defaults（Normalized + lane=.25）→ Part 5 报告 1M 上遇到的问题与额外全量验证。</div>
   </section>
 
   <section class="slide gap-page" data-title="关键细节·Loss域" data-mode="train" data-map="loss">
@@ -4563,7 +5051,7 @@
         </div>
         <div class="route-split">
           <div class="route-card on"><strong>detach = ON（发布代码训练行为）</strong><p>Root 只由 root position + heading 监督；Body 由 joint pos/rot/vel/contact + physical FK 监督。两级仍在同一个 optimizer step 更新。</p></div>
-          <div class="route-card off"><strong>detach = OFF（待消融）</strong><p>新增 \(\nabla_{\theta_R}L_{body}=\frac{\partial L_b}{\partial r_l}\frac{\partial r_l}{\partial r_g}\frac{\partial r_g}{\partial\theta_R}\)，且有限差分会跨相邻帧。</p></div>
+          <div class="route-card off"><strong>detach = OFF（A3 待预消融）</strong><p>新增 \(\nabla_{\theta_R}L_{body}=\frac{\partial L_b}{\partial r_l}\frac{\partial r_l}{\partial r_g}\frac{\partial r_g}{\partial\theta_R}\)，且有限差分会跨相邻帧。</p></div>
         </div>
         <div class="gap-keyline"><strong>不要混淆：</strong>训练 detach 是模型内部的梯度策略；普通推理外层的 <code>no_grad()</code> 只是关闭整个 autograd graph，两者不是同一件事。</div>
       </article>
@@ -4581,8 +5069,63 @@
     </div>
   </section>
 
+  <section class="slide chapter" data-title="Part 4">
+    <div class="chapter-num">04</div>
+    <h1 class="title">预消融</h1>
+    <p class="subtitle">Core10 · 40k · 单轴因果——在进 1M 之前先把方向拧对；不是最终结论</p>
+    <ol class="chapter-track">
+      <li><span class="n">01</span>目标与场景</li>
+      <li><span class="n">02</span>论文原理</li>
+      <li><span class="n">03</span>关键细节</li>
+      <li class="on"><span class="n">04</span>预消融</li>
+      <li><span class="n">05</span>全量结果</li>
+      <li><span class="n">06</span>方法谱系</li>
+    </ol>
+  </section>
+
+  <section class="slide ablation-page" data-title="预消融定位">
+    <div class="kicker">Part 4 · 预消融定位</div>
+    <h2 class="title">为什么是「预」消融：低成本单轴因果，不是 1M 最终裁决</h2>
+    <p class="lead">Part 3 指出了论文没写死的旋钮；Part 4 在 Core10 子集上用 40k 步、每次只改一根轴，回答「该往哪个 default 走」。这些结论<strong>可以指导</strong>全量配方，但<strong>不能替代</strong> Part 5 在大规模训练上的验证与纠偏。</p>
+    <div class="ablation-setup-grid preablation-scope">
+      <article class="ablation-setup-card">
+        <h3>预消融能回答什么</h3>
+        <p>单轴开关的<strong>方向</strong>与<strong>权衡</strong>：哪条 arm 在语义、约束、足部上更占优，代价是什么。</p>
+        <div class="setup-kv">
+          <div><b>规模</b><span>Core10 manifest · 20k P1 + 20k P2</span></div>
+          <div><b>控制</b><span>2×H200 · gbatch 512 · 同协议 eval</span></div>
+          <div><b>评测</b><span>stratified 10% · 2,269 cases</span></div>
+          <div><b>产出</b><span>Normalized direct + lane=.25 等工程 defaults</span></div>
+        </div>
+      </article>
+      <article class="ablation-setup-card a1">
+        <span class="evidence-grade primary">预消融边界</span>
+        <h3>不能外推什么</h3>
+        <p>Core10 与 Official 约束 cm 仍有数量级差距；40k 趋势<strong>不等于</strong> full-data 1M 最终排序。</p>
+        <div class="setup-kv">
+          <div><b>数据</b><span>288h SEED ≠ 700h RP · V2 recipe 未覆盖</span></div>
+          <div><b>步数</b><span>40k ≪ 1M Phase2 长度与 curriculum</span></div>
+          <div><b>多轴</b><span>resume / wd / 数据增强等未在此章同时扫</span></div>
+          <div><b>含义</b><span>这里是<strong>定方向</strong>，不是<strong>定终局</strong></span></div>
+        </div>
+      </article>
+      <article class="ablation-setup-card a2">
+        <span class="evidence-grade primary">与 Part 5 关系</span>
+        <h3>全量阶段还会发生什么</h3>
+        <p>1M 训练遇到的数据、resume、评测链、超参分叉等问题，需要在全量规模上<strong>额外验证甚至重做</strong>预消融结论。</p>
+        <div class="setup-kv">
+          <div><b>输入</b><span>Part 4 defaults → production YAML</span></div>
+          <div><b>过程</b><span>训练中断/复训 · 指标漂移 · recipe 迭代</span></div>
+          <div><b>输出</b><span>Part 5：1M 指标 + 全量阶段额外消融</span></div>
+          <div><b>讲法</b><span>预消融选路，全量验真</span></div>
+        </div>
+      </article>
+    </div>
+    <div class="ablation-rule"><strong>本章读法：</strong>把 A1/A2 当作「进 1M 前的工程选择证据」；看到 Core10 与 Official 的大 gap 时，应期待 Part 5 解释全量训练如何缩小或为何仍存差距。</div>
+  </section>
+
   <section class="slide" data-title="指标入门">
-    <div class="kicker">Part 4 · 评测指标</div>
+    <div class="kicker">Part 4 · 预消融 · 评测指标</div>
     <h2 class="title">先把尺子讲清楚：TMR + 三类指标</h2>
     <p class="lead">语义类分数不是 Kimodo 自己打的——先固定一个文本–动作嵌入模型，再在共享空间里量 R@3 / FID。</p>
     <div class="card" style="margin-top:12px; flex:0 0 auto">
@@ -4618,16 +5161,16 @@
       </div>
     </div>
     <div class="callout" style="margin-top:12px">
-      <strong>读表规则：</strong>↑ 越大越好，↓ 越小越好。消融若 A 变好而 B 变差，是权衡不是单纯强弱。
+      <strong>读表规则：</strong>↑ 越大越好，↓ 越小越好。预消融若 A 变好而 B 变差，是权衡不是单纯强弱。
       主评测：固定分层 10% 子集（≈2269 cases）+ 同一 TMR；128 proxy 只看趋势，R@3 易饱和。
     </div>
   </section>
 
   <!-- Ablation setup -->
-  <section class="slide ablation-page" data-title="消融设定">
-    <div class="kicker">Part 4 · 消融设计</div>
-    <h2 class="title">先固定证据口径，再问“哪个做法更适合目标”</h2>
-    <p class="lead">A1 与 A2 都是 Core10 40k 的单轴对照；主表统一到同一个 2,269-case stratified 10%，页面只比较各自两个实验臂。</p>
+  <section class="slide ablation-page" data-title="预消融设定">
+    <div class="kicker">Part 4 · 预消融设计</div>
+    <h2 class="title">Core10 40k 单轴对照：先固定证据口径，再问哪个 default 更适合目标</h2>
+    <p class="lead">A1 与 A2 都是 Core10 40k 的<strong>预消融</strong>——主表统一到同一个 2,269-case stratified 10%，页面只比较各自两个实验臂；结论用于选定 1M 起点，而非宣称最终性能。</p>
     <div class="ablation-setup-grid">
       <article class="ablation-setup-card">
         <h3>共同控制变量</h3>
@@ -4666,8 +5209,8 @@
   </section>
 
   <!-- A1 full results -->
-  <section class="slide ablation-page" data-title="消融 A1·全指标">
-    <div class="kicker">Part 4 · 消融 A1 · 全指标</div>
+  <section class="slide ablation-page" data-title="预消融 A1·全指标">
+    <div class="kicker">Part 4 · 预消融 A1 · 全指标</div>
     <h2 class="title">Loss 域：按当前综合目标，Normalized 整体更好</h2>
     <p class="lead">Core10 40k · stratified 10% · content split · 2,269 cases；这里只做 Physical 与 Normalized 的同协议对照，不加入第三个参考模型。</p>
     <div class="metric-split">
@@ -4730,8 +5273,8 @@
   </section>
 
   <!-- A1 decision -->
-  <section class="slide ablation-page" data-title="消融 A1·如何选择">
-    <div class="kicker">Part 4 · 消融 A1 · 决策</div>
+  <section class="slide ablation-page" data-title="预消融 A1·如何选择">
+    <div class="kicker">Part 4 · 预消融 A1 · 决策</div>
     <h2 class="title">A1 结论：Normalized 是综合默认，Physical 是精控特化选项</h2>
     <p class="lead">“整体更好”必须绑定目标权重：当前优先通用生成、Timeline 语义和足部观感，同时把 Root / EE 误差作为需要监控的取舍项。</p>
     <div class="decision-grid">
@@ -4757,8 +5300,8 @@
   </section>
 
   <!-- A2 full results -->
-  <section class="slide ablation-page" data-title="消融 A2·全指标">
-    <div class="kicker">Part 4 · 消融 A2 · 全指标</div>
+  <section class="slide ablation-page" data-title="预消融 A2·全指标">
+    <div class="kicker">Part 4 · 预消融 A2 · 全指标</div>
     <h2 class="title">Benchmark lane：约束整体改善，但 Timeline-multi R@3 出现明显回归</h2>
     <p class="lead">同一 Normalized · Core10 40k · stratified 10% · 2,269 cases。lane=.25 只重分配约束形状，Phase 2 总 constrained probability 仍为 90%。</p>
     <div class="metric-board">
@@ -4801,8 +5344,8 @@
   </section>
 
   <!-- A2 decision -->
-  <section class="slide ablation-page" data-title="消融 A2·如何选择">
-    <div class="kicker">Part 4 · 消融 A2 · 决策</div>
+  <section class="slide ablation-page" data-title="预消融 A2·如何选择">
+    <div class="kicker">Part 4 · 预消融 A2 · 决策</div>
     <h2 class="title">A2 怎么选：用更多约束覆盖，换取可监控的 Timeline 代价</h2>
     <p class="lead">lane=.25 的收益集中在训练目的本身——constraint shape coverage；它并没有改文本数据，所以不能期待所有语义桶同时提升。</p>
     <div class="decision-grid">
@@ -4827,37 +5370,56 @@
     <div class="decision-foot"><strong>最终理由：</strong>选择 lane=.25，是因为它更符合“可精控动作”核心目标且收益有一致机制解释；同时把 Timeline-multi 回归作为必须守住的显式约束，而不是忽略它。</div>
   </section>
 
-  <!-- 21 Choices into full run -->
-  <section class="slide" data-title="消融→全量">
-    <div class="kicker">Part 5 · 全量实验</div>
-    <h2 class="title">全量 run：把消融选择写进配方</h2>
-    <div class="grid-3" style="margin-top:18px">
-      <div class="card">
-        <div class="num">01</div>
-        <h3>Loss</h3>
-        <p>Direct loss 采用 <strong>normalized</strong>（本项目工程默认）；FK 保持物理空间。</p>
-      </div>
-      <div class="card">
-        <div class="num">02</div>
-        <h3>约束采样</h3>
-        <p>Phase 2 启用 V2 <strong>benchmark lane≈0.25</strong>，对齐公开评测题型。</p>
-      </div>
-      <div class="card">
-        <div class="num">03</div>
-        <h3>课程与权重</h3>
-        <p>完整 Phase1→Phase2 至 <strong>1M step</strong>；EMA 推理；公开 SEED 数据边界说清。</p>
-      </div>
-    </div>
-    <div class="callout" style="margin-top:18px">
-      消融回答的是“该拧哪颗螺丝”；全量回答的是“按这套螺丝拧满后，能到哪里”。下一页表格待 1M 结果回填。
+  <section class="slide chapter" data-title="Part 5">
+    <div class="chapter-num">05</div>
+    <h1 class="title">全量训练与验证</h1>
+    <p class="subtitle">预消融 defaults 进 1M 后：遇到的问题、额外全量验证、最终指标</p>
+    <ol class="chapter-track">
+      <li><span class="n">01</span>目标与场景</li>
+      <li><span class="n">02</span>论文原理</li>
+      <li><span class="n">03</span>关键细节</li>
+      <li><span class="n">04</span>预消融</li>
+      <li class="on"><span class="n">05</span>全量结果</li>
+      <li><span class="n">06</span>方法谱系</li>
+    </ol>
+  </section>
+
+  <section class="slide gap-page" data-title="全量训练路径">
+    <div class="kicker">Part 5 · 全量训练路径</div>
+    <h2 class="title">1M 不是预消融的线性放大——全量阶段有自己的问题与验证</h2>
+    <p class="lead">Part 4 给出 Normalized + lane=.25 等 defaults；进入 V2 / 16×H200 的 1M production 后，数据 recipe、resume、评测链与超参分叉都会引入预消融未覆盖的变量。这一章如实报告<strong>训练路径、遇到什么问题、做了哪些全量验证</strong>，而不只贴一张结果表。</p>
+    <div class="gap-detail-grid">
+      <article class="gap-panel constraint">
+        <h3>从预消融 defaults 到 production 配方 <small>Part 4 → Part 5 的输入</small></h3>
+        <div class="evidence-stack">
+          <div class="evidence-row"><span class="tag ours">defaults</span><span>Normalized direct · lane=.25 · Phase1/2 curriculum · EMA · stratified 10% eval</span></div>
+          <div class="evidence-row"><span class="tag code">规模跃迁</span><span>Core10 288h → V2 full manifest · 40k → 1M steps · 2 GPU → 16 GPU</span></div>
+          <div class="evidence-row"><span class="tag paper">预期</span><span>预消融方向应在全量上<strong>大致成立</strong>，但绝对 gap、回归项与最优超参<strong>必须重验</strong></span></div>
+        </div>
+        <div class="impact-chain">
+          <div class="impact-step">预消融定 default</div>
+          <div class="impact-step">1M 训练暴露新问题</div>
+          <div class="impact-step">全量额外验证 / 纠偏</div>
+        </div>
+      </article>
+      <article class="gap-panel detach">
+        <h3>全量阶段典型问题与验证类型 <small>待填具体 run / 指标</small></h3>
+        <dl class="gap-compare">
+          <div class="gap-compare-row"><dt>数据 / cache</dt><dd>V2 text recipe · feature cache · manifest revision 不一致 → 需 preflight 与 hash 对齐</dd></div>
+          <div class="gap-compare-row"><dt>训练稳定性</dt><dd>长程 resume · checkpoint 分叉 · wd / smooth / reseed 等 overlay 实验</dd></div>
+          <div class="gap-compare-row"><dt>评测可信</dt><dd>Official 同协议复验 · stratified 10% vs 全量 testsuite · 128 proxy 仅作趋势</dd></div>
+          <div class="gap-compare-row"><dt>预消融复验</dt><dd>Loss 域 / lane 等在 1M 上是否仍成立；Timeline-multi 回归是否放大或缓解</dd></div>
+        </dl>
+        <div class="gap-keyline"><strong>讲法要点：</strong>预消融解决「单轴方向」；全量解决「规模化后是否还成立、还缺什么」。两者证据等级不同，不能混讲成一次消融。</div>
+      </article>
     </div>
   </section>
 
   <!-- 22 Full results placeholder -->
   <section class="slide" data-title="1M 结果">
     <div class="kicker">Part 5 · 1M 步结果</div>
-    <h2 class="title">全量结果（待填）</h2>
-    <p class="lead">同协议对照：Official SEED 复验基线 · 我们的 Phase1 · 我们的 1M EMA。数字以最终 benchmark bundle 为准。</p>
+    <h2 class="title">1M 核心指标（待填）</h2>
+    <p class="lead">同协议对照：Official SEED 复验基线 · 我们的 Phase1 · 1M EMA 主结论 · 全量阶段关键分叉。数字以最终 benchmark bundle 为准；本节承接上一页的训练路径与额外验证叙事。</p>
     <table class="data" style="margin-top:16px">
       <thead>
         <tr>
@@ -4911,83 +5473,561 @@
     </div>
   </section>
 
-  <!-- 23 Landscape -->
-  <section class="slide" data-title="方法谱系">
-    <div class="kicker">Part 6 · 展望</div>
-    <h2 class="title">动作生成方法谱系：我们在哪</h2>
-    <div class="timeline">
-      <div class="era">
-        <div class="when">早期</div>
-        <h3>运动图 / 检索</h3>
-        <p>可拼接、可控，语义泛化弱</p>
+  <section class="slide chapter" data-title="Part 6">
+    <div class="chapter-num">06</div>
+    <h1 class="title">方法谱系</h1>
+    <ol class="chapter-track">
+      <li><span class="n">01</span>目标与场景</li>
+      <li><span class="n">02</span>论文原理</li>
+      <li><span class="n">03</span>关键细节</li>
+      <li><span class="n">04</span>预消融</li>
+      <li><span class="n">05</span>全量结果</li>
+      <li class="on"><span class="n">06</span>方法谱系</li>
+    </ol>
+  </section>
+
+  <section class="slide" data-title="管线定位">
+    <div class="kicker">Part 6 · 方法谱系</div>
+    <h2 class="title">产出的是可编辑骨骼动画，进 DCC；不是像素，也不是运行时检索</h2>
+    <p class="lead">输入文字或空间约束，输出关节旋转与位移，可进 Maya、3ds Max、Unity、UE 继续改。</p>
+    <div class="grid-4" style="margin-top:12px">
+      <div class="card place-card here">
+        <div class="where">内容生产 · DCC</div>
+        <h3>动作生成</h3>
+        <p>骨骼动画数据，可编辑。我们在这一格：扩动画库的覆盖度。</p>
       </div>
-      <div class="era">
-        <div class="when">学习生成</div>
-        <h3>VAE / RNN</h3>
-        <p>有分布建模，精确控制有限</p>
+      <div class="card place-card out">
+        <div class="where">不进游戏管线</div>
+        <h3>AI 视频生成</h3>
+        <p>像素画面，不可编辑。和骨骼生成不是一类技术。</p>
       </div>
-      <div class="era">
-        <div class="when">语义爆发</div>
-        <h3>Text-to-Motion</h3>
-        <p>MDM 等：会“做事”，难精控时空</p>
+      <div class="card place-card side">
+        <div class="where">内容生产 · 互补</div>
+        <h3>视频动捕</h3>
+        <p>也是骨骼数据，但还原已有表演。生成发明库里没有的动作。</p>
       </div>
-      <div class="era here">
-        <div class="when">我们在这</div>
-        <h3>可控扩散 · Kimodo</h3>
-        <p>文本 + 多类运动学约束进同一 denoiser；复现目标是可训练的资产线</p>
-      </div>
-      <div class="era">
-        <div class="when">下游</div>
-        <h3>游戏 / 具身数据</h3>
-        <p>从动画资产走向可执行、可评测的生产线</p>
+      <div class="card place-card down">
+        <div class="where">运行时</div>
+        <h3>Motion Matching</h3>
+        <p>从现有动画库检索播放。成熟、可预测。消费库，不造库。</p>
       </div>
     </div>
-    <div class="callout" style="margin-top:22px">
-      Kimodo 不是“又一个 text-to-motion”，而是把<strong>语义条件与运动学条件</strong>统一进运动学扩散去噪器的路线。
-      我们的工作：从“可推理的公开权重”推进到“可改数据、可训练、可消融、可对标”的闭环。
+    <div class="callout" style="margin-top:16px">
+      动作生成与 Motion Matching 不是对手。生成负责把库铺够，Matching 负责运行时把库用掉。程序化 IK 管地形和足部锁定，也在下游。
     </div>
   </section>
 
-  <!-- 24 Near-term -->
-  <section class="slide" data-title="短期规划">
-    <div class="kicker">Part 6 · 短期做法</div>
-    <h2 class="title">接下来先做这几件</h2>
-    <div class="grid-3" style="margin-top:20px; flex:1">
+  <section class="slide era-page" data-title="三次更替">
+    <div class="kicker">Part 6 · 方法谱系</div>
+    <h2 class="title">检索被学习取代；2022 扩散是质变；现行是七种范式并立</h2>
+    <div class="grid-3" style="margin-top:10px">
       <div class="card">
-        <div class="num">1</div>
-        <h3>填满 1M 证据</h3>
-        <p>跑完 / 固化全量训练；同协议填结果表；约束类按 bucket 拆开，避免平均数掩盖。</p>
+        <div class="num">01</div>
+        <h3>1998–2015 · 检索拼接</h3>
+        <p>动作图与插值。库外动作做不了，组合成本随规模爆炸。</p>
       </div>
       <div class="card">
-        <div class="num">2</div>
-        <h3>把消融结论做实</h3>
-        <p>A2 在 stratified 10% 上重评；必要时加长 Phase 2 再确认 lane 与 loss 域是否仍成立。</p>
+        <div class="num">02</div>
+        <h3>2015–2021 · 学习生成</h3>
+        <p>RNN / LSTM 预测下一帧；GAN 对抗不稳；VAE 整段采样偏糊。三条并行，不是一条管道。</p>
       </div>
       <div class="card">
-        <div class="num">3</div>
-        <h3>转向游戏域数据</h3>
-        <p>在已验证配方上，替换/混合游戏场景动作与文本风格，进入“能产资产”而不仅是“能对表”。</p>
+        <div class="num">03</div>
+        <h3>2022– · 扩散及衍生</h3>
+        <p>与 AI 绘画同一波。之后不是再换一次底座，而是七种范式并行：控、快、编、流式。</p>
       </div>
     </div>
-    <div class="callout">
-      短期成功标准：1M 表可核对 · 消融轴在主评测资产上结论稳定 · 至少一条游戏域生成样例可演示。
-    </div>
+    <table class="data" style="margin-top:14px">
+      <thead>
+        <tr>
+          <th>范式</th>
+          <th>速度</th>
+          <th>空间控制</th>
+          <th>游戏主用途</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="best">
+          <td>显式扩散</td>
+          <td>慢</td>
+          <td>最强</td>
+          <td>离线资产、卡关键帧、路径</td>
+          <td class="pick">Kimodo</td>
+        </tr>
+        <tr>
+          <td>潜空间扩散</td>
+          <td>快</td>
+          <td>弱</td>
+          <td>编辑器预览、草稿</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>离散自回归</td>
+          <td>中</td>
+          <td>弱</td>
+          <td>文本批量；不宜当主线</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>掩码解码</td>
+          <td>快</td>
+          <td>弱</td>
+          <td>补间、修补、局部重做</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>流匹配</td>
+          <td>很快</td>
+          <td>中</td>
+          <td>大批量文本草稿</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>连续流式</td>
+          <td>最快</td>
+          <td>中</td>
+          <td>运行时预研；现役仍是 Matching</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td>物理混合</td>
+          <td>慢</td>
+          <td>中</td>
+          <td>叠加层，非常规项目默认</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
   </section>
 
-  <!-- 25 Close -->
-  <section class="slide" data-title="结束">
-    <div class="kicker">结束</div>
-    <h2 class="title" style="max-width:18ch">把论文数据流，变成可训练的闭环</h2>
-    <div class="grid-3" style="margin-top:24px">
-      <div class="card"><h3>原理</h3><p>训练总图（GT→Loss）与推理总图（噪声→DDIM）分开讲清；共用 denoiser 内核。</p></div>
-      <div class="card"><h3>缺口 → 消融</h3><p>Loss 域、约束采样、梯度边界：用实验校准，而不是口头默认。</p></div>
-      <div class="card"><h3>方位</h3><p>站在可控运动扩散这一环；下一步是证据填实与游戏域落地。</p></div>
-    </div>
-    <div class="callout" style="margin-top:24px">
-      交付的不是又一份可点的 Demo，而是吃透数据流、拧过关键螺丝、并能继续迭代的 Kimodo 训练能力。
+  <section class="slide lineage-page" data-title="七种范式" data-hot="map">
+    <div class="kicker">Part 6 · 方法谱系</div>
+    <h2 class="title">按时间点左侧。荧光条是当下仍在盛行的。</h2>
+    <p class="lead" style="margin:4px 0 8px">1998 检索 → RNN / LSTM → GAN → VAE → 2022 起七种范式并立。没荧光的是已经退出主线的。</p>
+    <div class="lineage-board">
+      <div class="lineage-list" role="list">
+        <div class="lineage-item map" data-hot="map" role="listitem" tabindex="0">
+          <div class="when">总览 · 时间轴</div>
+          <h3>全程</h3>
+        </div>
+        <div class="lineage-item graph" data-hot="graph" role="listitem" tabindex="0">
+          <div class="when">1998–2015</div>
+          <h3>动作图</h3>
+        </div>
+        <div class="lineage-item rnn" data-hot="rnn" role="listitem" tabindex="0">
+          <div class="when">2015–17</div>
+          <h3>RNN / LSTM</h3>
+        </div>
+        <div class="lineage-item gan" data-hot="gan" role="listitem" tabindex="0">
+          <div class="when">2017–20</div>
+          <h3>GAN</h3>
+        </div>
+        <div class="lineage-item vae" data-hot="vae" role="listitem" tabindex="0">
+          <div class="when">2018–21</div>
+          <h3>VAE</h3>
+        </div>
+        <div class="lineage-item here explicit live" data-hot="explicit" role="listitem" tabindex="0">
+          <div class="when">2022– · 离线精控</div>
+          <h3>显式扩散</h3>
+        </div>
+        <div class="lineage-item latent live" data-hot="latent" role="listitem" tabindex="0">
+          <div class="when">2022– · 快预览</div>
+          <h3>潜空间扩散</h3>
+        </div>
+        <div class="lineage-item discrete" data-hot="discrete" role="listitem" tabindex="0">
+          <div class="when">2023– · 衰退中</div>
+          <h3>离散自回归</h3>
+        </div>
+        <div class="lineage-item mask live" data-hot="mask" role="listitem" tabindex="0">
+          <div class="when">2023– · 改动画</div>
+          <h3>掩码解码</h3>
+        </div>
+        <div class="lineage-item flow live" data-hot="flow" role="listitem" tabindex="0">
+          <div class="when">2024– · 草稿</div>
+          <h3>流匹配</h3>
+        </div>
+        <div class="lineage-item stream live" data-hot="stream" role="listitem" tabindex="0">
+          <div class="when">2024– · 预研</div>
+          <h3>连续流式</h3>
+        </div>
+        <div class="lineage-item phys live" data-hot="phys" role="listitem" tabindex="0">
+          <div class="when">叠加层</div>
+          <h3>物理混合</h3>
+        </div>
+      </div>
+
+      <div class="lineage-stage" aria-hidden="true">
+        <svg class="era-fig on" data-for="map" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="20" font-size="13" font-weight="700" fill="#14201a" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">按年排。上排已退出主线；下排有荧光的仍在盛行。</text>
+          <rect x="16" y="36" width="100" height="40" rx="7" fill="#fff" stroke="#5a635c" stroke-width="1.8"/>
+          <text x="66" y="54" text-anchor="middle" font-size="11" font-weight="700" fill="#5a635c" font-family="Noto Sans SC, sans-serif">动作图</text>
+          <text x="66" y="68" text-anchor="middle" font-size="9" fill="#6a756e" font-family="IBM Plex Sans, sans-serif">1998</text>
+          <path d="M116 56 H132" stroke="#5a635c" stroke-width="1.6"/>
+          <rect x="132" y="36" width="108" height="40" rx="7" fill="#f8edf0" stroke="#a84d62" stroke-width="1.8"/>
+          <text x="186" y="54" text-anchor="middle" font-size="11" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, sans-serif">RNN / LSTM</text>
+          <text x="186" y="68" text-anchor="middle" font-size="9" fill="#6a756e" font-family="IBM Plex Sans, sans-serif">2015</text>
+          <path d="M240 56 H256" stroke="#5a635c" stroke-width="1.6"/>
+          <rect x="256" y="36" width="88" height="40" rx="7" fill="#fff" stroke="#c45c26" stroke-width="1.8"/>
+          <text x="300" y="54" text-anchor="middle" font-size="11" font-weight="700" fill="#c45c26" font-family="IBM Plex Sans, sans-serif">GAN</text>
+          <text x="300" y="68" text-anchor="middle" font-size="9" fill="#6a756e" font-family="IBM Plex Sans, sans-serif">2017</text>
+          <path d="M344 56 H360" stroke="#5a635c" stroke-width="1.6"/>
+          <rect x="360" y="36" width="88" height="40" rx="7" fill="#fff8ea" stroke="#8a6d3b" stroke-width="1.8"/>
+          <text x="404" y="54" text-anchor="middle" font-size="11" font-weight="700" fill="#8a6d3b" font-family="IBM Plex Sans, sans-serif">VAE</text>
+          <text x="404" y="68" text-anchor="middle" font-size="9" fill="#6a756e" font-family="IBM Plex Sans, sans-serif">2018</text>
+          <path d="M448 56 H464" stroke="#5a635c" stroke-width="1.6"/>
+          <text x="520" y="60" font-size="11" fill="#6a756e" font-family="Noto Sans SC, sans-serif">2022 扩散质变 →</text>
+          <rect x="16" y="96" width="118" height="44" rx="8" fill="#1f6b4a"/>
+          <text x="75" y="116" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Noto Sans SC, sans-serif">显式扩散</text>
+          <text x="75" y="132" text-anchor="middle" font-size="9" fill="#b8f0d0" font-family="IBM Plex Sans, sans-serif">Kimodo · 盛行</text>
+          <rect x="146" y="96" width="118" height="44" rx="8" fill="#eaf3f7" stroke="#2f6f8f" stroke-width="2"/>
+          <text x="205" y="116" text-anchor="middle" font-size="12" font-weight="700" fill="#2f6f8f" font-family="Noto Sans SC, sans-serif">潜空间扩散</text>
+          <text x="205" y="132" text-anchor="middle" font-size="9" fill="#3d4a42" font-family="IBM Plex Sans, sans-serif">盛行 · 预览</text>
+          <rect x="276" y="96" width="118" height="44" rx="8" fill="#fff" stroke="#5b4d8a" stroke-width="1.6"/>
+          <text x="335" y="116" text-anchor="middle" font-size="12" font-weight="700" fill="#5b4d8a" font-family="Noto Sans SC, sans-serif">离散自回归</text>
+          <text x="335" y="132" text-anchor="middle" font-size="9" fill="#6a756e" font-family="IBM Plex Sans, sans-serif">衰退 · 无荧光</text>
+          <rect x="406" y="96" width="118" height="44" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+          <text x="465" y="116" text-anchor="middle" font-size="12" font-weight="700" fill="#8a6d3b" font-family="Noto Sans SC, sans-serif">掩码解码</text>
+          <text x="465" y="132" text-anchor="middle" font-size="9" fill="#3d4a42" font-family="IBM Plex Sans, sans-serif">盛行 · 补间</text>
+          <rect x="536" y="96" width="168" height="44" rx="8" fill="#f8edf0" stroke="#a84d62" stroke-width="2"/>
+          <text x="620" y="116" text-anchor="middle" font-size="12" font-weight="700" fill="#a84d62" font-family="Noto Sans SC, sans-serif">流匹配</text>
+          <text x="620" y="132" text-anchor="middle" font-size="9" fill="#3d4a42" font-family="IBM Plex Sans, sans-serif">盛行 · 草稿</text>
+          <rect x="16" y="154" width="168" height="40" rx="8" fill="#fff" stroke="#5a635c" stroke-width="2"/>
+          <text x="100" y="178" text-anchor="middle" font-size="12" font-weight="700" fill="#5a635c" font-family="Noto Sans SC, sans-serif">连续流式 · 盛行预研</text>
+          <rect x="198" y="154" width="150" height="40" rx="8" fill="#fff" stroke="#9a5b1a" stroke-width="1.6" stroke-dasharray="5 4"/>
+          <text x="273" y="178" text-anchor="middle" font-size="12" font-weight="700" fill="#9a5b1a" font-family="Noto Sans SC, sans-serif">物理混合 · 叠加</text>
+          <rect x="362" y="154" width="342" height="40" rx="8" fill="#f4f7f5" stroke="#5a635c" stroke-width="1.6" stroke-dasharray="5 4"/>
+          <text x="533" y="178" text-anchor="middle" font-size="12" font-weight="700" fill="#5a635c" font-family="Noto Sans SC, sans-serif">Motion Matching · 运行时现役，不在生成主轴</text>
+          <text x="16" y="218" font-size="12" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">RNN / LSTM、GAN、VAE 必须单独讲：预测、对抗、整段潜变量是三件事。荧光 = 当下还在用。</text>
+          <text x="16" y="238" font-size="12" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">离散 GPT 还在文献里，但已退出游戏主线，所以左侧没有荧光。</text>
+        </svg>
+        <svg class="era-fig" data-for="graph" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#5a635c" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">动作图：在片库里走路。生成主线已退出；Matching 仍在运行时</text>
+          <rect x="24" y="58" width="88" height="48" rx="8" fill="#fff" stroke="#5a635c" stroke-width="2"/>
+          <text x="68" y="88" text-anchor="middle" font-size="13" font-weight="700" fill="#14201a" font-family="Noto Sans SC, sans-serif">走</text>
+          <rect x="152" y="58" width="88" height="48" rx="8" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.4"/>
+          <text x="196" y="88" text-anchor="middle" font-size="13" font-weight="700" fill="#1f6b4a" font-family="Noto Sans SC, sans-serif">跑</text>
+          <rect x="280" y="58" width="88" height="48" rx="8" fill="#fff" stroke="#5a635c" stroke-width="2"/>
+          <text x="324" y="88" text-anchor="middle" font-size="13" font-weight="700" fill="#14201a" font-family="Noto Sans SC, sans-serif">转身</text>
+          <rect x="408" y="58" width="88" height="48" rx="8" fill="#fff" stroke="#5a635c" stroke-width="2"/>
+          <text x="452" y="88" text-anchor="middle" font-size="13" font-weight="700" fill="#14201a" font-family="Noto Sans SC, sans-serif">停</text>
+          <path d="M112 82 H152" stroke="#1f6b4a" stroke-width="3"/>
+          <path d="M240 82 H280" stroke="#3d4a42" stroke-width="2"/>
+          <path d="M368 82 H408" stroke="#3d4a42" stroke-width="2"/>
+          <rect x="24" y="132" width="220" height="44" rx="8" fill="#fff" stroke="#5a635c" stroke-width="2"/>
+          <text x="134" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="#5a635c" font-family="IBM Plex Sans, sans-serif">Motion Graph</text>
+          <rect x="268" y="132" width="240" height="44" rx="8" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2"/>
+          <text x="388" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="#1f6b4a" font-family="IBM Plex Sans, sans-serif">Matching · 运行时仍盛行</text>
+          <text x="16" y="210" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">库外语义做不了，所以后面才要学习生成。Matching 是下游检索，不是这一环的后代。</text>
+        </svg>
+        <svg class="era-fig" data-for="rnn" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">RNN / LSTM：用历史帧预测下一帧，没有整段的 z</text>
+          <rect x="20" y="70" width="86" height="56" rx="8" fill="#f8edf0" stroke="#a84d62" stroke-width="2"/>
+          <text x="63" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, sans-serif">pose t</text>
+          <path d="M106 98 H146" stroke="#a84d62" stroke-width="2.6"/>
+          <rect x="146" y="62" width="100" height="72" rx="10" fill="#a84d62"/>
+          <text x="196" y="104" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">LSTM</text>
+          <path d="M246 98 H286" stroke="#a84d62" stroke-width="2.6"/>
+          <rect x="286" y="70" width="100" height="56" rx="8" fill="#fff" stroke="#a84d62" stroke-width="2"/>
+          <text x="336" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, sans-serif">pose t+1</text>
+          <path d="M386 98 H426" stroke="#a84d62" stroke-width="2.6"/>
+          <rect x="426" y="62" width="100" height="72" rx="10" fill="#a84d62"/>
+          <text x="476" y="104" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">LSTM</text>
+          <path d="M526 98 H560" stroke="#a84d62" stroke-width="2.6"/>
+          <rect x="560" y="70" width="60" height="56" rx="8" fill="#fff" stroke="#a84d62" stroke-width="2"/>
+          <text x="590" y="104" text-anchor="middle" font-size="12" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, sans-serif">t+2</text>
+          <path d="M336 126 L336 166 L196 166 L196 134" fill="none" stroke="#a84d62" stroke-width="1.8" stroke-dasharray="5 4"/>
+          <text x="266" y="184" text-anchor="middle" font-size="11" fill="#6a756e" font-family="Noto Sans SC, sans-serif">预测写回输入</text>
+          <text x="16" y="220" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">学的是时间动力学。一步错后面跟着错。均值坍缩。不是 GAN，也不是 VAE。</text>
+        </svg>
+        <svg class="era-fig" data-for="gan" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#c45c26" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">GAN：生成器对抗判别器。能采样，训练不稳，模式易崩</text>
+          <circle cx="64" cy="100" r="32" fill="#fff6ea" stroke="#c45c26" stroke-width="2"/>
+          <text x="64" y="105" text-anchor="middle" font-size="14" font-weight="700" fill="#c45c26" font-family="IBM Plex Sans, sans-serif">z</text>
+          <path d="M96 100 H132" stroke="#c45c26" stroke-width="2.6"/>
+          <rect x="132" y="68" width="140" height="64" rx="10" fill="#c45c26"/>
+          <text x="202" y="106" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Generator</text>
+          <path d="M272 100 H308" stroke="#c45c26" stroke-width="2.6"/>
+          <rect x="308" y="68" width="120" height="64" rx="10" fill="#fff" stroke="#c45c26" stroke-width="2"/>
+          <text x="368" y="106" text-anchor="middle" font-size="14" font-weight="700" fill="#c45c26" font-family="IBM Plex Sans, sans-serif">假动作</text>
+          <path d="M368 132 V168 H202" fill="none" stroke="#c45c26" stroke-width="1.8"/>
+          <rect x="132" y="168" width="140" height="40" rx="8" fill="#fff" stroke="#c45c26" stroke-width="2"/>
+          <text x="202" y="194" text-anchor="middle" font-size="13" font-weight="700" fill="#c45c26" font-family="IBM Plex Sans, sans-serif">Discriminator</text>
+          <rect x="468" y="80" width="148" height="48" rx="8" fill="#fff6ea" stroke="#c45c26" stroke-width="1.6" stroke-dasharray="6 4"/>
+          <text x="542" y="109" text-anchor="middle" font-size="12" font-weight="700" fill="#c45c26" font-family="Noto Sans SC, sans-serif">真 mocap</text>
+          <text x="16" y="232" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">HP-GAN 等。多样性来自对抗，不是 KL。没接到开放文本，2022 后退出主线。</text>
+        </svg>
+        <svg class="era-fig" data-for="vae" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#8a6d3b" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">VAE：整段压进 z 再解码。能采样新片段，输出偏糊</text>
+          <rect x="16" y="64" width="96" height="56" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+          <text x="64" y="98" text-anchor="middle" font-size="13" font-weight="700" fill="#8a6d3b" font-family="IBM Plex Sans, sans-serif">整段 x</text>
+          <path d="M112 92 H148" stroke="#3d4a42" stroke-width="2.6"/>
+          <rect x="148" y="64" width="100" height="56" rx="8" fill="#8a6d3b"/>
+          <text x="198" y="98" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Encoder</text>
+          <path d="M248 92 H284" stroke="#3d4a42" stroke-width="2.6"/>
+          <circle cx="320" cy="92" r="30" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2.2"/>
+          <text x="320" y="88" text-anchor="middle" font-size="15" font-weight="700" fill="#5b4d8a" font-family="IBM Plex Sans, sans-serif">z</text>
+          <text x="320" y="104" text-anchor="middle" font-size="9" fill="#6a756e" font-family="IBM Plex Sans, sans-serif">N(0,I)</text>
+          <path d="M350 92 H386" stroke="#3d4a42" stroke-width="2.6"/>
+          <rect x="386" y="64" width="100" height="56" rx="8" fill="#8a6d3b"/>
+          <text x="436" y="98" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Decoder</text>
+          <path d="M486 92 H522" stroke="#3d4a42" stroke-width="2.6"/>
+          <rect x="522" y="64" width="96" height="56" rx="8" fill="#fff" stroke="#8a6d3b" stroke-width="2"/>
+          <text x="570" y="98" text-anchor="middle" font-size="13" font-weight="700" fill="#8a6d3b" font-family="IBM Plex Sans, sans-serif">Motion</text>
+          <text x="16" y="164" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">ACTOR 把动作类送进 VAE。TEMOS 后来把文本接到这条，不是接到 LSTM 或 GAN。</text>
+          <text x="16" y="192" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">和 RNN、GAN 同年段并行。2022 扩散起来后，整段 VAE 不再是生成主线。</text>
+        </svg>
+        <svg class="era-fig" data-for="explicit" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#1f6b4a" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">显式扩散：在原始骨骼姿态上反复去噪，预测干净动作 x0</text>
+          <rect x="16" y="48" width="88" height="44" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+          <text x="60" y="75" text-anchor="middle" font-size="12" font-weight="700" fill="#8a6d3b" font-family="IBM Plex Sans, sans-serif">Text</text>
+          <rect x="16" y="102" width="88" height="44" rx="8" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2"/>
+          <text x="60" y="129" text-anchor="middle" font-size="11" font-weight="700" fill="#5b4d8a" font-family="Noto Sans SC, sans-serif">关键帧/路径</text>
+          <path d="M104 70 H136" stroke="#8a6d3b" stroke-width="2.2"/>
+          <path d="M104 124 H136" stroke="#5b4d8a" stroke-width="2.2"/>
+          <rect x="136" y="64" width="120" height="80" rx="10" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.4"/>
+          <text x="196" y="98" text-anchor="middle" font-size="13" font-weight="700" fill="#1f6b4a" font-family="IBM Plex Sans, sans-serif">覆写约束</text>
+          <text x="196" y="118" text-anchor="middle" font-size="11" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">任意关节 · 任意帧</text>
+          <path d="M256 104 H288" stroke="#1f6b4a" stroke-width="2.6"/>
+          <rect x="288" y="64" width="150" height="80" rx="10" fill="#1f6b4a"/>
+          <text x="363" y="98" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">Denoiser</text>
+          <text x="363" y="118" text-anchor="middle" font-size="11" fill="#d7ebe2" font-family="IBM Plex Sans, sans-serif">预测 x0 · 几何 loss</text>
+          <path d="M438 104 H470" stroke="#1f6b4a" stroke-width="2.6"/>
+          <rect x="470" y="76" width="72" height="56" rx="8" fill="#2f6f8f"/>
+          <text x="506" y="110" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">x0</text>
+          <rect x="554" y="76" width="70" height="56" rx="8" fill="#fff" stroke="#1f6b4a" stroke-width="1.6" stroke-dasharray="6 4"/>
+          <text x="589" y="100" text-anchor="middle" font-size="11" font-weight="700" fill="#1f6b4a" font-family="Noto Sans SC, sans-serif">后挂引导</text>
+          <text x="589" y="118" text-anchor="middle" font-size="10" fill="#6a756e" font-family="IBM Plex Sans, sans-serif">OmniControl</text>
+          <text x="16" y="186" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">未压缩，所以能直接对位置、速度、足部接触加有物理意义的损失。</text>
+          <text x="16" y="210" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">慢，不适配运行时。MDM 奠基；Kimodo 把文本与多类约束写进同一去噪器。</text>
+        </svg>
+        <svg class="era-fig" data-for="latent" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#2f6f8f" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">潜空间扩散：先压缩再去噪，快，但关节语义丢了</text>
+          <rect x="16" y="70" width="100" height="56" rx="8" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+          <text x="66" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#2f6f8f" font-family="IBM Plex Sans, sans-serif">Motion</text>
+          <path d="M116 98 H148" stroke="#2f6f8f" stroke-width="2.4"/>
+          <rect x="148" y="70" width="100" height="56" rx="8" fill="#eaf3f7" stroke="#2f6f8f" stroke-width="2"/>
+          <text x="198" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#2f6f8f" font-family="IBM Plex Sans, sans-serif">Encoder</text>
+          <path d="M248 98 H280" stroke="#2f6f8f" stroke-width="2.4"/>
+          <circle cx="314" cy="98" r="30" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2"/>
+          <text x="314" y="103" text-anchor="middle" font-size="16" font-weight="700" fill="#5b4d8a" font-family="IBM Plex Sans, sans-serif">z</text>
+          <path d="M344 98 H376" stroke="#2f6f8f" stroke-width="2.4"/>
+          <rect x="376" y="70" width="120" height="56" rx="8" fill="#2f6f8f"/>
+          <text x="436" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">潜空间扩散</text>
+          <path d="M496 98 H528" stroke="#2f6f8f" stroke-width="2.4"/>
+          <rect x="528" y="70" width="96" height="56" rx="8" fill="#eaf3f7" stroke="#2f6f8f" stroke-width="2"/>
+          <text x="576" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#2f6f8f" font-family="IBM Plex Sans, sans-serif">Decode</text>
+          <text x="16" y="176" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">蒸馏后可到几十毫秒。无法直接说「这一帧这个关节到这里」，要外挂控制再解回原空间。</text>
+          <text x="16" y="204" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">MLD 奠基，MotionLCM 走实时。适合预览，不适合卡帧资产生产。</text>
+        </svg>
+        <svg class="era-fig" data-for="discrete" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#5b4d8a" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">离散自回归：动作切成词，再用 GPT 逐个预测</text>
+          <rect x="20" y="70" width="96" height="52" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2"/>
+          <text x="68" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#8a6d3b" font-family="IBM Plex Sans, sans-serif">Text</text>
+          <path d="M116 96 H152" stroke="#5b4d8a" stroke-width="2.4"/>
+          <rect x="152" y="70" width="110" height="52" rx="8" fill="#f3f0f9" stroke="#5b4d8a" stroke-width="2"/>
+          <text x="207" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#5b4d8a" font-family="IBM Plex Sans, sans-serif">VQ 码本</text>
+          <path d="M262 96 H298" stroke="#5b4d8a" stroke-width="2.4"/>
+          <rect x="298" y="58" width="160" height="76" rx="10" fill="#5b4d8a"/>
+          <text x="378" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">GPT</text>
+          <text x="378" y="112" text-anchor="middle" font-size="11" fill="#ddd6ee" font-family="IBM Plex Sans, sans-serif">逐 token 自回归</text>
+          <path d="M458 96 H494" stroke="#5b4d8a" stroke-width="2.4"/>
+          <rect x="494" y="70" width="120" height="52" rx="8" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+          <text x="554" y="102" text-anchor="middle" font-size="13" font-weight="700" fill="#5b4d8a" font-family="IBM Plex Sans, sans-serif">Motion</text>
+          <text x="16" y="176" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">接上大语言模型生态，文本强。量化丢细节，长了会漂，空间控制弱。</text>
+          <text x="16" y="204" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">T2M-GPT、MotionGPT。新工作转向连续表示；新项目不建议当主线。</text>
+        </svg>
+        <svg class="era-fig" data-for="mask" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#8a6d3b" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">掩码解码：遮住一段，一次并行填多个位置</text>
+          <rect x="20" y="70" width="72" height="48" rx="8" fill="#fff" stroke="#8a6d3b" stroke-width="2"/>
+          <text x="56" y="100" text-anchor="middle" font-size="13" font-weight="700" fill="#8a6d3b" font-family="Noto Sans SC, sans-serif">首</text>
+          <rect x="108" y="70" width="88" height="48" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2" stroke-dasharray="6 4"/>
+          <text x="152" y="100" text-anchor="middle" font-size="13" font-weight="700" fill="#8a6d3b" font-family="Noto Sans SC, sans-serif">mask</text>
+          <rect x="212" y="70" width="88" height="48" rx="8" fill="#fff8ea" stroke="#8a6d3b" stroke-width="2" stroke-dasharray="6 4"/>
+          <text x="256" y="100" text-anchor="middle" font-size="13" font-weight="700" fill="#8a6d3b" font-family="Noto Sans SC, sans-serif">mask</text>
+          <rect x="316" y="70" width="72" height="48" rx="8" fill="#fff" stroke="#8a6d3b" stroke-width="2"/>
+          <text x="352" y="100" text-anchor="middle" font-size="13" font-weight="700" fill="#8a6d3b" font-family="Noto Sans SC, sans-serif">尾</text>
+          <path d="M388 94 H424" stroke="#8a6d3b" stroke-width="2.4"/>
+          <rect x="424" y="58" width="190" height="72" rx="10" fill="#8a6d3b"/>
+          <text x="519" y="90" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">并行填充</text>
+          <text x="519" y="112" text-anchor="middle" font-size="11" fill="#f3ead6" font-family="Noto Sans SC, sans-serif">补间 / 替换 / 局部重做</text>
+          <text x="16" y="176" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">时序编辑最强，比扩散快。关节级空间控制弱，也依赖量化。</text>
+          <text x="16" y="204" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">痛点是「改动画」而不是「造动画」时，性价比最高。MoMask、MMM。</text>
+        </svg>
+        <svg class="era-fig" data-for="flow" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">流匹配：噪声到数据走近似直线，十步量级，控制要另做</text>
+          <circle cx="70" cy="110" r="36" fill="#f8edf0" stroke="#a84d62" stroke-width="2"/>
+          <text x="70" y="115" text-anchor="middle" font-size="13" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, sans-serif">噪声</text>
+          <path d="M106 110 H200" stroke="#a84d62" stroke-width="3"/>
+          <text x="153" y="98" text-anchor="middle" font-size="11" fill="#6a756e" font-family="Noto Sans SC, sans-serif">直路径</text>
+          <rect x="200" y="78" width="160" height="64" rx="10" fill="#a84d62"/>
+          <text x="280" y="116" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">速度场</text>
+          <path d="M360 110 H454" stroke="#a84d62" stroke-width="3"/>
+          <circle cx="494" cy="110" r="36" fill="#fff" stroke="#a84d62" stroke-width="2.4"/>
+          <text x="494" y="115" text-anchor="middle" font-size="13" font-weight="700" fill="#a84d62" font-family="IBM Plex Sans, sans-serif">动作</text>
+          <text x="16" y="186" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">与扩散一家，路径更直所以步数少，好扩到十亿参数。控制不是天生的。</text>
+          <text x="16" y="214" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">HY-Motion 走规模与中文草稿。要卡帧，仍回到显式扩散；不必和 Kimodo 对着换底座。</text>
+        </svg>
+        <svg class="era-fig" data-for="stream" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#5a635c" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">连续流式：边生成边播，可打断；运行时尚未被游戏验证</text>
+          <rect x="20" y="70" width="100" height="56" rx="8" fill="#5a635c"/>
+          <text x="70" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">段 t</text>
+          <path d="M120 98 H156" stroke="#5a635c" stroke-width="2.6"/>
+          <rect x="156" y="70" width="100" height="56" rx="8" fill="#5a635c"/>
+          <text x="206" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="IBM Plex Sans, sans-serif">段 t+1</text>
+          <path d="M256 98 H292" stroke="#5a635c" stroke-width="2.6"/>
+          <rect x="292" y="70" width="100" height="56" rx="8" fill="#fff" stroke="#5a635c" stroke-width="2"/>
+          <text x="342" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#5a635c" font-family="Noto Sans SC, sans-serif">正在播</text>
+          <path d="M392 98 H428" stroke="#5a635c" stroke-width="2.6" stroke-dasharray="6 4"/>
+          <rect x="428" y="70" width="180" height="56" rx="8" fill="#f4f7f5" stroke="#5a635c" stroke-width="2"/>
+          <text x="518" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#5a635c" font-family="Noto Sans SC, sans-serif">中途改指令</text>
+          <text x="16" y="176" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">因果结构，每秒可到数百帧。长了会漂；单帧质量通常低于离线扩散。</text>
+          <text x="16" y="204" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">ARDY、DART、CAMDM。运行时现役仍是 Motion Matching。生成式只作预研。</text>
+        </svg>
+        <svg class="era-fig" data-for="phys" viewBox="0 0 640 250" xmlns="http://www.w3.org/2000/svg">
+          <text x="16" y="24" font-size="14" font-weight="700" fill="#9a5b1a" font-family="IBM Plex Sans, Noto Sans SC, sans-serif">物理混合：不是底座，是叠在上面的正确性层</text>
+          <rect x="20" y="70" width="140" height="64" rx="8" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2"/>
+          <text x="90" y="108" text-anchor="middle" font-size="13" font-weight="700" fill="#1f6b4a" font-family="Noto Sans SC, sans-serif">任一生成范式</text>
+          <path d="M160 102 H196" stroke="#9a5b1a" stroke-width="2.6"/>
+          <rect x="196" y="48" width="160" height="48" rx="8" fill="#fff" stroke="#9a5b1a" stroke-width="2"/>
+          <text x="276" y="78" text-anchor="middle" font-size="13" font-weight="700" fill="#9a5b1a" font-family="Noto Sans SC, sans-serif">仿真投影</text>
+          <rect x="196" y="108" width="160" height="48" rx="8" fill="#fff" stroke="#9a5b1a" stroke-width="2"/>
+          <text x="276" y="138" text-anchor="middle" font-size="13" font-weight="700" fill="#9a5b1a" font-family="Noto Sans SC, sans-serif">奖励微调</text>
+          <path d="M356 102 H392" stroke="#9a5b1a" stroke-width="2.6"/>
+          <rect x="392" y="70" width="140" height="64" rx="8" fill="#fff6ea" stroke="#9a5b1a" stroke-width="2"/>
+          <text x="462" y="108" text-anchor="middle" font-size="13" font-weight="700" fill="#9a5b1a" font-family="Noto Sans SC, sans-serif">可执行动作</text>
+          <rect x="548" y="70" width="76" height="64" rx="8" fill="#f4f7f5" stroke="#5a635c" stroke-width="1.6" stroke-dasharray="6 4"/>
+          <text x="586" y="98" text-anchor="middle" font-size="12" font-weight="700" fill="#5a635c" font-family="Noto Sans SC, sans-serif">常规</text>
+          <text x="586" y="116" text-anchor="middle" font-size="11" fill="#6a756e" font-family="Noto Sans SC, sans-serif">后处理</text>
+          <text x="16" y="186" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">生成模型不含动力学，脚滑、穿模是常态。常规项目用足部接触标记做 IK 锁定即可。</text>
+          <text x="16" y="214" font-size="13" fill="#3d4a42" font-family="Noto Sans SC, sans-serif">仿真在环和 RL 微调留给物理玩法或机器人。Kimodo 输出接触通道，就是为后处理准备的。</text>
+        </svg>
+      </div>
+
+      <div class="lineage-note">
+        <p class="pose-hint">悬停 / 点击左侧范式</p>
+        <div class="note-panel on" data-for="map">
+          <h3>时间轴 · 荧光 = 当下仍盛行</h3>
+          <p>先按年走完 动作图 → RNN/LSTM → GAN → VAE，再进入 2022 之后的并行范式。左侧发绿光的，是现在还在用的。</p>
+          <ul class="clean">
+            <li>RNN、GAN、VAE 三条并行，机制不同，都已退出生成主线</li>
+            <li>离散 GPT 还在文献里，但游戏主线不走，所以没有荧光</li>
+            <li>Matching 运行时仍现役，不在生成主轴上</li>
+          </ul>
+        </div>
+        <div class="note-panel" data-for="graph">
+          <h3>动作图 · 1998–2015</h3>
+          <p>Kovar 等把 mocap 切段连边。库外语义做不了，组合成本随规模爆炸。</p>
+          <ul class="clean">
+            <li>生成主线已退出，所以没有荧光</li>
+            <li>Motion Matching 是运行时检索，今天仍盛行</li>
+            <li>和生成是上下游，不是这一环的后代</li>
+          </ul>
+          <p class="src">来源：Kovar et al., SIGGRAPH 2002；Clavet, GDC 2016</p>
+        </div>
+        <div class="note-panel" data-for="rnn">
+          <h3>RNN / LSTM · 2015–17</h3>
+          <p>ERD、残差 LSTM：用已生成姿态预测下一帧。这是运动预测，不是整段生成。</p>
+          <ul class="clean">
+            <li>没有整段先验，一步错后面跟着错</li>
+            <li>长了会漂、塌到平均姿态</li>
+            <li>和 GAN、VAE 并行，不是它们的前身</li>
+          </ul>
+          <p class="src">来源：Fragkiadaki ERD, ICCV 2015；Martinez et al., CVPR 2017</p>
+        </div>
+        <div class="note-panel" data-for="gan">
+          <h3>GAN · 2017–20</h3>
+          <p>生成器造假动作，判别器辨真假。能采样，但对抗训练不稳，模式容易崩。</p>
+          <ul class="clean">
+            <li>多样性来自对抗，不是 KL 潜变量</li>
+            <li>没接到开放文本主线</li>
+            <li>2022 后退出，左侧无荧光</li>
+          </ul>
+          <p class="src">来源：HP-GAN 等动作 GAN 工作</p>
+        </div>
+        <div class="note-panel" data-for="vae">
+          <h3>VAE · 2018–21</h3>
+          <p>整段编码成 z，从标准正态采样再解码。第一次能抽一段新动作，输出偏糊。</p>
+          <ul class="clean">
+            <li>ACTOR 走动作类；TEMOS 后来把文本接到这条</li>
+            <li>不是 LSTM 的下一站，也不是 GAN 的改写</li>
+            <li>扩散起来后退出主线</li>
+          </ul>
+          <p class="src">来源：Petrovich ACTOR, ICCV 2021；其后 TEMOS</p>
+        </div>
+        <div class="note-panel" data-for="explicit">
+          <h3>显式扩散 · 游戏内容生产主线</h3>
+          <p>噪声在原始骨骼姿态上去噪，预测干净动作。约束可在任意关节、任意帧覆写，并和文本共存。</p>
+          <ul class="clean">
+            <li>MDM 奠基；OmniControl 后挂引导；CondMDI 做关键帧补间</li>
+            <li>Kimodo：训练时覆写，文本 + 全身关键帧 + 末端 + 路径进同一去噪器</li>
+            <li>慢，秒级；用来批量出可编辑资产，不进运行时</li>
+          </ul>
+          <p class="src">来源：MDM ICLR 2023；OmniControl；CondMDI；Kimodo</p>
+        </div>
+        <div class="note-panel" data-for="latent">
+          <h3>潜空间扩散 · 快，控不住厘米</h3>
+          <p>自编码器先压缩，扩散在 z 上做。算力下来了，关节语义也没了。</p>
+          <ul class="clean">
+            <li>蒸馏后可到几十毫秒，适合预览</li>
+            <li>指定关节位置必须外挂控制、解回原空间再监督</li>
+            <li>和显式扩散是快慢取舍，不是升级关系</li>
+          </ul>
+          <p class="src">来源：MLD；MotionLCM；MotionBricks</p>
+        </div>
+        <div class="note-panel" data-for="discrete">
+          <h3>离散自回归 · 文本强，细节弱</h3>
+          <p>VQ 把动作变成有限符号，GPT 逐个预测。接得上大语言模型，也把连续动作切糊了。</p>
+          <ul class="clean">
+            <li>T2M-GPT、MotionGPT；更大规模如 MotionMillion 多禁止商用</li>
+            <li>长序列误差累积，空间控制弱</li>
+            <li>新工作改留连续表示；精控项目不走这条</li>
+          </ul>
+          <p class="src">来源：T2M-GPT 2023；MotionGPT 2024</p>
+        </div>
+        <div class="note-panel" data-for="mask">
+          <h3>掩码解码 · 改动画比造动画更划算</h3>
+          <p>遮住中间，并行填。补间、片段替换、局部重做是天然强项。</p>
+          <ul class="clean">
+            <li>比扩散快，编辑性强</li>
+            <li>关节级控制弱，也吃量化损失</li>
+            <li>团队痛点是过渡片段，优先看 MoMask 这类</li>
+          </ul>
+          <p class="src">来源：MoMask；MMM；BAMM</p>
+        </div>
+        <div class="note-panel" data-for="flow">
+          <h3>流匹配 · 大批量草稿，控制另做</h3>
+          <p>和扩散一家，路径近似直线，十步就能出。好扩规模，控制方案比扩散少。</p>
+          <ul class="clean">
+            <li>HY-Motion 走十亿参数和中文提示</li>
+            <li>不支持关键帧 / 路径时，不能替代 Kimodo</li>
+            <li>草稿用它，卡帧仍用显式扩散</li>
+          </ul>
+          <p class="src">来源：流匹配与扩散同族；HY-Motion 1.0 为规模向代表</p>
+        </div>
+        <div class="note-panel" data-for="stream">
+          <h3>连续流式 · 唯一能实时播的，尚未进游戏现役</h3>
+          <p>在连续潜空间上逐段生成，边出边播，指令可中途改。</p>
+          <ul class="clean">
+            <li>ARDY、DART、CAMDM</li>
+            <li>长了会漂，单帧通常不如离线扩散</li>
+            <li>运行时仍先 Motion Matching；生成式只预研</li>
+          </ul>
+          <p class="src">来源：ARDY；DART；CAMDM</p>
+        </div>
+        <div class="note-panel" data-for="phys">
+          <h3>物理混合 · 叠加层，非常规默认</h3>
+          <p>仿真投影或奖励微调，让输出可执行。开销大，或要搭物理训练环境。</p>
+          <ul class="clean">
+            <li>常规游戏：足部接触 + IK 后处理</li>
+            <li>Kimodo 的接触通道就是给这条后处理用的</li>
+            <li>物理玩法或机器人才上仿真在环</li>
+          </ul>
+          <p class="src">来源：PhysDiff；CLoSD；工业后处理实践</p>
+        </div>
+      </div>
     </div>
   </section>
-
 </div>
 
 <div class="progress"><i id="bar"></i></div>
@@ -5242,6 +6282,38 @@
     });
   }
 
+  function bindHotSwitch(slide) {
+    if (!slide) return;
+    if (!slide.classList.contains("lineage-page") && !slide.classList.contains("outlook-page")) return;
+    const items = [...slide.querySelectorAll("[data-hot]")].filter((el) =>
+      el.classList.contains("lineage-item") || el.classList.contains("outlook-item")
+    );
+    const setHot = (key) => {
+      if (!key) return;
+      slide.dataset.hot = key;
+      items.forEach((el) => el.classList.toggle("active", el.dataset.hot === key));
+      slide.querySelectorAll(".note-panel").forEach((el) => {
+        el.classList.toggle("on", el.dataset.for === key);
+      });
+      slide.querySelectorAll(".era-fig").forEach((el) => {
+        el.classList.toggle("on", el.dataset.for === key);
+      });
+    };
+    if (!slide.dataset.hotBound) {
+      slide.dataset.hotBound = "1";
+      items.forEach((el) => {
+        const key = el.dataset.hot;
+        el.addEventListener("mouseenter", () => setHot(key));
+        el.addEventListener("focus", () => setHot(key));
+        el.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setHot(key);
+        });
+      });
+    }
+    setHot(slide.dataset.hot || items[0]?.dataset.hot);
+  }
+
   function bindPoseHot(slide) {
     if (!slide || !slide.classList.contains("pose-page")) return;
     const setHot = (key) => {
@@ -5322,6 +6394,7 @@
     fitDitFlows(slide);
     scaleLaneFormulas(slide);
     bindPoseHot(slide);
+    bindHotSwitch(slide);
   }
 
   async function typesetThenFit(slide) {
@@ -5373,7 +6446,7 @@
   });
 
   document.getElementById("deck").addEventListener("click", (e) => {
-    if (e.target.closest("a, button, input, .pose-item, .hot, .pose-list, .pose-note, .noise-chain, .noise-math, .lane-board, .dit-board")) return;
+    if (e.target.closest("a, button, input, .pose-item, .hot, .pose-list, .pose-note, .lineage-item, .outlook-item, .lineage-board, .outlook-board, .noise-chain, .noise-math, .lane-board, .dit-board")) return;
     const rect = e.currentTarget.getBoundingClientRect();
     if (e.clientX - rect.left > rect.width * 0.55) next();
     else prev();

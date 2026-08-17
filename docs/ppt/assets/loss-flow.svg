@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 860" preserveAspectRatio="xMidYMid meet" role="img">
+  <defs>
+    <style>.en{font-family:"IBM Plex Sans","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif;}</style>
+    <marker id="fg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#1f6b4a"/>
+    </marker>
+    <marker id="fr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#2f6f8f"/>
+    </marker>
+    <marker id="fb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#a84d62"/>
+    </marker>
+  </defs>
+
+  <rect x="24" y="10" width="1552" height="34" rx="8" fill="#e8f3ec"/>
+  <text class="en" x="800" y="33" text-anchor="middle" font-size="16" font-weight="700" fill="#1f6b4a">前向：Root 先跑，Body 后跑，拼成 369 之后才算 Loss · 不是 Root 出完就先算一项</text>
+
+  <!-- ROOT -->
+  <rect x="24" y="56" width="456" height="360" rx="14" fill="#eaf3f7" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="252" y="90" text-anchor="middle" font-size="20" font-weight="700" fill="#2f6f8f">1  Root Transformer</text>
+  <text class="en" x="252" y="114" text-anchor="middle" font-size="13" fill="#6a756e">16L / 8H / 1024 · 参数独立</text>
+  <rect x="48" y="132" width="408" height="52" rx="10" fill="#fff" stroke="#2f6f8f" stroke-width="2"/>
+  <text class="en" x="252" y="164" text-anchor="middle" font-size="14" font-weight="700" fill="#2f6f8f">noisy || mask + 52 prefix</text>
+  <path d="M252 184 L252 204" stroke="#1f6b4a" stroke-width="3.5" marker-end="url(#fg)"/>
+  <rect x="48" y="208" width="408" height="64" rx="10" fill="#2f6f8f"/>
+  <text class="en" x="252" y="246" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">Encoder x16</text>
+  <path d="M252 272 L252 292" stroke="#1f6b4a" stroke-width="3.5" marker-end="url(#fg)"/>
+  <rect x="48" y="296" width="408" height="96" rx="12" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="252" y="332" text-anchor="middle" font-size="17" font-weight="700" fill="#2f6f8f">root-hat  [B, T, 5]</text>
+  <text class="en" x="252" y="360" text-anchor="middle" font-size="13" fill="#3d4a42">先出 5 维，此时还不算 Loss</text>
+  <text class="en" x="252" y="382" text-anchor="middle" font-size="12" fill="#6a756e">[px, py, pz, cos, sin]</text>
+
+  <!-- G2L -->
+  <rect x="504" y="56" width="592" height="360" rx="14" fill="#f7f4fb" stroke="#5b4d8a" stroke-width="2.5"/>
+  <text class="en" x="800" y="90" text-anchor="middle" font-size="20" font-weight="700" fill="#5b4d8a">2  Global to Local</text>
+  <text class="en" x="800" y="114" text-anchor="middle" font-size="13" fill="#6a756e">不是网络 · 反归一化 / atan2 / 有限差分</text>
+  <rect x="528" y="132" width="168" height="58" rx="10" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="612" y="166" text-anchor="middle" font-size="14" font-weight="700" fill="#5b4d8a">反归一化</text>
+  <path d="M696 161 L720 161" stroke="#1f6b4a" stroke-width="3" marker-end="url(#fg)"/>
+  <rect x="724" y="132" width="148" height="58" rx="10" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="798" y="166" text-anchor="middle" font-size="14" font-weight="700" fill="#5b4d8a">atan2</text>
+  <path d="M872 161 L896 161" stroke="#1f6b4a" stroke-width="3" marker-end="url(#fg)"/>
+  <rect x="900" y="132" width="168" height="58" rx="10" fill="#fff" stroke="#5b4d8a" stroke-width="2"/>
+  <text class="en" x="984" y="166" text-anchor="middle" font-size="14" font-weight="700" fill="#5b4d8a">有限差分</text>
+  <path d="M800 190 L800 210" stroke="#1f6b4a" stroke-width="3.5" marker-end="url(#fg)"/>
+  <rect x="528" y="214" width="544" height="70" rx="10" fill="#5b4d8a"/>
+  <text class="en" x="800" y="244" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">local-root  [B, T, 4]  送给 Body</text>
+  <text class="en" x="800" y="270" text-anchor="middle" font-size="13" fill="#ddd6ee">[omega, vx, vz, py]</text>
+  <rect x="576" y="302" width="448" height="92" rx="12" fill="#fff" stroke="#8f2f2f" stroke-width="2.5" stroke-dasharray="8 6"/>
+  <circle cx="628" cy="348" r="22" fill="#8f2f2f"/>
+  <path d="M618 338 L638 358 M638 338 L618 358" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+  <text class="en" x="820" y="340" text-anchor="middle" font-size="16" font-weight="700" fill="#8f2f2f">stopgrad / detach</text>
+  <text class="en" x="820" y="368" text-anchor="middle" font-size="13" fill="#3d4a42">前向通 · 回传切断</text>
+
+  <path d="M480 344 L496 344" stroke="#1f6b4a" stroke-width="4" marker-end="url(#fg)"/>
+  <path d="M1096 249 L1112 249" stroke="#1f6b4a" stroke-width="4" marker-end="url(#fg)"/>
+
+  <!-- BODY -->
+  <rect x="1120" y="56" width="456" height="360" rx="14" fill="#f8ecef" stroke="#a84d62" stroke-width="2.5"/>
+  <text class="en" x="1348" y="90" text-anchor="middle" font-size="20" font-weight="700" fill="#a84d62">3  Body Transformer</text>
+  <text class="en" x="1348" y="114" text-anchor="middle" font-size="13" fill="#6a756e">同结构 · 不读 Root hidden</text>
+  <rect x="1144" y="132" width="408" height="52" rx="10" fill="#fff" stroke="#a84d62" stroke-width="2"/>
+  <text class="en" x="1348" y="164" text-anchor="middle" font-size="14" font-weight="700" fill="#a84d62">4 || 364 || 369  =  737</text>
+  <path d="M1348 184 L1348 204" stroke="#1f6b4a" stroke-width="3.5" marker-end="url(#fg)"/>
+  <rect x="1144" y="208" width="408" height="64" rx="10" fill="#a84d62"/>
+  <text class="en" x="1348" y="246" text-anchor="middle" font-size="17" font-weight="700" fill="#fff">Encoder x16</text>
+  <path d="M1348 272 L1348 292" stroke="#1f6b4a" stroke-width="3.5" marker-end="url(#fg)"/>
+  <rect x="1144" y="296" width="408" height="96" rx="12" fill="#fff" stroke="#a84d62" stroke-width="2.5"/>
+  <text class="en" x="1348" y="332" text-anchor="middle" font-size="17" font-weight="700" fill="#a84d62">body-hat  [B, T, 364]</text>
+  <text class="en" x="1348" y="360" text-anchor="middle" font-size="13" fill="#3d4a42">此时也还不算 Loss</text>
+  <text class="en" x="1348" y="382" text-anchor="middle" font-size="12" fill="#6a756e">和 Root 5 维还没拼</text>
+
+  <!-- CONCAT + LOSS once -->
+  <path d="M252 416 L252 444" stroke="#1f6b4a" stroke-width="3.5"/>
+  <path d="M1348 416 L1348 444" stroke="#1f6b4a" stroke-width="3.5"/>
+  <path d="M252 444 H1348" stroke="#1f6b4a" stroke-width="3.5"/>
+  <path d="M800 444 L800 464" stroke="#1f6b4a" stroke-width="3.5" marker-end="url(#fg)"/>
+
+  <rect x="24" y="468" width="1552" height="86" rx="14" fill="#e8f3ec" stroke="#1f6b4a" stroke-width="2.5"/>
+  <text class="en" x="800" y="504" text-anchor="middle" font-size="20" font-weight="700" fill="#1f6b4a">4  cat(root-hat, body-hat)  =  x0-hat  [B, T, 369]</text>
+  <text class="en" x="800" y="534" text-anchor="middle" font-size="14" fill="#3d4a42">KimodoLoss 对这一整条 369 和 GT 一次算完七项 · 代码里没有「Root 先 loss、Body 再 loss」</text>
+
+  <path d="M800 554 L800 576" stroke="#1f6b4a" stroke-width="3.5" marker-end="url(#fg)"/>
+
+  <!-- split supervision -->
+  <rect x="24" y="580" width="456" height="232" rx="14" fill="#fff" stroke="#2f6f8f" stroke-width="2.5"/>
+  <text class="en" x="252" y="616" text-anchor="middle" font-size="18" font-weight="700" fill="#2f6f8f">切片前 5 维  =  L_R</text>
+  <text class="en" x="252" y="644" text-anchor="middle" font-size="13" fill="#6a756e">root position x10 · heading x2</text>
+  <text class="en" x="252" y="688" text-anchor="middle" font-size="14" fill="#3d4a42">监督的是 Root 的输出</text>
+  <text class="en" x="252" y="716" text-anchor="middle" font-size="14" fill="#3d4a42">backward 只回 Root Transformer</text>
+  <text class="en" x="252" y="760" text-anchor="middle" font-size="13" fill="#6a756e">同一轮 optimizer step</text>
+  <rect x="504" y="580" width="592" height="232" rx="14" fill="#fffdfb" stroke="#8f2f2f" stroke-width="2" stroke-dasharray="8 6"/>
+  <text class="en" x="800" y="620" text-anchor="middle" font-size="16" font-weight="700" fill="#8f2f2f">回传在桥上分开</text>
+  <path d="M1348 700 H800" stroke="#8f2f2f" stroke-width="2.5" stroke-dasharray="8 6" fill="none"/>
+  <circle cx="800" cy="700" r="22" fill="#8f2f2f"/>
+  <path d="M790 690 L810 710 M810 690 L790 710" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+  <text class="en" x="800" y="748" text-anchor="middle" font-size="14" font-weight="700" fill="#8f2f2f">Body 的 Loss 穿不过 stopgrad</text>
+  <text class="en" x="800" y="776" text-anchor="middle" font-size="13" fill="#3d4a42">所以改不了 Root · 两级仍一起更新</text>
+
+  <rect x="1120" y="580" width="456" height="232" rx="14" fill="#fff" stroke="#a84d62" stroke-width="2.5"/>
+  <text class="en" x="1348" y="616" text-anchor="middle" font-size="18" font-weight="700" fill="#a84d62">切片后 364 维  =  L_B + FK</text>
+  <text class="en" x="1348" y="644" text-anchor="middle" font-size="13" fill="#6a756e">pos x10 · rot x10 · vel x3 · foot x4 · FK x5</text>
+  <text class="en" x="1348" y="688" text-anchor="middle" font-size="14" fill="#3d4a42">监督的是 Body 的输出</text>
+  <text class="en" x="1348" y="716" text-anchor="middle" font-size="14" fill="#3d4a42">backward 只回 Body Transformer</text>
+  <text class="en" x="1348" y="760" text-anchor="middle" font-size="13" fill="#6a756e">FK 也落在这 364 里，尤其是旋转</text>
+</svg>

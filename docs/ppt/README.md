@@ -24,4 +24,6 @@ xdg-open /home/yezitao/PublicWorkspace/yzt/kimodo-reproduction/docs/ppt/index.ht
 
 操作：`←` `→` 翻页 · `Home` / `End` · `F` 全屏 · 点击左右半屏翻页 · URL `#页码` 可直达。
 
+逐页演讲词：[`speech.md`](speech.md)。
+
 图源：`assets/` 来自官方文档静态资源（`arch.png`、`overview.png`、`constraints.png` 等）。
