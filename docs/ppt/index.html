@@ -1197,7 +1197,7 @@
   }
 
 
-  /* —— Part 3: the master flow is reused, then the active training axis is enlarged —— */
+  /* —— Part 3: pipeline questions, then Core10 A1 / A2 —— */
   .slide.gap-page,
   .slide.ablation-page { }
   .gap-page .kicker,
@@ -1616,7 +1616,7 @@
   .route-card strong { display: block; margin-bottom: 4px; font-size: 13px; }
   .route-card p { margin: 0; color: var(--ink-soft); font-size: 11.5px; line-height: 1.35; }
 
-  /* —— Part 4: full metric tables and explicit selection matrices —— */
+  /* —— Part 3 continued: A1 / A2 metric tables —— */
   .ablation-setup-grid {
     display: grid;
     grid-template-columns: .85fr 1fr 1fr;
@@ -1933,11 +1933,19 @@
     font-size: 12.5px;
   }
 
-  /* —— Part 5 · Phase 1 vs Official v1 —— */
+  /* —— Part 4 · Phase 1 vs Official v1 —— */
   table.metric-table.p1-table col.metric-label { width: 22%; }
   table.metric-table.p1-table col.metric-value { width: 13%; }
   table.metric-table.p1-table th,
   table.metric-table.p1-table td { padding-top: 4px; padding-bottom: 4px; font-variant-numeric: tabular-nums; }
+  table.metric-table.p1-table.p1-dense th,
+  table.metric-table.p1-table.p1-dense td {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    font-size: 11.5px;
+    line-height: 1.22;
+  }
+  table.metric-table.p1-table.p1-dense .metric-section td { padding: 3px 8px; font-size: 11px; }
   table.metric-table.p1-table th.official,
   table.metric-table.p1-table td.official {
     color: var(--const);
@@ -2004,6 +2012,82 @@
     margin-top: 8px;
   }
   .p1-read .metric-insight { margin: 0; }
+
+  .slide.qpipe-page .qpipe-flow {
+    display: grid;
+    grid-template-columns: 1.15fr 12px 0.85fr 12px 1.15fr 12px 1.35fr 12px 1.15fr;
+    align-items: stretch;
+    gap: 0;
+    margin-top: 8px;
+    flex: 0 0 auto;
+  }
+  .qpipe-box {
+    --axis: var(--line);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 10px 11px 11px;
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--axis);
+    background: #fff;
+  }
+  .qpipe-box.ok { --axis: #c9d4cc; background: #f7f8f7; }
+  .qpipe-box.ok h3, .qpipe-box.ok .qpipe-sub { color: var(--muted); }
+  .qpipe-box.data { --axis: var(--root); }
+  .qpipe-box.mask { --axis: var(--const); }
+  .qpipe-box.bridge { --axis: var(--body); }
+  .qpipe-box.ldom { --axis: var(--warn); }
+  .qpipe-box .qpipe-k {
+    color: var(--axis);
+    font: 700 10.5px/1.2 "IBM Plex Sans", sans-serif;
+    letter-spacing: .04em;
+  }
+  .qpipe-box.ok .qpipe-k { color: var(--muted); }
+  .qpipe-box h3 {
+    margin: 3px 0 2px;
+    font-size: clamp(15px, 1.2vw, 18px);
+  }
+  .qpipe-box .qpipe-sub {
+    color: var(--ink-soft);
+    font-size: 11.5px;
+    line-height: 1.3;
+  }
+  .qpipe-arrow {
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+    font: 700 18px/1 "IBM Plex Sans", sans-serif;
+  }
+  .qpipe-ask {
+    margin-top: auto;
+    padding-top: 8px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-soft);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .qpipe-ask strong { color: var(--ink); }
+  .qpipe-ask .miss { display: block; margin-bottom: 3px; }
+  .qpipe-tag {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+  }
+  .qpipe-tag.done { color: var(--accent); background: var(--accent-soft); }
+  .qpipe-tag.todo { color: var(--warn); background: #fff3df; }
+  .qpipe-tag.bg { color: var(--root); background: #eef6f0; }
+  .qpipe-nailed {
+    margin-top: 8px;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    background: #f7f9f7;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.35;
+  }
 
   @media (max-height: 820px) {
     .gap-page .title,
@@ -2088,7 +2172,9 @@
     .decision-grid,
     .metric-split,
     .p1-charts,
-    .p1-read { grid-template-columns: 1fr; flex: none; }
+    .p1-read,
+    .qpipe-flow { grid-template-columns: 1fr; flex: none; }
+    .qpipe-arrow { display: none; }
   }
 
   /* —— 前向加噪：逐步采样 → 一次加噪 —— */
@@ -3556,7 +3642,7 @@
   }
   .chapter-track {
     display: grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
     list-style: none;
     margin: 56px 0 0;
@@ -3863,10 +3949,9 @@
     <ol class="chapter-track">
       <li class="on"><span class="n">01</span>目标与场景</li>
       <li><span class="n">02</span>论文原理</li>
-      <li><span class="n">03</span>关键细节</li>
-      <li><span class="n">04</span>预消融</li>
-      <li><span class="n">05</span>全量结果</li>
-      <li><span class="n">06</span>方法谱系</li>
+      <li><span class="n">03</span>预消融</li>
+      <li><span class="n">04</span>全量结果</li>
+      <li><span class="n">05</span>方法谱系</li>
     </ol>
   </section>
 
@@ -3911,10 +3996,9 @@
     <ol class="chapter-track">
       <li><span class="n">01</span>目标与场景</li>
       <li class="on"><span class="n">02</span>论文原理</li>
-      <li><span class="n">03</span>关键细节</li>
-      <li><span class="n">04</span>预消融</li>
-      <li><span class="n">05</span>全量结果</li>
-      <li><span class="n">06</span>方法谱系</li>
+      <li><span class="n">03</span>预消融</li>
+      <li><span class="n">04</span>全量结果</li>
+      <li><span class="n">05</span>方法谱系</li>
     </ol>
   </section>
 
@@ -4906,385 +4990,119 @@
 
   <section class="slide chapter" data-title="Part 3">
     <div class="chapter-num">03</div>
-    <h1 class="title">论文未写死的训练旋钮</h1>
-    <p class="subtitle">架构图只说明信息怎么流；这些细节决定模型实际看见什么梯度、为哪些能力分配容量</p>
-    <ol class="chapter-track">
-      <li><span class="n">01</span>目标与场景</li>
-      <li><span class="n">02</span>论文原理</li>
-      <li class="on"><span class="n">03</span>关键细节</li>
-      <li><span class="n">04</span>预消融</li>
-      <li><span class="n">05</span>全量结果</li>
-      <li><span class="n">06</span>方法谱系</li>
-    </ol>
-  </section>
-
-  <section class="slide gap-page" data-title="关键细节总览" data-mode="train">
-    <div class="kicker">Part 3 · 关键细节</div>
-    <h2 class="title">Part 2 讲清了前向；这四条轴才决定「模型实际学什么」</h2>
-    <p class="lead">论文和发布代码给出了架构与大类 recipe，但没有钉死若干会改梯度的工程选择。它们不是风格差异——搞错会直接改变约束精度、文本跟随和足部稳定性的优化方向。</p>
-    <div class="map-annotated">
-      <div class="map-carry" data-map-slot></div>
-      <div class="map-pin input">① data / stats</div>
-      <div class="map-pin constraint">④ p(mask)</div>
-      <div class="map-pin detach">⑦ gradient bridge</div>
-      <div class="map-pin loss">⑨ loss scale</div>
-    </div>
-    <div class="gap-overview-grid">
-      <article class="gap-axis-card input">
-        <div class="gap-axis-head"><span class="gap-axis-no">①</span><h3>数据与统计边界</h3></div>
-        <div class="source-line">公开 SEED 288h ≠ 论文 RP 700h</div>
-        <div class="gap-facts">
-          <div><b>论文</b><span>方法不依赖特定数据规模，但未披露完整 RP 训练集</span></div>
-          <div><b>为何重要</b><span>μ/σ 来自训练分布；数据边界同时决定特征尺度、Loss 梯度权重与能力上限</span></div>
-          <div><b>搞错后果</b><span>拿 Core10 小集外推 full-data；或 stats 混用导致覆盖/反归一化错位</span></div>
-        </div>
-      </article>
-      <article class="gap-axis-card constraint">
-        <div class="gap-axis-head"><span class="gap-axis-no">④</span><h3>约束题型分布</h3></div>
-        <div class="source-line">论文给大类；内部概率没有钉死</div>
-        <div class="gap-facts">
-          <div><b>论文</b><span>5 families · 10% none · 25% 双 pattern；family 内概率未公开</span></div>
-          <div><b>为何重要</b><span>ℙ(mask) 就是训练「出题器」——没练过的拓扑几乎没有对应梯度</span></div>
-          <div><b>搞错后果</b><span>评测要的 13-leaf 形状从未曝光 → EE/FB 好、Timeline 回归，或反之</span></div>
-        </div>
-      </article>
-      <article class="gap-axis-card detach">
-        <div class="gap-axis-head"><span class="gap-axis-no">⑦</span><h3>Root→Body 梯度桥</h3></div>
-        <div class="source-line">发布代码有 detach；质量方向待验证</div>
-        <div class="gap-facts">
-          <div><b>论文</b><span>描述 Root→Local→Body 数值前向；未披露跨桥 autograd 策略</span></div>
-          <div><b>为何重要</b><span>决定 364D Body/FK 信号能不能更新 5D Root——两级监督是否耦合</span></div>
-          <div><b>搞错后果</b><span>Root 被 Body 梯度淹没，或两级不协调；与推理 <code>no_grad()</code> 不是一回事</span></div>
-        </div>
-      </article>
-      <article class="gap-axis-card loss">
-        <div class="gap-axis-head"><span class="gap-axis-no">⑨</span><h3>Direct Loss 域</h3></div>
-        <div class="source-line">论文公开 γ；未公开 direct loss 所在域</div>
-        <div class="gap-facts">
-          <div><b>论文</b><span>七项 Smooth-L1 与 γ=10/2/10/10/3/4；六项 direct 在 physical 还是 normalized 未说明</span></div>
-          <div><b>为何重要</b><span>σ 进入有效梯度与 β=1 拐点——同一 γ 在不同域是两套优化目标</span></div>
-          <div><b>搞错后果</b><span>语义/足部 vs Root/EE 精控的偏好被隐式改写；total loss 不可横比</span></div>
-        </div>
-      </article>
-    </div>
-    <div class="gap-thesis"><strong>本章任务：</strong>先把「为什么重要、论文缺什么、搞错会怎样」讲清；下一页映射到预消融/全量验证，再进 Part 4 用数据说话。</div>
-  </section>
-
-  <section class="slide gap-page" data-title="关键细节·验证映射" data-mode="train">
-    <div class="kicker">Part 3 · 关键细节 · 验证映射</div>
-    <h2 class="title">每条轴都要落到可验证实验——预消融定方向，全量再验真</h2>
-    <p class="lead">Part 4 的 Core10 40k 预消融负责<strong>单轴因果</strong>与默认配方选择；Part 5 的 1M 训练会在更大规模、更长 schedule 下<strong>复验、纠偏、补做</strong>预消融无法覆盖的问题。</p>
-    <div class="gap-verify-grid">
-      <div class="gap-verify-head">
-        <span>训练轴</span><span>若不先验证</span><span>验证方式</span><span>阶段</span><span>状态</span>
-      </div>
-      <div class="gap-verify-row input">
-        <span class="axis">① 数据 / stats</span>
-        <span>小集趋势被当成 full-data 结论；stats 与 manifest 混用</span>
-        <span>规模对照 · Official 复验 · stats 一致性</span>
-        <span>背景约束</span>
-        <span class="status bg">贯穿 Part 4–5</span>
-      </div>
-      <div class="gap-verify-row loss">
-        <span class="axis">⑨ Loss 域</span>
-        <span>γ 相同但优化目标不同；语义/足部 vs Root/EE 偏好被隐式改写</span>
-        <span><strong>A1</strong> physical ↔ normalized · Core10 40k</span>
-        <span>预消融</span>
-        <span class="status done">已完成</span>
-      </div>
-      <div class="gap-verify-row constraint">
-        <span class="axis">④ 约束采样</span>
-        <span>评测形状从未练过；或 Timeline 能力被题型重分配牺牲</span>
-        <span><strong>A2</strong> lane=0 ↔ 0.25 · Core10 40k</span>
-        <span>预消融</span>
-        <span class="status done">已完成</span>
-      </div>
-      <div class="gap-verify-row detach">
-        <span class="axis">⑦ detach</span>
-        <span>Root 与 Body 监督是否该耦合——发布代码默认 ON，质量未证</span>
-        <span><strong>A3</strong> detach ON ↔ OFF · Core10 40k</span>
-        <span>预消融</span>
-        <span class="status todo">待做</span>
-      </div>
-      <div class="gap-verify-row full">
-        <span class="axis">全量配方</span>
-        <span>预消融 defaults 在 1M / V2 数据 / 16 GPU 下是否仍成立</span>
-        <span>resume 分叉 · wd · Phase2 长度 · 数据 recipe 等</span>
-        <span>全量验证</span>
-        <span class="status full">Part 5</span>
-      </div>
-    </div>
-    <div class="gap-thesis"><strong>叙事顺序：</strong>Part 3 讲机制与风险 → Part 4 用 Core10 预消融选 defaults（Normalized + lane=.25）→ Part 5 报告 1M 上遇到的问题与额外全量验证。</div>
-  </section>
-
-  <section class="slide gap-page" data-title="关键细节·Loss域" data-mode="train" data-map="loss">
-    <div class="kicker">Part 3 · 关键细节 · A1</div>
-    <h2 class="title">同样的 γ，不同计算域 = 两套有效优化目标</h2>
-    <p class="lead">模型输出在 z-score 空间。若先反归一化再算 Smooth-L1，σ 不只是单位换算，它会进入梯度并改变 β=1 的物理含义。</p>
-    <div class="map-annotated compact">
-      <div class="map-carry" data-map-slot></div>
-      <div class="map-pin loss">放大 ⑨ Loss</div>
-    </div>
-    <div class="gap-detail-grid">
-      <article class="gap-panel loss">
-        <h3>同一个 normalized residual，分成两条 Loss 路径 <small>六项 direct loss；FK 不变</small></h3>
-        <div class="gap-eq-pair">
-          <div class="gap-eq-card normalized">
-            <strong>Normalized direct</strong>
-            <div class="math-line">\(e_z=\hat z-z\)</div>
-            <div class="math-line">\(L_n=\gamma\,\mathrm{SL1}(e_z)\)</div>
-            <div class="math-line">\(\nabla_{\hat z}L_n=\gamma\,\psi(e_z)\)</div>
-            <p>β=1 约等于“一倍标准差”；各 feature 先被统计尺度拉平。</p>
-          </div>
-          <div class="gap-eq-arrow">↔</div>
-          <div class="gap-eq-card physical">
-            <strong>Physical direct</strong>
-            <div class="math-line">\(e_{raw}=\sigma e_z\)</div>
-            <div class="math-line">\(L_p=\gamma\,\mathrm{SL1}(\sigma e_z)\)</div>
-            <div class="math-line">\(\nabla_{\hat z}L_p=\gamma\sigma\,\psi(\sigma e_z)\)</div>
-            <p>小误差区近似 γσ²e_z；不同通道的有效权重可相差很大。</p>
-          </div>
-        </div>
-        <div class="gap-keyline"><strong>关键：</strong>论文的 γ=10/2/10/10/3/4 只是显式权重；physical 路径还隐式乘入每维 σ，并改变 Smooth-L1 从二次区进入线性区的位置。</div>
-        <div class="gap-chips">
-          <span>Root position / heading</span><span>Joint pos / rot / vel</span><span>Foot contact</span>
-          <span class="fixed">FK：两臂始终在物理关节空间</span><span>valid-frame reduction 不变</span><span>跨 arm 的 total loss 不可横比</span>
-        </div>
-      </article>
-      <article class="gap-panel loss">
-        <h3>公开了什么，缺了什么，为什么会改效果</h3>
-        <div class="evidence-stack">
-          <div class="evidence-row"><span class="tag paper">论文</span><span>公开 7 项 Smooth-L1、权重与 variable-length mask；<strong>未说明六项 direct 在 physical 还是 normalized 域</strong>。</span></div>
-          <div class="evidence-row"><span class="tag code">实现</span><span>本项目将两种路径做成单轴开关；FK 始终反归一化后计算，因此不属于 A1。</span></div>
-          <div class="evidence-row"><span class="tag ours">选择</span><span><strong>normalized 是本项目工程默认，不是论文明确披露的配置</strong>；后面用 A1 指标决定是否保留。</span></div>
-        </div>
-        <div class="impact-chain">
-          <div class="impact-step">σ 改变通道梯度</div>
-          <div class="impact-step">容量分配随之变化</div>
-          <div class="impact-step">Root/EE、语义、足部产生取舍</div>
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <section class="slide gap-page" data-title="关键细节·约束采样" data-mode="train" data-map="const">
-    <div class="kicker">Part 3 · 关键细节 · A2</div>
-    <h2 class="title">约束 sampler 不是普通增强：ℙ(mask) 就是模型真正练习的题目分布</h2>
-    <p class="lead">某种 mask 拓扑从未被采到，就几乎没有对应梯度。增加 EE / mixture 题型，也必然从其他题型的采样预算中拿走概率。</p>
-    <div class="map-annotated compact">
-      <div class="map-carry" data-map-slot></div>
-      <div class="map-pin constraint">放大 ④ sampler → Overwrite</div>
-    </div>
-    <div class="gap-detail-grid">
-      <article class="gap-panel constraint">
-        <h3>从 clean motion 到 Denoiser 的完整约束路径 <small>在线采样，不是离线多存一份动作</small></h3>
-        <div class="sampler-flow">
-          <div>clean \(x_0\)</div><div class="focus">采样 pattern<br/>frames · features</div><div>\(m,\;y=m\odot x_0\)</div><div>\(\tilde x_t=m\odot y+(1-m)\odot x_t\)</div><div>Denoiser<br/>\([\tilde x_t;m]\)</div>
-        </div>
-        <div class="sampler-bar" aria-label="Phase 2 sampling probabilities">
-          <span class="none">10%<br/>none</span><span class="two">25%<br/>paper-two</span><span class="bench">22.5%<br/>benchmark 13-leaf</span><span class="single">42.5%<br/>paper-single</span>
-        </div>
-        <dl class="gap-compare">
-          <div class="gap-compare-row"><dt>总约束率</dt><dd><strong>仍为 90%</strong>；lane=.25 是从 paper-single 的 65% 中切出 22.5%，不是额外增加约束样本。</dd></div>
-          <div class="gap-compare-row"><dt>联合输入</dt><dd>text+constraint 81% · constraint-only 9% · text-only 9% · unconditional 1%。</dd></div>
-          <div class="gap-compare-row"><dt>真正学习</dt><dd>\(\mathbb E_{m\sim p_{train}}[L\mid m]\)：题型出现频率就是该能力的期望风险权重。</dd></div>
-        </dl>
-      </article>
-      <article class="gap-panel constraint">
-        <h3>披露边界：方法不变量 vs 工程假设</h3>
-        <div class="leaf-grid">
-          <div class="leaf-card"><strong>论文公开</strong><span>5 families、10% none、25% 双 pattern、Kmax 1→20 且偏少。</span></div>
-          <div class="leaf-card"><strong>论文未公开</strong><span>family 内概率、精确 K 分布、dense span、heading 概率、与文本/时长联合分布。</span></div>
-          <div class="leaf-card"><strong>paper lane · 我们</strong><span>5 类均匀、K⁻¹、dense 20–80%、heading 50%。</span></div>
-          <div class="leaf-card"><strong>benchmark lane · 我们</strong><span>13 叶均匀、K≤9、K⁻⁰·⁴⁵；只对齐 constraint shape。</span></div>
-        </div>
-        <div class="gap-keyline"><strong>为什么影响效果：</strong>更多 EE / mixture 练习应改善末端与无文本控制；但它可能挤占 timeline、多条件或特定 full-body 题型。A2 必须看全指标，不能只看一个 EE 数字。</div>
-        <div class="impact-chain">
-          <div class="impact-step">重分配题型概率</div><div class="impact-step">改变每类梯度曝光</div><div class="impact-step">形成能力收益与回归</div>
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <section class="slide gap-page" data-title="关键细节·Detach" data-mode="train" data-map="g2l">
-    <div class="kicker">Part 3 · 关键细节 · Detach</div>
-    <h2 class="title">detach 不是省显存开关：它决定 Body loss 能不能改 Root</h2>
-    <p class="lead">forward 数值没有被切断：Body 仍读取预测 Root。被切断的是 backward——364 维 Body 与 FK 信号是否穿过 Global→Local 桥回到 Root Transformer。</p>
-    <div class="map-annotated compact">
-      <div class="map-carry" data-map-slot></div>
-      <div class="map-pin detach">放大 Denoiser 内部梯度桥</div>
-    </div>
-    <div class="gap-detail-grid">
-      <article class="gap-panel detach">
-        <h3>Denoiser 内部：数值前向保持，梯度在 stopgrad 截止</h3>
-        <div class="detach-flow">
-          <div class="detach-node root">Root Encoder<br/>\(\hat r^{global}\in\mathbb R^5\)</div><div class="detach-arrow">→</div>
-          <div class="detach-node">unnormalize · atan2<br/>wrapped finite-diff · fps<br/>\(\hat r^{local}\in\mathbb R^4\)</div><div class="detach-arrow">→</div>
-          <div class="detach-node stop">⊥ stopgrad<br/>只断反向</div><div class="detach-arrow">→</div>
-          <div class="detach-node body">concat bodyₜ 364 + mask<br/>Body Encoder → \(\hat b\)</div>
-        </div>
-        <div class="route-split">
-          <div class="route-card on"><strong>detach = ON（发布代码训练行为）</strong><p>Root 只由 root position + heading 监督；Body 由 joint pos/rot/vel/contact + physical FK 监督。两级仍在同一个 optimizer step 更新。</p></div>
-          <div class="route-card off"><strong>detach = OFF（A3 待预消融）</strong><p>新增 \(\nabla_{\theta_R}L_{body}=\frac{\partial L_b}{\partial r_l}\frac{\partial r_l}{\partial r_g}\frac{\partial r_g}{\partial\theta_R}\)，且有限差分会跨相邻帧。</p></div>
-        </div>
-        <div class="gap-keyline"><strong>不要混淆：</strong>训练 detach 是模型内部的梯度策略；普通推理外层的 <code>no_grad()</code> 只是关闭整个 autograd graph，两者不是同一件事。</div>
-      </article>
-      <article class="gap-panel detach">
-        <h3>能确认的事实，与尚未验证的效果</h3>
-        <div class="evidence-stack">
-          <div class="evidence-row"><span class="tag code">代码事实</span><span>发布 denoiser 的 training-mode forward 显式 <code>no_grad()+detach</code>；单测可验证 Body-only loss 时 Root grad=0。</span></div>
-          <div class="evidence-row"><span class="tag paper">论文边界</span><span>技术报告描述 Root→Local→Body 数值前向并称 end-to-end，但未披露 trainer 的跨桥 autograd 细节。</span></div>
-          <div class="evidence-row"><span class="tag ours">效果假设</span><span>ON 可能避免 364D Body/FK 梯度压过 5D Root；OFF 可能增强两级协调。<strong>A3 尚未做，不能宣称哪边质量更好。</strong></span></div>
-        </div>
-        <div class="impact-chain">
-          <div class="impact-step">监督集合改变</div><div class="impact-step">Root 优化动态改变</div><div class="impact-step">稳定性/协调性需 A3 验证</div>
-        </div>
-      </article>
-    </div>
-  </section>
-
-  <section class="slide chapter" data-title="Part 4">
-    <div class="chapter-num">04</div>
     <h1 class="title">预消融</h1>
-    <p class="subtitle">Core10 · 40k · 单轴因果——在进 1M 之前先把方向拧对；不是最终结论</p>
+    <p class="subtitle">论文没写死的旋钮，先在 Core10 上拧对方向；不是 1M 终局</p>
     <ol class="chapter-track">
       <li><span class="n">01</span>目标与场景</li>
       <li><span class="n">02</span>论文原理</li>
-      <li><span class="n">03</span>关键细节</li>
-      <li class="on"><span class="n">04</span>预消融</li>
-      <li><span class="n">05</span>全量结果</li>
-      <li><span class="n">06</span>方法谱系</li>
+      <li class="on"><span class="n">03</span>预消融</li>
+      <li><span class="n">04</span>全量结果</li>
+      <li><span class="n">05</span>方法谱系</li>
     </ol>
   </section>
 
-  <section class="slide ablation-page" data-title="预消融定位">
-    <div class="kicker">Part 4 · 预消融定位</div>
-    <h2 class="title">为什么是「预」消融：低成本单轴因果，不是 1M 最终裁决</h2>
-    <p class="lead">Part 3 指出了论文没写死的旋钮；Part 4 在 Core10 子集上用 40k 步、每次只改一根轴，回答「该往哪个 default 走」。这些结论<strong>可以指导</strong>全量配方，但<strong>不能替代</strong> Part 5 在大规模训练上的验证与纠偏。</p>
-    <div class="ablation-setup-grid preablation-scope">
-      <article class="ablation-setup-card">
-        <h3>预消融能回答什么</h3>
-        <p>单轴开关的<strong>方向</strong>与<strong>权衡</strong>：哪条 arm 在语义、约束、足部上更占优，代价是什么。</p>
-        <div class="setup-kv">
-          <div><b>规模</b><span>Core10 manifest · 20k P1 + 20k P2</span></div>
-          <div><b>控制</b><span>2×H200 · gbatch 512 · 同协议 eval</span></div>
-          <div><b>评测</b><span>stratified 10% · 2,269 cases</span></div>
-          <div><b>产出</b><span>Normalized direct + lane=.25 等工程 defaults</span></div>
+  <section class="slide gap-page qpipe-page" data-title="流程疑问" data-mode="train">
+    <div class="kicker">Part 3 · 预消融 · 该拧哪</div>
+    <h2 class="title">前向流程公开了；真正值得怀疑的，只有会改「学什么」的四处</h2>
+    <p class="lead">加噪、52 prefix、七项权重、两阶段课表是钉死的。下面这条训练链上，只有带颜色顶边的四步：论文没写死，而且会改梯度或出题分布。</p>
+    <div class="qpipe-flow">
+      <article class="qpipe-box data">
+        <div class="qpipe-k">Q1 · GT / stats</div>
+        <h3>数据边界</h3>
+        <p class="qpipe-sub">SEED 288h · μ/σ 来自训练集</p>
+        <div class="qpipe-ask">
+          <span class="miss"><strong>没钉死：</strong>完整 RP 700h 与 stats 配方</span>
+          搞错会把 Core10 趋势外推成 full-data，或让覆盖/反归一化错位。
+          <span class="qpipe-tag bg">贯穿背景 · 不全靠消融</span>
         </div>
       </article>
-      <article class="ablation-setup-card a1">
-        <span class="evidence-grade primary">预消融边界</span>
-        <h3>不能外推什么</h3>
-        <p>Core10 与 Official 约束 cm 仍有数量级差距；40k 趋势<strong>不等于</strong> full-data 1M 最终排序。</p>
-        <div class="setup-kv">
-          <div><b>数据</b><span>288h SEED ≠ 700h RP · V2 recipe 未覆盖</span></div>
-          <div><b>步数</b><span>40k ≪ 1M Phase2 长度与 curriculum</span></div>
-          <div><b>多轴</b><span>resume / wd / 数据增强等未在此章同时扫</span></div>
-          <div><b>含义</b><span>这里是<strong>定方向</strong>，不是<strong>定终局</strong></span></div>
+      <div class="qpipe-arrow">→</div>
+      <article class="qpipe-box ok">
+        <div class="qpipe-k">钉死</div>
+        <h3>Noise</h3>
+        <p class="qpipe-sub">cosine · \(x_0\) 预测</p>
+        <div class="qpipe-ask">论文 + 发布代码一致。不是这章的实验轴。</div>
+      </article>
+      <div class="qpipe-arrow">→</div>
+      <article class="qpipe-box mask">
+        <div class="qpipe-k">Q2 · Overwrite</div>
+        <h3>约束出题</h3>
+        <p class="qpipe-sub">\(\mathbb P(m)\) = 训练题目</p>
+        <div class="qpipe-ask">
+          <span class="miss"><strong>没钉死：</strong>family 内概率、K、13 叶形状</span>
+          没练过的 mask 几乎没有梯度；多给 EE 就会从 Timeline 里拿走预算。
+          <span class="qpipe-tag done">A2 · lane 0 ↔ .25 · 已完成</span>
         </div>
       </article>
-      <article class="ablation-setup-card a2">
-        <span class="evidence-grade primary">与 Part 5 关系</span>
-        <h3>全量阶段还会发生什么</h3>
-        <p>1M 训练遇到的数据、resume、评测链、超参分叉等问题，需要在全量规模上<strong>额外验证甚至重做</strong>预消融结论。</p>
-        <div class="setup-kv">
-          <div><b>输入</b><span>Part 4 defaults → production YAML</span></div>
-          <div><b>过程</b><span>训练中断/复训 · 指标漂移 · recipe 迭代</span></div>
-          <div><b>输出</b><span>Part 5：1M 指标 + 全量阶段额外消融</span></div>
-          <div><b>讲法</b><span>预消融选路，全量验真</span></div>
+      <div class="qpipe-arrow">→</div>
+      <article class="qpipe-box bridge">
+        <div class="qpipe-k">Q3 · Denoiser</div>
+        <h3>梯度桥</h3>
+        <p class="qpipe-sub">Root → Local → Body</p>
+        <div class="qpipe-ask">
+          <span class="miss"><strong>没钉死：</strong>Body/FK 是否回传到 Root</span>
+          发布代码训练态 detach=ON。和推理外层 <code>no_grad()</code> 不是一回事。
+          <span class="qpipe-tag todo">A3 · ON ↔ OFF · 待做</span>
+        </div>
+      </article>
+      <div class="qpipe-arrow">→</div>
+      <article class="qpipe-box ldom">
+        <div class="qpipe-k">Q4 · Loss</div>
+        <h3>Direct 域</h3>
+        <p class="qpipe-sub">同一 γ，两套有效目标</p>
+        <div class="qpipe-ask">
+          <span class="miss"><strong>没钉死：</strong>六项 direct 在 physical 还是 normalized</span>
+          σ 进梯度、改 β=1 拐点，会把语义/足部 vs Root/EE 的偏好拧偏。FK 两臂都在物理空间，不属于这根轴。
+          <span class="qpipe-tag done">A1 · Physical ↔ Normalized · 已完成</span>
         </div>
       </article>
     </div>
-    <div class="ablation-rule"><strong>本章读法：</strong>把 A1/A2 当作「进 1M 前的工程选择证据」；看到 Core10 与 Official 的大 gap 时，应期待 Part 5 解释全量训练如何缩小或为何仍存差距。</div>
+    <div class="qpipe-nailed"><strong>钉死、这章不拧：</strong>cosine 一次加噪、\(x_0\) 预测、52 prefix、七项 Smooth-L1 与 γ、Phase 1/2 各 500k、Phase 2 总约束率 90%。预消融只回答 Q2 和 Q4 的方向；Q3 今天不宣称；Q1 是全量阶段的背景约束。</div>
   </section>
 
-  <section class="slide" data-title="指标入门">
-    <div class="kicker">Part 4 · 预消融 · 评测指标</div>
-    <h2 class="title">先把尺子讲清楚：TMR + 三类指标</h2>
-    <p class="lead">语义类分数不是 Kimodo 自己打的——先固定一个文本–动作嵌入模型，再在共享空间里量 R@3 / FID。</p>
-    <div class="card" style="margin-top:12px; flex:0 0 auto">
-      <h3>评测用嵌入模型：TMR-SOMA-RP-v1</h3>
-      <ul class="clean" style="margin-top:8px">
-        <li><strong>TMR</strong>（Text-Motion Retrieval）：把文本与动作编到同一向量空间的检索/嵌入模型</li>
-        <li>本课题与官方协议对齐，使用 NVIDIA 发布的 <strong>TMR-SOMA-RP-v1</strong>（Bones Rigplay / SOMA 域上训练）</li>
-        <li>评测时 <strong>冻结</strong> TMR：只编码生成动作、GT 动作与文本，不参与 Kimodo 反传</li>
-        <li>在此空间上算 <strong>R@3 / FID / t2m_sim</strong>；换 TMR 等于换尺子，数字不可横向乱比</li>
-      </ul>
-    </div>
-    <div class="grid-3" style="margin-top:14px; flex:1; min-height:0">
-      <div class="card">
-        <div class="num">A</div>
-        <h3>动作是否遵循文本语义 · TMR</h3>
-        <p><strong>R@3 ↑</strong>：用 TMR 嵌入做 text↔motion 检索，生成动作能否排进正确文本前 3。</p>
-        <p style="margin-top:8px"><strong>FID ↓</strong>：生成动作与 GT 动作在 <strong>TMR 特征</strong>上的分布距离。</p>
-        <p style="margin-top:8px"><strong>t2m_sim ↑</strong>：同一 TMR 空间里的文本–动作余弦相似度。</p>
-      </div>
-      <div class="card">
-        <div class="num">B</div>
-        <h3>动作是否遵循几何约束 · 直接测量</h3>
-        <p><strong>2D Root / EE / Full-Body Pos (cm) ↓</strong>：路径、手脚、全身关键帧在物理空间的误差（论文表口径）。</p>
-        <p style="margin-top:8px"><strong>internal err / acc</strong>：同协议下的归一化误差与命中率，便于训练期对比。</p>
-        <p style="margin-top:8px; color:var(--muted); font-size:13px">不经过 TMR——直接比关节/根轨迹。</p>
-      </div>
-      <div class="card">
-        <div class="num">C</div>
-        <h3>动作是否站得稳 · 足部</h3>
-        <p><strong>Foot contact ↑</strong>：脚着地状态是否合理。</p>
-        <p style="margin-top:8px"><strong>Foot skate ↓</strong>：脚滑（cm/s）——看起来“打滑”就差。</p>
-        <p style="margin-top:8px; color:var(--muted); font-size:13px">语义对、约束对，仍可能脚滑；所以单独看。</p>
-      </div>
-    </div>
-    <div class="callout" style="margin-top:12px">
-      <strong>读表规则：</strong>↑ 越大越好，↓ 越小越好。预消融若 A 变好而 B 变差，是权衡不是单纯强弱。
-      主评测：固定分层 10% 子集（≈2269 cases）+ 同一 TMR；128 proxy 只看趋势，R@3 易饱和。
-    </div>
-  </section>
-
-  <!-- Ablation setup -->
   <section class="slide ablation-page" data-title="预消融设定">
-    <div class="kicker">Part 4 · 预消融设计</div>
-    <h2 class="title">Core10 40k 单轴对照：先固定证据口径，再问哪个 default 更适合目标</h2>
-    <p class="lead">A1 与 A2 都是 Core10 40k 的<strong>预消融</strong>——主表统一到同一个 2,269-case stratified 10%，页面只比较各自两个实验臂；结论用于选定 1M 起点，而非宣称最终性能。</p>
+    <div class="kicker">Part 3 · 预消融 · 怎么测</div>
+    <h2 class="title">Core10 40k 单轴对照：先定尺子和开关，再看 A1 / A2 数字</h2>
+    <p class="lead">每次只改一根轴。结论用于选定 1M 起点，<strong>不能外推</strong>成 full-data 最终排序。主评测冻结 TMR-SOMA-RP-v1，分层 10% · 2,269 cases。</p>
     <div class="ablation-setup-grid">
       <article class="ablation-setup-card">
-        <h3>共同控制变量</h3>
-        <p>只有待测开关变化，其余训练与生成协议保持一致。</p>
+        <h3>共同控制</h3>
+        <p>同一份 Core10、同一生成协议；只有待测开关变化。</p>
         <div class="setup-kv">
-          <div><b>数据</b><span>Core10 manifest</span></div>
           <div><b>训练</b><span>20k Phase 1 + 20k Phase 2</span></div>
           <div><b>硬件</b><span>2×H200 · global batch 512</span></div>
-          <div><b>评测</b><span>100 DDIM steps · batch 1 · fp32 TMR</span></div>
+          <div><b>生成</b><span>DDIM 100 · batch 1 · fp32 TMR</span></div>
+          <div><b>读法</b><span>A 变好 B 变差是权衡，不是单纯强弱</span></div>
         </div>
       </article>
       <article class="ablation-setup-card a1">
-        <span class="evidence-grade primary">A1 · 主证据已完成</span>
-        <h3>Loss domain</h3>
-        <p><strong>Physical ↔ Normalized</strong>；六项 direct loss 切换计算域，physical FK、数据、步数和 lane=0 全部不变。</p>
+        <span class="evidence-grade primary">尺子 · 三类一起看</span>
+        <h3>TMR + 几何 + 足部</h3>
+        <p>语义分数不是 Kimodo 自己打的。换 TMR 等于换尺子。</p>
         <div class="setup-kv">
-          <div><b>主问题</b><span>哪个域更适合目标指标？</span></div>
-          <div><b>样本</b><span>stratified 10% · 2,269 cases</span></div>
-          <div><b>看什么</b><span>3 类文本/足部 + with/no-text constraints</span></div>
-          <div><b>边界</b><span>Core10 40k，不能外推 full-data 1M</span></div>
+          <div><b>A 语义</b><span>R@3 ↑ · FID ↓ · t2m_sim ↑</span></div>
+          <div><b>B 几何</b><span>Root / EE / FB cm ↓，不经 TMR</span></div>
+          <div><b>C 足部</b><span>contact ↑ · skate cm/s ↓</span></div>
+          <div><b>子集</b><span>128 proxy 只看趋势，R@3 易饱和</span></div>
         </div>
       </article>
       <article class="ablation-setup-card a2">
-        <span class="evidence-grade primary">A2 · 主证据已完成</span>
-        <h3>Benchmark lane</h3>
-        <p><strong>lane=0 ↔ 0.25</strong>；在 normalized 基线上，只将 Phase 2 总样本的 22.5% 重分配给 13-leaf 约束形状。</p>
+        <span class="evidence-grade primary">两根已完成的轴</span>
+        <h3>A1 Loss 域 · A2 lane</h3>
+        <p>A1 只切 physical ↔ normalized。A2 在 Normalized 底座上只切 lane=0 ↔ .25。</p>
         <div class="setup-kv">
-          <div><b>主问题</b><span>增加题型覆盖的收益与回归是什么？</span></div>
-          <div><b>样本</b><span>同一 stratified 10% inventory</span></div>
-          <div><b>看什么</b><span>with/no-text + timeline 单/多事件</span></div>
-          <div><b>边界</b><span>工程采样配方，不当作论文披露值</span></div>
+          <div><b>A1</b><span>FK 不变；total loss 不可横比</span></div>
+          <div><b>A2</b><span>总约束率仍 90%；切的是题型</span></div>
+          <div><b>A3</b><span>detach 待做，今天不选边</span></div>
+          <div><b>边界</b><span>40k ≠ 1M · 全量另报</span></div>
         </div>
       </article>
     </div>
-    <div class="ablation-rule"><strong>选择规则：</strong>先排除量纲与 proxy 假象 → 同时检查语义、足部、Root/EE/FB → 明确目标优先级 → 最后才给默认值；“单项更好”不等于“全面更好”。</div>
+    <div class="ablation-rule"><strong>选择规则：</strong>先排除量纲与 proxy 假象 → 语义、足部、Root/EE/FB 一起看 → 明确产品优先级 → 最后才给 default。「单项更好」不等于「全面更好」。</div>
   </section>
 
-  <!-- A1 full results -->
   <section class="slide ablation-page" data-title="预消融 A1·全指标">
-    <div class="kicker">Part 4 · 预消融 A1 · 全指标</div>
+    <div class="kicker">Part 3 · 预消融 A1 · 全指标</div>
     <h2 class="title">Loss 域：按当前综合目标，Normalized 整体更好</h2>
     <p class="lead">Core10 40k · stratified 10% · content split · 2,269 cases；这里只做 Physical 与 Normalized 的同协议对照，不加入第三个参考模型。</p>
     <div class="metric-split">
@@ -5348,7 +5166,7 @@
 
   <!-- A1 decision -->
   <section class="slide ablation-page" data-title="预消融 A1·如何选择">
-    <div class="kicker">Part 4 · 预消融 A1 · 决策</div>
+    <div class="kicker">Part 3 · 预消融 A1 · 决策</div>
     <h2 class="title">A1 结论：Normalized 是综合默认，Physical 是精控特化选项</h2>
     <p class="lead">“整体更好”必须绑定目标权重：当前优先通用生成、Timeline 语义和足部观感，同时把 Root / EE 误差作为需要监控的取舍项。</p>
     <div class="decision-grid">
@@ -5375,7 +5193,7 @@
 
   <!-- A2 full results -->
   <section class="slide ablation-page" data-title="预消融 A2·全指标">
-    <div class="kicker">Part 4 · 预消融 A2 · 全指标</div>
+    <div class="kicker">Part 3 · 预消融 A2 · 全指标</div>
     <h2 class="title">Benchmark lane：约束整体改善，但 Timeline-multi R@3 出现明显回归</h2>
     <p class="lead">同一 Normalized · Core10 40k · stratified 10% · 2,269 cases。lane=.25 只重分配约束形状，Phase 2 总 constrained probability 仍为 90%。</p>
     <div class="metric-board">
@@ -5419,7 +5237,7 @@
 
   <!-- A2 decision -->
   <section class="slide ablation-page" data-title="预消融 A2·如何选择">
-    <div class="kicker">Part 4 · 预消融 A2 · 决策</div>
+    <div class="kicker">Part 3 · 预消融 A2 · 决策</div>
     <h2 class="title">A2 怎么选：用更多约束覆盖，换取可监控的 Timeline 代价</h2>
     <p class="lead">lane=.25 的收益集中在训练目的本身——constraint shape coverage；它并没有改文本数据，所以不能期待所有语义桶同时提升。</p>
     <div class="decision-grid">
@@ -5444,366 +5262,183 @@
     <div class="decision-foot"><strong>最终理由：</strong>选择 lane=.25，是因为它更符合“可精控动作”核心目标且收益有一致机制解释；同时把 Timeline-multi 回归作为必须守住的显式约束，而不是忽略它。</div>
   </section>
 
-  <section class="slide chapter" data-title="Part 5">
-    <div class="chapter-num">05</div>
+  <section class="slide chapter" data-title="Part 4">
+    <div class="chapter-num">04</div>
     <h1 class="title">全量训练与验证</h1>
     <p class="subtitle">先对齐 Official v1：Phase 1 指标轨迹；Phase 2 / 1M 另报</p>
     <ol class="chapter-track">
       <li><span class="n">01</span>目标与场景</li>
       <li><span class="n">02</span>论文原理</li>
-      <li><span class="n">03</span>关键细节</li>
-      <li><span class="n">04</span>预消融</li>
-      <li class="on"><span class="n">05</span>全量结果</li>
-      <li><span class="n">06</span>方法谱系</li>
+      <li><span class="n">03</span>预消融</li>
+      <li class="on"><span class="n">04</span>全量结果</li>
+      <li><span class="n">05</span>方法谱系</li>
     </ol>
   </section>
 
-  <section class="slide gap-page" data-title="全量训练路径">
-    <div class="kicker">Part 5 · 全量训练路径</div>
-    <h2 class="title">1M 不是预消融的线性放大——先用 Phase 1 把尺子对齐 Official v1</h2>
-    <p class="lead">Part 4 给出 Normalized + lane=.25 等 defaults；进入 V2 / 16×H200 的 1M production 后，先报告已经跑完的 <strong>Phase 1（0–500k）</strong> 同协议轨迹，再把 Phase 2 / 1M 留到有可报点时再填。</p>
-    <div class="gap-detail-grid">
-      <article class="gap-panel constraint">
-        <h3>从预消融 defaults 到 production 配方 <small>Part 4 → Part 5 的输入</small></h3>
-        <div class="evidence-stack">
-          <div class="evidence-row"><span class="tag ours">defaults</span><span>Normalized direct · lane=.25 · Phase1/2 curriculum · EMA · stratified 10% eval</span></div>
-          <div class="evidence-row"><span class="tag code">规模跃迁</span><span>Core10 → V2 full · 40k → 1M · 2 GPU → 16×H200 · run <code>v2-1m-hostnet</code></span></div>
-          <div class="evidence-row"><span class="tag paper">评测锚点</span><span>同一 inventory 上复验 Official SEED-v1.1；Phase 1 每 100k 导出 EMA 评一次</span></div>
-        </div>
-        <div class="impact-chain">
-          <div class="impact-step">预消融定 default</div>
-          <div class="impact-step">Phase 1 对齐 Official</div>
-          <div class="impact-step">Phase 2 / 1M 另报</div>
-        </div>
-      </article>
-      <article class="gap-panel detach">
-        <h3>本章先填什么、什么仍空着</h3>
-        <dl class="gap-compare">
-          <div class="gap-compare-row"><dt>Phase 1 评测</dt><dd>100k–500k 已齐；content Overview / Timeline / 约束 cm 全程对照 Official v1</dd></div>
-          <div class="gap-compare-row"><dt>评测可信</dt><dd>stratified 10% · 2,269 cases · inventory <code>bd7db29d…552d</code> · DDIM 100 · batch 1 · fp32 TMR</dd></div>
-          <div class="gap-compare-row"><dt>读法约束</dt><dd>Phase 1 无运动学约束，文本应逼近 Official；约束 cm 允许差一个数量级</dd></div>
-          <div class="gap-compare-row"><dt>Phase 2 / 1M</dt><dd>主结论表仍待填；不把 600k 以后的分叉或坍塌数字提前写成成果</dd></div>
-        </dl>
-        <div class="gap-keyline"><strong>讲法要点：</strong>这一章先证明「全量 Phase 1 的文本 prior 已经能和 Official v1 同桌比」；约束能力和 1M 终点是下一课的事。</div>
-      </article>
-    </div>
-  </section>
-
-  <section class="slide ablation-page" data-title="Phase 1 设定">
-    <div class="kicker">Part 5 · Phase 1 · 设定</div>
-    <h2 class="title">Phase 1 只学文本→自然动作；Official v1 是同协议水平线，不是这一阶段的约束目标</h2>
-    <p class="lead">对照对象是 <strong>Kimodo-SOMA-SEED-v1.1</strong> 在当前代码、当前 stratified 10% 上的复验，不是 NVIDIA 文档全量表。后面三页只看 <code>v2-1m-hostnet</code> 的 100k 节拍。</p>
-    <div class="ablation-setup-grid">
-      <article class="ablation-setup-card">
-        <h3>训练臂</h3>
-        <p>全量 V2 production，16×H200，global batch 与论文 1M 配方对齐。</p>
-        <div class="setup-kv">
-          <div><b>Run</b><span>v2-1m-hostnet · 0–500k</span></div>
-          <div><b>课程</b><span>text-only · mask=0 · dropout 0.1</span></div>
-          <div><b>权重</b><span>每 100k 发布 EMA bundle</span></div>
-          <div><b>不改</b><span>Normalized · lane 尚未生效</span></div>
-        </div>
-      </article>
-      <article class="ablation-setup-card a1">
-        <span class="evidence-grade primary">对照锚点</span>
-        <h3>Official SEED-v1.1</h3>
-        <p>同一 inventory、同一生成协议、同一 TMR；用来校准评测链，也用来看 Phase 1 文本 prior 走到哪。</p>
-        <div class="setup-kv">
-          <div><b>样本</b><span>stratified 10% · 2,269 cases</span></div>
-          <div><b>生成</b><span>DDIM 100 · batch 1 · fp32 TMR</span></div>
-          <div><b>主表</b><span>content Overview / Timeline / with-text 约束</span></div>
-          <div><b>不比</b><span>官方 700h RP 模型；128 proxy</span></div>
-        </div>
-      </article>
-      <article class="ablation-setup-card a2">
-        <span class="evidence-grade primary">这一阶段该看见什么</span>
-        <h3>成功标准（Phase 1）</h3>
-        <p>文本与足部应逼近 Official；约束应几乎不动。后者变好才是 Phase 2 的作业。</p>
-        <div class="setup-kv">
-          <div><b>应接近</b><span>Overview FID / R@3 / skate / contact</span></div>
-          <div><b>应远离</b><span>Root / EE / FB cm（尚未学约束）</span></div>
-          <div><b>噪声</b><span>Overview 仅 92 段，R@3 会跳</span></div>
-          <div><b>主信号</b><span>FID 单调下降比 R@3 更稳</span></div>
-        </div>
-      </article>
-    </div>
-    <div class="ablation-rule"><strong>读表规则：</strong>紫列是 Official v1 水平线；绿格是 Phase 1 五个点里该项最好。R@3 顶到 100 不单独当「已经超过官方」——先看 FID 和足部是否一起走。</div>
-  </section>
 
   <section class="slide ablation-page" data-title="Phase 1 文本轨迹">
-    <div class="kicker">Part 5 · Phase 1 · 文本 / 足部</div>
-    <h2 class="title">文本 prior 在 Phase 1 内收束：500k Overview FID 0.110，略优于 Official 0.119</h2>
-    <p class="lead">content split · paper protocol · 同一 TMR。Official 是水平线；我们的五个点来自 <code>eval-results/v2-1m-hostnet-stratified10pct</code>。</p>
-    <div class="metric-board">
-      <div class="metric-board-head"><h3>生成质量随 step 变化 · vs Official v1</h3><span>绿格 = Phase 1 最好点；紫列 = Official 复验</span></div>
-      <table class="metric-table p1-table">
-        <colgroup>
-          <col class="metric-label">
-          <col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value">
-          <col class="metric-value">
-        </colgroup>
-        <thead>
-          <tr>
-            <th class="metric-name">指标</th>
-            <th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th>
-            <th class="official">Official v1</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="metric-section"><td colspan="7">Overview</td></tr>
-          <tr>
-            <td class="metric-name">R@3 ↑</td>
-            <td>94.6</td><td class="best-p1">100</td><td>98.9</td><td>98.9</td><td>96.7</td>
-            <td class="official">100</td>
-          </tr>
-          <tr>
-            <td class="metric-name">FID ↓</td>
-            <td>0.165</td><td>0.141</td><td>0.135</td><td>0.126</td><td class="best-p1">0.110</td>
-            <td class="official">0.119</td>
-          </tr>
-          <tr>
-            <td class="metric-name">t2m_sim ↑</td>
-            <td>0.902</td><td>0.927</td><td>0.925</td><td>0.927</td><td class="best-p1">0.929</td>
-            <td class="official">0.926</td>
-          </tr>
-          <tr>
-            <td class="metric-name">Foot contact ↑</td>
-            <td>0.937</td><td>0.949</td><td>0.957</td><td>0.955</td><td class="best-p1">0.961</td>
-            <td class="official">0.972</td>
-          </tr>
-          <tr>
-            <td class="metric-name">Foot skate cm/s ↓</td>
-            <td>6.68</td><td>5.77</td><td>5.23</td><td>5.21</td><td class="best-p1">4.96</td>
-            <td class="official">4.09</td>
-          </tr>
-          <tr class="metric-section"><td colspan="7">Timeline</td></tr>
-          <tr>
-            <td class="metric-name">Single R@3 ↑</td>
-            <td>89.1</td><td>89.1</td><td>88.0</td><td class="best-p1">91.3</td><td>90.2</td>
-            <td class="official">89.1</td>
-          </tr>
-          <tr>
-            <td class="metric-name">Single FID ↓</td>
-            <td>0.190</td><td>0.169</td><td>0.164</td><td class="best-p1">0.154</td><td>0.159</td>
-            <td class="official">0.160</td>
-          </tr>
-          <tr>
-            <td class="metric-name">Multi R@3 ↑</td>
-            <td>91.1</td><td>97.5</td><td class="best-p1">98.7</td><td>97.5</td><td>94.9</td>
-            <td class="official">96.2</td>
-          </tr>
-          <tr>
-            <td class="metric-name">Multi FID ↓</td>
-            <td>0.206</td><td>0.165</td><td>0.158</td><td class="best-p1">0.156</td><td>0.164</td>
-            <td class="official">0.158</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="p1-charts">
-      <article class="spark-card">
-        <h4>Overview FID ↓</h4>
-        <p>单调下降，500k 穿过 Official 水平线</p>
-        <svg viewBox="0 0 400 130" role="img" aria-label="Overview FID from 100k to 500k versus Official v1">
-          <line x1="40" y1="39.9" x2="372" y2="39.9" stroke="#5b4d8a" stroke-width="1.4" stroke-dasharray="4 3"/>
-          <polyline points="48.0,93.3 126.0,65.4 204.0,58.5 282.0,47.5 360.0,29.7" fill="none" stroke="#1f6b4a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="48" cy="93.3" r="2.6" fill="#1f6b4a"/><circle cx="126" cy="65.4" r="2.6" fill="#1f6b4a"/>
-          <circle cx="204" cy="58.5" r="2.6" fill="#1f6b4a"/><circle cx="282" cy="47.5" r="2.6" fill="#1f6b4a"/>
-          <circle cx="360" cy="29.7" r="3.2" fill="#1f6b4a"/>
-          <text class="spark-axis" x="48" y="122" text-anchor="middle">100k</text>
-          <text class="spark-axis" x="126" y="122" text-anchor="middle">200k</text>
-          <text class="spark-axis" x="204" y="122" text-anchor="middle">300k</text>
-          <text class="spark-axis" x="282" y="122" text-anchor="middle">400k</text>
-          <text class="spark-axis" x="360" y="122" text-anchor="middle">500k</text>
-        </svg>
-        <div class="spark-legend-row"><span class="ours"><b>我们</b> 0.165→0.110</span><span class="off"><b>Official</b> 0.119</span></div>
-      </article>
-      <article class="spark-card">
-        <h4>Overview skate ↓</h4>
-        <p>持续收，仍差 Official 约 0.9 cm/s</p>
-        <svg viewBox="0 0 400 130" role="img" aria-label="Overview foot skate from 100k to 500k versus Official v1">
-          <line x1="40" y1="26.2" x2="372" y2="26.2" stroke="#5b4d8a" stroke-width="1.4" stroke-dasharray="4 3"/>
-          <polyline points="48.0,100.8 126.0,74.7 204.0,59.2 282.0,58.4 360.0,51.4" fill="none" stroke="#1f6b4a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="48" cy="100.8" r="2.6" fill="#1f6b4a"/><circle cx="126" cy="74.7" r="2.6" fill="#1f6b4a"/>
-          <circle cx="204" cy="59.2" r="2.6" fill="#1f6b4a"/><circle cx="282" cy="58.4" r="2.6" fill="#1f6b4a"/>
-          <circle cx="360" cy="51.4" r="3.2" fill="#1f6b4a"/>
-          <text class="spark-axis" x="48" y="122" text-anchor="middle">100k</text>
-          <text class="spark-axis" x="126" y="122" text-anchor="middle">200k</text>
-          <text class="spark-axis" x="204" y="122" text-anchor="middle">300k</text>
-          <text class="spark-axis" x="282" y="122" text-anchor="middle">400k</text>
-          <text class="spark-axis" x="360" y="122" text-anchor="middle">500k</text>
-        </svg>
-        <div class="spark-legend-row"><span class="ours"><b>我们</b> 6.68→4.96</span><span class="off"><b>Official</b> 4.09</span></div>
-      </article>
-      <article class="spark-card">
-        <h4>Overview R@3 ↑</h4>
-        <p>N=92 会跳；200k 顶格不等于 FID 已最好</p>
-        <svg viewBox="0 0 400 130" role="img" aria-label="Overview R at 3 from 100k to 500k versus Official v1">
-          <line x1="40" y1="33.3" x2="372" y2="33.3" stroke="#5b4d8a" stroke-width="1.4" stroke-dasharray="4 3"/>
-          <polyline points="48.0,75.0 126.0,33.3 204.0,41.7 282.0,41.7 360.0,58.3" fill="none" stroke="#1f6b4a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="48" cy="75.0" r="2.6" fill="#1f6b4a"/><circle cx="126" cy="33.3" r="2.6" fill="#1f6b4a"/>
-          <circle cx="204" cy="41.7" r="2.6" fill="#1f6b4a"/><circle cx="282" cy="41.7" r="2.6" fill="#1f6b4a"/>
-          <circle cx="360" cy="58.3" r="3.2" fill="#1f6b4a"/>
-          <text class="spark-axis" x="48" y="122" text-anchor="middle">100k</text>
-          <text class="spark-axis" x="126" y="122" text-anchor="middle">200k</text>
-          <text class="spark-axis" x="204" y="122" text-anchor="middle">300k</text>
-          <text class="spark-axis" x="282" y="122" text-anchor="middle">400k</text>
-          <text class="spark-axis" x="360" y="122" text-anchor="middle">500k</text>
-        </svg>
-        <div class="spark-legend-row"><span class="ours"><b>我们</b> 94.6→96.7</span><span class="off"><b>Official</b> 100</span></div>
-      </article>
-    </div>
-    <div class="metric-footer">
-      <div class="metric-insight"><strong>FID 是主信号：</strong>0.165→0.110 全程下降，500k 优于 Official 0.119；t2m_sim 0.929 也略高。</div>
-      <div class="metric-insight warn"><strong>R@3 不要单独用：</strong>200k 顶到 100 时 FID 仍是 0.141。子集 92 段，检索分数方差大。</div>
-      <div class="metric-insight const"><strong>足部在收、还没齐：</strong>skate 6.68→4.96，Official 4.09；contact 0.937→0.961，Official 0.972。</div>
-    </div>
-  </section>
-
-  <section class="slide ablation-page" data-title="Phase 1 约束轨迹">
-    <div class="kicker">Part 5 · Phase 1 · 约束</div>
-    <h2 class="title">约束几乎不动：500k 全身仍约 66 cm，Official 约 4.0 cm——这是课表，不是训崩</h2>
-    <p class="lead">Phase 1 的 motion mask 全零，模型没有「把已知关节写回去」的梯度。下面 cm 数用来证明课程边界，不是拿来打 Official 的约束分。</p>
+    <div class="kicker">Part 4 · Phase 1 · content 文本 / 足部</div>
+    <h2 class="title">content 文本 prior：FID / 相似度已打平或略优于 Official；R@1、Timeline 也在收</h2>
+    <p class="lead"><code>v2-1m-hostnet</code> · 16×H200 · text-only · stratified 10% · DDIM 100 · 同一 TMR。绿格 = Phase 1 最好点；紫列 = Official SEED-v1.1 复验。R@3 在 Overview 92 段上会跳，主信号看 FID。</p>
     <div class="metric-split">
       <div class="metric-board">
-        <div class="metric-board-head"><h3>paper cm · vs Official v1</h3><span>紫列是完整两阶段官方模型</span></div>
-        <table class="metric-table p1-table">
-          <colgroup>
-            <col class="metric-label">
-            <col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value">
-            <col class="metric-value">
-          </colgroup>
-          <thead>
-            <tr>
-              <th class="metric-name">指标</th>
-              <th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th>
-              <th class="official">Official v1</th>
-            </tr>
-          </thead>
+        <div class="metric-board-head"><h3>Overview</h3><span>92 motions</span></div>
+        <table class="metric-table p1-table p1-dense">
+          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
+          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
           <tbody>
-            <tr class="metric-section"><td colspan="7">With text</td></tr>
-            <tr>
-              <td class="metric-name">Root ↓</td>
-              <td>41.3</td><td>40.9</td><td>39.0</td><td class="best-p1">35.8</td><td>36.4</td>
-              <td class="official">5.33</td>
-            </tr>
-            <tr>
-              <td class="metric-name">End-Effector ↓</td>
-              <td>65.9</td><td>65.9</td><td>66.0</td><td>67.4</td><td class="best-p1">64.8</td>
-              <td class="official">4.86</td>
-            </tr>
-            <tr>
-              <td class="metric-name">Full-body ↓</td>
-              <td>66.9</td><td class="best-p1">65.3</td><td>65.4</td><td>67.1</td><td>65.9</td>
-              <td class="official">4.01</td>
-            </tr>
-            <tr class="metric-section"><td colspan="7">No text</td></tr>
-            <tr>
-              <td class="metric-name">Root ↓</td>
-              <td class="best-p1">88.7</td><td>91.8</td><td>90.7</td><td>90.2</td><td class="gap-p1">94.4</td>
-              <td class="official">5.70</td>
-            </tr>
-            <tr>
-              <td class="metric-name">End-Effector ↓</td>
-              <td>101.6</td><td>102.5</td><td class="best-p1">99.5</td><td>102.3</td><td class="gap-p1">107.8</td>
-              <td class="official">4.24</td>
-            </tr>
-            <tr>
-              <td class="metric-name">Full-body ↓</td>
-              <td class="best-p1">93.5</td><td>99.9</td><td>95.4</td><td>97.6</td><td class="gap-p1">104.1</td>
-              <td class="official">4.23</td>
-            </tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>94.6</td><td class="best-p1">100</td><td>98.9</td><td>98.9</td><td>96.7</td><td class="official">100</td></tr>
+            <tr><td class="metric-name">R@1 ↑</td><td>85.9</td><td>83.7</td><td class="best-p1">87.0</td><td class="best-p1">87.0</td><td>82.6</td><td class="official">83.7</td></tr>
+            <tr><td class="metric-name">m2m R@3 ↑</td><td>88.0</td><td>94.6</td><td>93.5</td><td class="best-p1">96.7</td><td class="best-p1">96.7</td><td class="official">96.7</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.165</td><td>0.141</td><td>0.135</td><td>0.126</td><td class="best-p1">0.110</td><td class="official">0.119</td></tr>
+            <tr><td class="metric-name">FID gen-text ↓</td><td>0.170</td><td>0.138</td><td>0.137</td><td>0.136</td><td class="best-p1">0.125</td><td class="official">0.137</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.902</td><td>0.927</td><td>0.925</td><td>0.927</td><td class="best-p1">0.929</td><td class="official">0.926</td></tr>
+            <tr><td class="metric-name">Contact ↑</td><td>0.937</td><td>0.949</td><td>0.957</td><td>0.955</td><td class="best-p1">0.961</td><td class="official">0.972</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>6.68</td><td>5.77</td><td>5.23</td><td>5.21</td><td class="best-p1">4.96</td><td class="official">4.09</td></tr>
           </tbody>
         </table>
       </div>
       <div class="metric-board">
-        <div class="metric-board-head"><h3>with-text 全身 cm</h3><span>我们贴着 66 cm；Official 在 4 cm</span></div>
-        <article class="spark-card" style="border:0;padding:8px 10px 0">
-          <svg viewBox="0 0 400 150" role="img" aria-label="Full-body constraint error stays near 66 centimeters">
-            <line x1="40" y1="22.6" x2="372" y2="22.6" stroke="#5b4d8a" stroke-width="1.4" stroke-dasharray="4 3"/>
-            <polyline points="48.0,94.9 126.0,93.0 204.0,93.2 282.0,95.2 360.0,93.8" fill="none" stroke="#1f6b4a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="48" cy="94.9" r="2.6" fill="#1f6b4a"/><circle cx="126" cy="93.0" r="2.6" fill="#1f6b4a"/>
-            <circle cx="204" cy="93.2" r="2.6" fill="#1f6b4a"/><circle cx="282" cy="95.2" r="2.6" fill="#1f6b4a"/>
-            <circle cx="360" cy="93.8" r="3.2" fill="#1f6b4a"/>
-            <text class="spark-axis" x="48" y="142" text-anchor="middle">100k</text>
-            <text class="spark-axis" x="126" y="142" text-anchor="middle">200k</text>
-            <text class="spark-axis" x="204" y="142" text-anchor="middle">300k</text>
-            <text class="spark-axis" x="282" y="142" text-anchor="middle">400k</text>
-            <text class="spark-axis" x="360" y="142" text-anchor="middle">500k</text>
-            <text class="spark-axis" x="376" y="26" text-anchor="end" fill="#5b4d8a">Official 4.0</text>
-            <text class="spark-axis" x="376" y="90" text-anchor="end" fill="#1f6b4a">~66 cm</text>
-          </svg>
-        </article>
-        <div class="constraint-profile" style="grid-template-rows:auto auto auto;margin-top:8px">
-          <div class="profile-stat normalized"><strong>~16×</strong><span>500k with-text FB 相对 Official</span></div>
-          <div class="profile-stat physical"><strong>~13×</strong><span>500k with-text EE 相对 Official</span></div>
-          <div class="profile-note"><strong>带文本的 Root 略收（41→36 cm）：</strong>更好的运动 prior 会让骨盆走位好看一点，但 EE / FB 没有对应梯度，所以贴在 65–67 cm。无文本三项还略变差——没有文本锚时，约束评测更像在问一个没教过的题。</div>
-        </div>
+        <div class="metric-board-head"><h3>Timeline single / multi</h3><span>92 / 79 motions</span></div>
+        <table class="metric-table p1-table p1-dense">
+          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
+          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
+          <tbody>
+            <tr class="metric-section"><td colspan="7">Timeline-single</td></tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>89.1</td><td>89.1</td><td>88.0</td><td class="best-p1">91.3</td><td>90.2</td><td class="official">89.1</td></tr>
+            <tr><td class="metric-name">R@1 ↑</td><td>60.9</td><td>71.7</td><td>69.6</td><td>76.1</td><td class="best-p1">78.3</td><td class="official">75.0</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.190</td><td>0.169</td><td>0.164</td><td class="best-p1">0.154</td><td>0.159</td><td class="official">0.160</td></tr>
+            <tr><td class="metric-name">FID gen-text ↓</td><td>0.198</td><td>0.177</td><td>0.173</td><td class="best-p1">0.145</td><td>0.151</td><td class="official">0.158</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.860</td><td>0.879</td><td>0.882</td><td class="best-p1">0.899</td><td>0.897</td><td class="official">0.891</td></tr>
+            <tr><td class="metric-name">Contact ↑</td><td>0.954</td><td>0.965</td><td class="best-p1">0.966</td><td>0.965</td><td>0.965</td><td class="official">0.976</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>6.19</td><td>5.51</td><td>5.30</td><td class="best-p1">4.90</td><td>5.04</td><td class="official">4.01</td></tr>
+            <tr class="metric-section"><td colspan="7">Timeline-multi</td></tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>91.1</td><td>97.5</td><td class="best-p1">98.7</td><td>97.5</td><td>94.9</td><td class="official">96.2</td></tr>
+            <tr><td class="metric-name">R@1 ↑</td><td>78.5</td><td>82.3</td><td class="best-p1">86.1</td><td>84.8</td><td>82.3</td><td class="official">84.8</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.206</td><td>0.165</td><td>0.158</td><td class="best-p1">0.156</td><td>0.164</td><td class="official">0.158</td></tr>
+            <tr><td class="metric-name">FID gen-text ↓</td><td>0.218</td><td>0.182</td><td>0.186</td><td class="best-p1">0.181</td><td>0.193</td><td class="official">0.180</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.884</td><td class="best-p1">0.908</td><td>0.905</td><td>0.904</td><td>0.900</td><td class="official">0.906</td></tr>
+            <tr><td class="metric-name">Contact ↑</td><td>0.964</td><td>0.972</td><td>0.973</td><td class="best-p1">0.977</td><td>0.974</td><td class="official">0.985</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>4.78</td><td>4.15</td><td>4.18</td><td>4.07</td><td class="best-p1">3.78</td><td class="official">3.15</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
-    <div class="metric-legend">Phase 2 从 500k 打开 90% 约束后，才应该看见这张表往紫列靠。600k 已降到全身 8.85 cm，那是下一页的故事，这里不提前当成 Phase 1 成果。</div>
+    <div class="metric-footer">
+      <div class="metric-insight"><strong>Overview 已可同桌比：</strong>FID 0.165→0.110（Official 0.119）；FID-text 0.125 vs 0.137；t2m_sim 0.929 vs 0.926；m2m R@3 打平 96.7。</div>
+      <div class="metric-insight warn"><strong>R@3 会跳：</strong>200k 顶到 100 时 FID 仍是 0.141。R@1 更稳：single 60.9→78.3，已高于 Official 75.0。</div>
+      <div class="metric-insight const"><strong>足部在收、还没齐：</strong>三类 skate 都在降，Overview 4.96 vs 4.09，multi 3.78 vs 3.15；contact 仍差约 0.01。</div>
+    </div>
   </section>
 
-  <section class="slide ablation-page" data-title="Phase 1 vs Official">
-    <div class="kicker">Part 5 · Phase 1 末 vs Official v1</div>
-    <h2 class="title">500k：文本已可同桌比；约束还没开课；1M 主结论仍空着</h2>
-    <p class="lead">同一 content Overview / with-text 约束口径。Official 是评测链锚点；Phase 1 是文本 prior 验收；1M EMA 等 Phase 2 有可报点再填。</p>
-    <table class="data" style="margin-top:12px">
-      <thead>
-        <tr>
-          <th>模型</th>
-          <th>R@3 ↑</th>
-          <th>FID ↓</th>
-          <th>t2m_sim ↑</th>
-          <th>Root cm ↓</th>
-          <th>EE cm ↓</th>
-          <th>FB cm ↓</th>
-          <th>Skate ↓</th>
-          <th>备注</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Official SEED-v1.1（同协议复验）</td>
-          <td class="num">100</td>
-          <td class="num">0.119</td>
-          <td class="num">0.926</td>
-          <td class="num">5.33</td>
-          <td class="num">4.86</td>
-          <td class="num">4.01</td>
-          <td class="num">4.09</td>
-          <td>评测链校准锚点</td>
-        </tr>
-        <tr class="best">
-          <td>Ours · Phase 1 500k EMA</td>
-          <td class="num">96.7</td>
-          <td class="num up">0.110</td>
-          <td class="num up">0.929</td>
-          <td class="num down">36.4</td>
-          <td class="num down">64.8</td>
-          <td class="num down">65.9</td>
-          <td class="num">4.96</td>
-          <td>文本 prior；约束未学</td>
-        </tr>
-        <tr>
-          <td>Ours · 1M EMA（主结论）</td>
-          <td class="num tbd">待填</td>
-          <td class="num tbd">待填</td>
-          <td class="num tbd">待填</td>
-          <td class="num tbd">待填</td>
-          <td class="num tbd">待填</td>
-          <td class="num tbd">待填</td>
-          <td class="num tbd">待填</td>
-          <td>Phase 2 / 分叉另报</td>
-        </tr>
-      </tbody>
-    </table>
-    <div class="p1-read">
-      <div class="metric-insight"><strong>已经成立：</strong>全量 Phase 1 把文本分布训到 Official 附近。FID 略优，相似度略优，R@3 因子集噪声低 3.3pp，skate 还差 0.87 cm/s。</div>
-      <div class="metric-insight warn"><strong>不能写成的结论：</strong>「已经复现 Official 约束能力」。EE / FB 仍是 13–16 倍，这是 Phase 1 课表的预期，不是评测链坏了。</div>
-      <div class="metric-insight const"><strong>下一页仍空：</strong>Phase 2 打开约束后的轨迹、750k 质量点、800k 坍塌，不并进这一张表。</div>
+  <section class="slide ablation-page" data-title="Phase 1 约束轨迹">
+    <div class="kicker">Part 4 · Phase 1 · content 约束</div>
+    <h2 class="title">约束几乎不动：Root / pelvis / EE / FB 仍差一个数量级——课表如此，不是训崩</h2>
+    <p class="lead">Phase 1 mask 全零。cm、acc、pelvis p95 用来证明课程边界。with-text 的 TMR 仍可看：文本条件在约束桶里也在变好。</p>
+    <div class="metric-split">
+      <div class="metric-board">
+        <div class="metric-board-head"><h3>With text</h3><span>338 motions</span></div>
+        <table class="metric-table p1-table p1-dense">
+          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
+          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
+          <tbody>
+            <tr class="metric-section"><td colspan="7">几何 · paper cm</td></tr>
+            <tr><td class="metric-name">Root ↓</td><td>41.3</td><td>40.9</td><td>39.0</td><td class="best-p1">35.8</td><td>36.4</td><td class="official">5.33</td></tr>
+            <tr><td class="metric-name">Pelvis p95 ↓</td><td>137.9</td><td>137.2</td><td>131.8</td><td>132.4</td><td class="best-p1">127.8</td><td class="official">9.72</td></tr>
+            <tr><td class="metric-name">Root acc ↑</td><td>0.477</td><td>0.471</td><td>0.475</td><td>0.480</td><td class="best-p1">0.481</td><td class="official">0.911</td></tr>
+            <tr><td class="metric-name">End-Effector ↓</td><td>65.9</td><td>65.9</td><td>66.0</td><td>67.4</td><td class="best-p1">64.8</td><td class="official">4.86</td></tr>
+            <tr><td class="metric-name">Full-body ↓</td><td>66.9</td><td class="best-p1">65.3</td><td>65.4</td><td>67.1</td><td>65.9</td><td class="official">4.01</td></tr>
+            <tr class="metric-section"><td colspan="7">足部 + 该桶文本</td></tr>
+            <tr><td class="metric-name">Contact ↑</td><td>0.917</td><td>0.936</td><td>0.939</td><td>0.945</td><td class="best-p1">0.946</td><td class="official">0.958</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>7.52</td><td>6.61</td><td>6.36</td><td>6.03</td><td class="best-p1">5.86</td><td class="official">5.19</td></tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>98.2</td><td>98.5</td><td>98.5</td><td class="best-p1">98.8</td><td class="best-p1">98.8</td><td class="official">99.1</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.443</td><td>0.377</td><td>0.368</td><td>0.356</td><td class="best-p1">0.343</td><td class="official">0.220</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.876</td><td>0.896</td><td>0.900</td><td>0.903</td><td class="best-p1">0.908</td><td class="official">0.907</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="metric-board">
+        <div class="metric-board-head"><h3>No text</h3><span>338 motions · 没有文本锚</span></div>
+        <table class="metric-table p1-table p1-dense">
+          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
+          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
+          <tbody>
+            <tr class="metric-section"><td colspan="7">几何 · paper cm</td></tr>
+            <tr><td class="metric-name">Root ↓</td><td class="best-p1">88.7</td><td>91.8</td><td>90.7</td><td>90.2</td><td class="gap-p1">94.4</td><td class="official">5.70</td></tr>
+            <tr><td class="metric-name">Pelvis p95 ↓</td><td>259.5</td><td class="best-p1">259.0</td><td>271.3</td><td class="gap-p1">286.4</td><td>282.8</td><td class="official">10.53</td></tr>
+            <tr><td class="metric-name">Root acc ↑</td><td class="best-p1">0.298</td><td>0.261</td><td>0.277</td><td>0.291</td><td>0.290</td><td class="official">0.887</td></tr>
+            <tr><td class="metric-name">End-Effector ↓</td><td>101.6</td><td>102.5</td><td class="best-p1">99.5</td><td>102.3</td><td class="gap-p1">107.8</td><td class="official">4.24</td></tr>
+            <tr><td class="metric-name">Full-body ↓</td><td class="best-p1">93.5</td><td>99.9</td><td>95.4</td><td>97.6</td><td class="gap-p1">104.1</td><td class="official">4.23</td></tr>
+            <tr class="metric-section"><td colspan="7">足部</td></tr>
+            <tr><td class="metric-name">Contact ↑</td><td>0.932</td><td>0.941</td><td class="best-p1">0.953</td><td>0.951</td><td>0.949</td><td class="official">0.964</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>5.00</td><td>4.69</td><td class="best-p1">4.24</td><td>4.39</td><td>4.41</td><td class="official">4.98</td></tr>
+          </tbody>
+        </table>
+        <div class="metric-insight warn" style="margin:8px 10px 10px"><strong>无文本几何略变差：</strong>Root 88.7→94.4，FB 93.5→104。没教过跟约束，prior 变好也不会自动命中关键帧。</div>
+      </div>
     </div>
-    <div class="dims" style="margin-top:10px">
+    <div class="metric-legend">with-text Root 41→36 cm、t2m_sim 打平 Official，是运动 prior 的顺带结果。EE / FB 贴在 65 cm 量级（Official ~4 cm）。Phase 2 打开约束后才该往紫列靠。</div>
+  </section>
+
+  <section class="slide ablation-page" data-title="Phase 1 repetition">
+    <div class="kicker">Part 4 · Phase 1 · repetition 对照</div>
+    <h2 class="title">repetition 上同样收束：Overview FID 500k 打平 Official 0.031；约束仍然差一个数量级</h2>
+    <p class="lead">同一 inventory 的 repetition split。用来看多样性/稳定性是否跟 content 一个方向，不是另一套尺子。</p>
+    <div class="metric-split">
+      <div class="metric-board">
+        <div class="metric-board-head"><h3>文本 / 足部</h3><span>Overview 238 · single 238 · multi 178</span></div>
+        <table class="metric-table p1-table p1-dense">
+          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
+          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
+          <tbody>
+            <tr class="metric-section"><td colspan="7">Overview</td></tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>94.1</td><td>98.7</td><td class="best-p1">100</td><td>99.6</td><td>98.7</td><td class="official">99.6</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.064</td><td>0.045</td><td>0.035</td><td>0.032</td><td class="best-p1">0.031</td><td class="official">0.031</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.909</td><td>0.933</td><td>0.944</td><td class="best-p1">0.946</td><td>0.945</td><td class="official">0.947</td></tr>
+            <tr><td class="metric-name">Contact ↑</td><td>0.928</td><td>0.944</td><td>0.952</td><td>0.952</td><td class="best-p1">0.954</td><td class="official">0.973</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>7.53</td><td>6.62</td><td>6.01</td><td class="best-p1">5.77</td><td>5.81</td><td class="official">4.58</td></tr>
+            <tr class="metric-section"><td colspan="7">Timeline-single</td></tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>85.7</td><td>85.7</td><td>84.9</td><td class="best-p1">89.5</td><td>87.8</td><td class="official">89.9</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.072</td><td>0.059</td><td>0.051</td><td>0.046</td><td class="best-p1">0.045</td><td class="official">0.039</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.882</td><td>0.897</td><td>0.899</td><td class="best-p1">0.911</td><td>0.910</td><td class="official">0.923</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>6.12</td><td>5.27</td><td>4.82</td><td class="best-p1">4.72</td><td>4.74</td><td class="official">3.80</td></tr>
+            <tr class="metric-section"><td colspan="7">Timeline-multi</td></tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>94.9</td><td>97.2</td><td>97.8</td><td>97.2</td><td class="best-p1">98.3</td><td class="official">100</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.093</td><td>0.072</td><td>0.065</td><td>0.058</td><td class="best-p1">0.054</td><td class="official">0.038</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.901</td><td>0.917</td><td>0.924</td><td>0.930</td><td class="best-p1">0.935</td><td class="official">0.949</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>7.23</td><td>6.14</td><td>5.70</td><td>5.47</td><td class="best-p1">5.21</td><td class="official">4.32</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="metric-board">
+        <div class="metric-board-head"><h3>约束 paper cm</h3><span>with / no text 各 338</span></div>
+        <table class="metric-table p1-table p1-dense">
+          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
+          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
+          <tbody>
+            <tr class="metric-section"><td colspan="7">With text</td></tr>
+            <tr><td class="metric-name">Root ↓</td><td>42.0</td><td>40.6</td><td>40.3</td><td>39.3</td><td class="best-p1">38.1</td><td class="official">5.41</td></tr>
+            <tr><td class="metric-name">End-Effector ↓</td><td>47.6</td><td>46.5</td><td>47.6</td><td>45.9</td><td class="best-p1">45.4</td><td class="official">4.31</td></tr>
+            <tr><td class="metric-name">Full-body ↓</td><td>58.9</td><td>57.8</td><td>57.5</td><td>53.4</td><td class="best-p1">53.2</td><td class="official">3.83</td></tr>
+            <tr><td class="metric-name">R@3 ↑</td><td>98.5</td><td>99.7</td><td>99.4</td><td>99.4</td><td class="best-p1">100</td><td class="official">99.7</td></tr>
+            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.356</td><td>0.276</td><td>0.240</td><td>0.227</td><td class="best-p1">0.209</td><td class="official">0.134</td></tr>
+            <tr><td class="metric-name">t2m_sim ↑</td><td>0.887</td><td>0.914</td><td>0.925</td><td>0.930</td><td class="best-p1">0.935</td><td class="official">0.930</td></tr>
+            <tr class="metric-section"><td colspan="7">No text</td></tr>
+            <tr><td class="metric-name">Root ↓</td><td>67.8</td><td>69.0</td><td>68.7</td><td class="best-p1">67.4</td><td class="gap-p1">71.3</td><td class="official">4.66</td></tr>
+            <tr><td class="metric-name">End-Effector ↓</td><td>91.4</td><td>90.1</td><td class="best-p1">89.1</td><td>90.5</td><td class="gap-p1">93.2</td><td class="official">4.08</td></tr>
+            <tr><td class="metric-name">Full-body ↓</td><td class="best-p1">76.5</td><td>80.4</td><td>76.9</td><td>77.1</td><td class="gap-p1">82.3</td><td class="official">3.90</td></tr>
+            <tr><td class="metric-name">Contact ↑</td><td>0.947</td><td>0.955</td><td>0.959</td><td>0.959</td><td class="best-p1">0.960</td><td class="official">0.964</td></tr>
+            <tr><td class="metric-name">Skate cm/s ↓</td><td>4.40</td><td>4.10</td><td>3.80</td><td class="best-p1">3.70</td><td>3.90</td><td class="official">4.67</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="metric-footer">
+      <div class="metric-insight"><strong>和 content 同方向：</strong>repetition Overview FID 0.064→0.031，打平 Official；t2m_sim 0.946 vs 0.947。</div>
+      <div class="metric-insight warn"><strong>约束仍未开课：</strong>with-text FB 53 cm vs Official 3.8 cm。repetition 上 EE 比 content 好看（45 vs 65），但相对官方仍约 10×。</div>
+      <div class="metric-insight const"><strong>Phase 2 / 1M 另报：</strong>这三页只验收 Phase 1 文本 prior。不要把 600k 以后的约束收紧或坍塌写进这张表。</div>
+    </div>
+    <div class="dims" style="margin-top:8px">
       <span class="chip"><em>数据</em>V2 full · v2-1m-hostnet</span>
       <span class="chip"><em>评测</em>stratified 10% · paper protocol · inventory bd7db29d</span>
       <span class="chip"><em>推理</em>DDIM 100 · batch 1 · fp32 TMR</span>
@@ -5811,21 +5446,20 @@
     </div>
   </section>
 
-  <section class="slide chapter" data-title="Part 6">
-    <div class="chapter-num">06</div>
+  <section class="slide chapter" data-title="Part 5">
+    <div class="chapter-num">05</div>
     <h1 class="title">方法谱系</h1>
     <ol class="chapter-track">
       <li><span class="n">01</span>目标与场景</li>
       <li><span class="n">02</span>论文原理</li>
-      <li><span class="n">03</span>关键细节</li>
-      <li><span class="n">04</span>预消融</li>
-      <li><span class="n">05</span>全量结果</li>
-      <li class="on"><span class="n">06</span>方法谱系</li>
+      <li><span class="n">03</span>预消融</li>
+      <li><span class="n">04</span>全量结果</li>
+      <li class="on"><span class="n">05</span>方法谱系</li>
     </ol>
   </section>
 
   <section class="slide" data-title="管线定位">
-    <div class="kicker">Part 6 · 方法谱系</div>
+    <div class="kicker">Part 5 · 方法谱系</div>
     <h2 class="title">产出的是可编辑骨骼动画，进 DCC；不是像素，也不是运行时检索</h2>
     <p class="lead">输入文字或空间约束，输出关节旋转与位移，可进 Maya、3ds Max、Unity、UE 继续改。</p>
     <div class="grid-4" style="margin-top:12px">
@@ -5856,7 +5490,7 @@
   </section>
 
   <section class="slide era-page" data-title="三次更替">
-    <div class="kicker">Part 6 · 方法谱系</div>
+    <div class="kicker">Part 5 · 方法谱系</div>
     <h2 class="title">检索被学习取代；2022 扩散是质变；现行是七种范式并立</h2>
     <div class="grid-3" style="margin-top:10px">
       <div class="card">
@@ -5940,7 +5574,7 @@
   </section>
 
   <section class="slide lineage-page" data-title="七种范式" data-hot="map">
-    <div class="kicker">Part 6 · 方法谱系</div>
+    <div class="kicker">Part 5 · 方法谱系</div>
     <h2 class="title">按时间点左侧。荧光条是当下仍在盛行的。</h2>
     <p class="lead" style="margin:4px 0 8px">1998 检索 → RNN / LSTM → GAN → VAE → 2022 起七种范式并立。没荧光的是已经退出主线的。</p>
     <div class="lineage-board">
