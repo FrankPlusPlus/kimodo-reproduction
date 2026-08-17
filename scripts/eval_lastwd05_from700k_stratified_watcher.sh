@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 1xH200 stratified-10pct watcher for the 700k last-layer wd=0.5 smoke fork.
-# 20k cadence from 720k (first gate after fork warmup). Uses frozen 750k TMR gallery.
+# 10k cadence from 710k (early text gate after fork). Uses frozen 750k TMR gallery.
 #
 # UI: 1 instance x 1 GPU. Do not attach this to the 16-GPU training job.
 # Start:
@@ -22,9 +22,9 @@ export KIMODO_EVAL_ROOT="${KIMODO_EVAL_ROOT:-${KIMODO_STORAGE_ROOT}/eval-results
 export KIMODO_BENCHMARK_ROOT="${KIMODO_BENCHMARK_ROOT:-${KIMODO_EVAL_ASSET_ROOT}/benchmark/stratified-10pct}"
 export KIMODO_OFFICIAL_BASELINE_SUMMARY="${KIMODO_OFFICIAL_BASELINE_SUMMARY:-${KIMODO_EVAL_ASSET_ROOT}/baselines/official-seed-v1.1/summary_rows.json}"
 export KIMODO_EVAL_TEXT_GALLERY="${KIMODO_EVAL_TEXT_GALLERY:-${KIMODO_EVAL_ASSET_ROOT}/galleries/tmr-text-wd03-750k}"
-export KIMODO_EXPORT_MIN_STEP="${KIMODO_EXPORT_MIN_STEP:-720000}"
-export KIMODO_EXPORT_STEP_EVERY="${KIMODO_EXPORT_STEP_EVERY:-20000}"
-export KIMODO_EVAL_MINIMUM_STEP="${KIMODO_EVAL_MINIMUM_STEP:-720000}"
+export KIMODO_EXPORT_MIN_STEP="${KIMODO_EXPORT_MIN_STEP:-710000}"
+export KIMODO_EXPORT_STEP_EVERY="${KIMODO_EXPORT_STEP_EVERY:-10000}"
+export KIMODO_EVAL_MINIMUM_STEP="${KIMODO_EVAL_MINIMUM_STEP:-710000}"
 
 export TEXT_ENCODER_MODE="${TEXT_ENCODER_MODE:-local}"
 export KIMODO_LLM2VEC_FOUNDATION="${KIMODO_LLM2VEC_FOUNDATION:-${KIMODO_MODEL_ROOT}/llm2vec/foundation}"
