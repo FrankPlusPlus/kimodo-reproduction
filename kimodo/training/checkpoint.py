@@ -65,6 +65,7 @@ def _resume_critical_config(config: dict) -> dict:
     optimizer.setdefault("warmup_start_lr", None)
     optimizer.setdefault("lr_end", None)
     optimizer.setdefault("lr_schedule_start_step", 0)
+    optimizer.setdefault("last_layer_weight_decay", None)
     value["optimizer"] = optimizer
     # Loader mechanics do not change per-sample RNG (seeded by epoch+index) or
     # optimizer math; allow throughput retunes across exact resumes.

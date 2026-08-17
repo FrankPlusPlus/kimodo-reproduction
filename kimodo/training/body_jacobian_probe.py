@@ -165,12 +165,44 @@ class BodyLayerHooks:
         self._handles.clear()
 
 
+def affine_stats(value: torch.Tensor) -> dict[str, float]:
+    finite = value.detach().float()
+    if finite.numel() == 0:
+        return {"rms": float("nan"), "max_abs": float("nan"), "mean": float("nan")}
+    return {
+        "rms": float(finite.pow(2).mean().sqrt()),
+        "max_abs": float(finite.abs().max()),
+        "mean": float(finite.mean()),
+    }
+
+
+def layer_norm_scales(root: nn.Module, prefix: str) -> dict[str, dict[str, float]]:
+    """Per-layer LayerNorm γ (weight) scale. This is the clamp candidate."""
+    report: dict[str, dict[str, float]] = {}
+    encoder = getattr(root, "seqTransEncoder", None)
+    if encoder is None:
+        return report
+    for index, layer in enumerate(encoder.layers):
+        for slot in ("norm1", "norm2"):
+            module = getattr(layer, slot, None)
+            weight = getattr(module, "weight", None) if module is not None else None
+            if not isinstance(weight, torch.Tensor):
+                continue
+            report[f"{prefix}.layer_{index:02d}.{slot}.gamma"] = affine_stats(weight)
+    return report
+
+
 def _named_module_grad_norms(root: nn.Module, prefix: str) -> dict[str, float]:
     report = {f"{prefix}.all": parameter_grad_l2(root.parameters())}
     encoder = getattr(root, "seqTransEncoder", None)
     if encoder is not None:
         for index, layer in enumerate(encoder.layers):
             report[f"{prefix}.layer_{index:02d}"] = parameter_grad_l2(layer.parameters())
+            for slot in ("self_attn", "linear1", "linear2", "norm1", "norm2"):
+                module = getattr(layer, slot, None)
+                if module is None:
+                    continue
+                report[f"{prefix}.layer_{index:02d}.{slot}"] = parameter_grad_l2(module.parameters())
         report[f"{prefix}.input_linear"] = parameter_grad_l2(root.input_linear.parameters())
         report[f"{prefix}.output_linear"] = parameter_grad_l2(root.output_linear.parameters())
     return report
@@ -237,6 +269,10 @@ def probe_forward_backward(
             **_named_module_grad_norms(bare.root_model, "root"),
             **_named_module_grad_norms(body, "body"),
         },
+        "ln_scales": {
+            **layer_norm_scales(bare.root_model, "root"),
+            **layer_norm_scales(body, "body"),
+        },
         "body_batch_grad_norm": float(batch_body_flat.norm()) if batch_body_flat.numel() else float("nan"),
     }
 
@@ -262,6 +298,242 @@ def probe_forward_backward(
         "pairwise": pairwise_cosines(sample_vectors),
     }
     return report
+
+
+def _median(values: Sequence[float]) -> float:
+    finite = [float(value) for value in values if math.isfinite(float(value))]
+    if not finite:
+        return float("nan")
+    ordered = sorted(finite)
+    return ordered[len(ordered) // 2]
+
+
+def _classify_ratio_pair(
+    weight_ratio: object,
+    clock_ratio: object,
+    *,
+    ratio_cut: float = 1.2,
+    clock_quiet: float = 1.1,
+) -> str | None:
+    try:
+        weight = float(weight_ratio)  # type: ignore[arg-type]
+        clock = float(clock_ratio)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(weight) or not math.isfinite(clock):
+        return None
+    weight_hit = weight >= ratio_cut
+    clock_hit = clock >= ratio_cut
+    if weight_hit and clock < clock_quiet:
+        return "weights"
+    if clock_hit and weight < clock_quiet:
+        return "clock"
+    if weight_hit and clock_hit:
+        return "interaction"
+    return None
+
+
+def _flatten_named_ratios(comparison: dict[str, Any]) -> dict[str, float]:
+    named: dict[str, float] = {}
+    for key in (
+        "prediction_grad_norm_ratio",
+        "body_batch_grad_norm_ratio",
+        "mean_sample_body_grad_ratio",
+    ):
+        value = comparison.get(key)
+        if isinstance(value, (int, float)):
+            named[key] = float(value)
+    for name, value in (comparison.get("body_layer_grad_ratios") or {}).items():
+        if isinstance(value, (int, float)):
+            named[str(name)] = float(value)
+    for name, value in (comparison.get("body_ln_gamma_rms_ratios") or {}).items():
+        if isinstance(value, (int, float)):
+            named[f"ln_gamma:{name}"] = float(value)
+    for index, value in enumerate(comparison.get("body_ln1_var_ratios") or []):
+        if isinstance(value, (int, float)):
+            named[f"body.layer_{index:02d}.ln1_in_var"] = float(value)
+    return named
+
+
+def summarize_takeoff_grid(
+    cells: Sequence[dict[str, Any]],
+    *,
+    healthy_step: int = 795000,
+    takeoff_step: int = 800000,
+    ratio_cut: float = 1.2,
+    clock_quiet: float = 1.1,
+) -> dict[str, Any]:
+    """Classify 2x2 (weight × constraint clock) as weights / clock / interaction.
+
+    cells need ``weight_step``, ``constraint_step``, and ``probe``.
+    """
+    keyed = {(int(cell["weight_step"]), int(cell["constraint_step"])): cell for cell in cells}
+    required = (
+        (healthy_step, healthy_step),
+        (takeoff_step, healthy_step),
+        (healthy_step, takeoff_step),
+        (takeoff_step, takeoff_step),
+    )
+    missing = [pair for pair in required if pair not in keyed]
+    if missing:
+        return {"error": f"missing cells {missing}", "hotspots": [], "verdict": "incomplete"}
+
+    def _row(cell: dict[str, Any]) -> dict[str, Any]:
+        return {"global_step": cell["weight_step"], "probe": cell["probe"]}
+
+    healthy_healthy = keyed[(healthy_step, healthy_step)]
+    takeoff_healthy = keyed[(takeoff_step, healthy_step)]
+    healthy_takeoff = keyed[(healthy_step, takeoff_step)]
+    takeoff_takeoff = keyed[(takeoff_step, takeoff_step)]
+    weight_at_healthy_clock = compare_checkpoint_rows([_row(healthy_healthy), _row(takeoff_healthy)])[1]
+    clock_at_healthy_weight = compare_checkpoint_rows([_row(healthy_healthy), _row(healthy_takeoff)])[1]
+    weight_at_takeoff_clock = compare_checkpoint_rows([_row(healthy_takeoff), _row(takeoff_takeoff)])[1]
+    clock_at_takeoff_weight = compare_checkpoint_rows([_row(takeoff_healthy), _row(takeoff_takeoff)])[1]
+    weight_names = _flatten_named_ratios(weight_at_healthy_clock)
+    clock_names = _flatten_named_ratios(clock_at_healthy_weight)
+    hotspots = []
+    votes = {"weights": 0, "clock": 0, "interaction": 0}
+    for name in sorted(set(weight_names) | set(clock_names)):
+        weight_ratio = weight_names.get(name)
+        clock_ratio = clock_names.get(name)
+        label = _classify_ratio_pair(weight_ratio, clock_ratio, ratio_cut=ratio_cut, clock_quiet=clock_quiet)
+        if label is None:
+            continue
+        votes[label] += 1
+        hotspots.append(
+            {
+                "name": name,
+                "verdict": label,
+                "weight_at_healthy_clock": weight_ratio,
+                "clock_at_healthy_weight": clock_ratio,
+                "weight_at_takeoff_clock": _flatten_named_ratios(weight_at_takeoff_clock).get(name),
+                "clock_at_takeoff_weight": _flatten_named_ratios(clock_at_takeoff_weight).get(name),
+            }
+        )
+    hotspots.sort(
+        key=lambda item: max(
+            abs((item["weight_at_healthy_clock"] or 1.0) - 1.0),
+            abs((item["clock_at_healthy_weight"] or 1.0) - 1.0),
+        ),
+        reverse=True,
+    )
+    if votes["weights"] + votes["clock"] + votes["interaction"] == 0:
+        verdict = "quiet"
+    else:
+        verdict = max(votes, key=votes.get)
+    return {
+        "healthy_step": healthy_step,
+        "takeoff_step": takeoff_step,
+        "prediction_grad_norm": {
+            "weight_at_healthy_clock": weight_at_healthy_clock.get("prediction_grad_norm_ratio"),
+            "clock_at_healthy_weight": clock_at_healthy_weight.get("prediction_grad_norm_ratio"),
+        },
+        "body_batch_grad_norm": {
+            "weight_at_healthy_clock": weight_at_healthy_clock.get("body_batch_grad_norm_ratio"),
+            "clock_at_healthy_weight": clock_at_healthy_weight.get("body_batch_grad_norm_ratio"),
+        },
+        "votes": votes,
+        "verdict": verdict,
+        "hotspots": hotspots[:24],
+    }
+
+
+def median_takeoff_grids(grids: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """Median the 2x2 ratios across independent ranks."""
+    valid = [grid for grid in grids if grid.get("verdict") not in {None, "incomplete"} and "error" not in grid]
+    if not valid:
+        return {"verdict": "incomplete", "hotspots": [], "world_size": len(grids)}
+    names = []
+    seen = set()
+    for grid in valid:
+        for hotspot in grid.get("hotspots") or []:
+            name = hotspot.get("name")
+            if name in seen:
+                continue
+            seen.add(name)
+            names.append(name)
+    merged_hotspots = []
+    votes = {"weights": 0, "clock": 0, "interaction": 0}
+    for name in names:
+        weight_vals = []
+        clock_vals = []
+        for grid in valid:
+            match = next((item for item in grid.get("hotspots") or [] if item.get("name") == name), None)
+            if match is None:
+                continue
+            if isinstance(match.get("weight_at_healthy_clock"), (int, float)):
+                weight_vals.append(float(match["weight_at_healthy_clock"]))
+            if isinstance(match.get("clock_at_healthy_weight"), (int, float)):
+                clock_vals.append(float(match["clock_at_healthy_weight"]))
+        weight_ratio = _median(weight_vals)
+        clock_ratio = _median(clock_vals)
+        label = _classify_ratio_pair(weight_ratio, clock_ratio)
+        if label is None:
+            continue
+        votes[label] += 1
+        merged_hotspots.append(
+            {
+                "name": name,
+                "verdict": label,
+                "weight_at_healthy_clock": weight_ratio,
+                "clock_at_healthy_weight": clock_ratio,
+                "rank_count": max(len(weight_vals), len(clock_vals)),
+            }
+        )
+    merged_hotspots.sort(
+        key=lambda item: max(
+            abs((item["weight_at_healthy_clock"] or 1.0) - 1.0),
+            abs((item["clock_at_healthy_weight"] or 1.0) - 1.0),
+        ),
+        reverse=True,
+    )
+    verdict_votes = [grid.get("verdict") for grid in valid if grid.get("verdict") in votes]
+    if verdict_votes:
+        verdict = max(set(verdict_votes), key=verdict_votes.count)
+    elif votes["weights"] + votes["clock"] + votes["interaction"] == 0:
+        verdict = "quiet"
+    else:
+        verdict = max(votes, key=votes.get)
+    return {
+        "world_size": len(grids),
+        "valid_ranks": len(valid),
+        "verdict": verdict,
+        "rank_verdicts": {label: verdict_votes.count(label) for label in ("weights", "clock", "interaction", "quiet")},
+        "votes": votes,
+        "prediction_grad_norm": {
+            "weight_at_healthy_clock": _median(
+                [
+                    float(grid["prediction_grad_norm"]["weight_at_healthy_clock"])
+                    for grid in valid
+                    if isinstance((grid.get("prediction_grad_norm") or {}).get("weight_at_healthy_clock"), (int, float))
+                ]
+            ),
+            "clock_at_healthy_weight": _median(
+                [
+                    float(grid["prediction_grad_norm"]["clock_at_healthy_weight"])
+                    for grid in valid
+                    if isinstance((grid.get("prediction_grad_norm") or {}).get("clock_at_healthy_weight"), (int, float))
+                ]
+            ),
+        },
+        "body_batch_grad_norm": {
+            "weight_at_healthy_clock": _median(
+                [
+                    float(grid["body_batch_grad_norm"]["weight_at_healthy_clock"])
+                    for grid in valid
+                    if isinstance((grid.get("body_batch_grad_norm") or {}).get("weight_at_healthy_clock"), (int, float))
+                ]
+            ),
+            "clock_at_healthy_weight": _median(
+                [
+                    float(grid["body_batch_grad_norm"]["clock_at_healthy_weight"])
+                    for grid in valid
+                    if isinstance((grid.get("body_batch_grad_norm") or {}).get("clock_at_healthy_weight"), (int, float))
+                ]
+            ),
+        },
+        "hotspots": merged_hotspots[:24],
+    }
 
 
 def compare_checkpoint_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -300,6 +572,11 @@ def compare_checkpoint_rows(rows: Sequence[dict[str, Any]]) -> list[dict[str, An
                     baseline.get("probe", {}).get("body_activation_layers", []),
                     key="ln1_in_var",
                 ),
+                "body_ln_gamma_rms_ratios": _ln_gamma_ratios(
+                    row.get("probe", {}).get("ln_scales", {}),
+                    baseline.get("probe", {}).get("ln_scales", {}),
+                    prefix="body.layer_",
+                ),
             }
         )
     return comparisons
@@ -329,3 +606,14 @@ def _hook_ratios(current: Sequence[dict], baseline: Sequence[dict], key: str) ->
     for left, right in zip(baseline, current):
         out.append(_ratio(right.get(key), left.get(key)))
     return out
+
+
+def _ln_gamma_ratios(current: dict, baseline: dict, prefix: str) -> dict[str, float]:
+    return {
+        name: _ratio(
+            (current.get(name) or {}).get("rms"),
+            (baseline.get(name) or {}).get("rms"),
+        )
+        for name in baseline
+        if name.startswith(prefix)
+    }

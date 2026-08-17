@@ -16,6 +16,8 @@ LAUNCHER_695K_K7 = PROJECT_ROOT / "scripts/company_start_hostnet_fork_695k_k7.sh
 LAUNCHER_690K_K7 = PROJECT_ROOT / "scripts/company_start_hostnet_fork_690k_k7.sh"
 LAUNCHER_696K_K7_RESEED = PROJECT_ROOT / "scripts/company_start_hostnet_fork_696k_k7_reseed.sh"
 LAUNCHER_650K_WD03 = PROJECT_ROOT / "scripts/company_start_hostnet_fork_650k_wd03.sh"
+LAUNCHER_780K_LR3E6 = PROJECT_ROOT / "scripts/company_start_hostnet_fork_780k_lr3e6.sh"
+LAUNCHER_750K_LASTWD = PROJECT_ROOT / "scripts/company_start_hostnet_fork_750k_lastwd.sh"
 
 
 class _ForkLauncherTestBase(unittest.TestCase):
@@ -54,11 +56,26 @@ class _ForkLauncherTestBase(unittest.TestCase):
             "curriculum:\n  sparse_keyframes_max: 20\n",
             encoding="utf-8",
         )
+        (overlay_dir / "v2_1m_wd03_from780k_lr3e6.yaml").write_text(
+            "optimizer:\n  weight_decay: 0.3\n  warmup_steps: 2000\n"
+            "  learning_rate: 3.0e-6\n  lr_schedule_start_step: 780000\n"
+            "runtime:\n  reset_optimizer: true\n"
+            "curriculum:\n  sparse_keyframes_max: 20\n",
+            encoding="utf-8",
+        )
+        (overlay_dir / "v2_1m_lastwd1_from750k.yaml").write_text(
+            "optimizer:\n  weight_decay: 0.3\n  last_layer_weight_decay: 1.0\n"
+            "  warmup_steps: 2000\n  lr_schedule_start_step: 650000\n"
+            "runtime:\n  reset_optimizer: true\n"
+            "curriculum:\n  sparse_keyframes_max: 20\n",
+            encoding="utf-8",
+        )
         training = self.code_root / "kimodo/training"
         training.mkdir(parents=True)
         (training / "config.py").write_text(
             "sparse_channel_budget = 0\nsparse_keyframes_hard_cap = 0\n"
-            "warmup_steps = 0\nreset_optimizer = False\n",
+            "warmup_steps = 0\nreset_optimizer = False\n"
+            "last_layer_weight_decay = None\n",
             encoding="utf-8",
         )
         (training / "constraints.py").write_text(
@@ -67,7 +84,13 @@ class _ForkLauncherTestBase(unittest.TestCase):
             encoding="utf-8",
         )
         (training / "optim.py").write_text(
-            "def scheduled_learning_rate():\n    return 0\n",
+            "def scheduled_learning_rate():\n    return 0\n"
+            "def _body_last_layer_parameters():\n    return []\n"
+            "track_update_stats = False\n",
+            encoding="utf-8",
+        )
+        (training / "engine.py").write_text(
+            "def _weight_decay_for_group():\n    return 0.3\n",
             encoding="utf-8",
         )
         (training / "checkpoint.py").write_text(
@@ -250,6 +273,26 @@ class CompanyFork650kWd03LauncherTests(_ForkLauncherTestBase):
     expected_resume_step = "step-000650000.pt"
     expected_run_dir_token = "v2-1m-hostnet-wd03-from650k"
     partial_child = "runs/v2-1m-hostnet-wd03-from650k"
+
+
+class CompanyFork780kLr3e6LauncherTests(_ForkLauncherTestBase):
+    launcher = LAUNCHER_780K_LR3E6
+    parent_checkpoint = (
+        "runs/v2-1m-hostnet-wd03-from650k/checkpoints/step-000780000.pt"
+    )
+    expected_resume_step = "step-000780000.pt"
+    expected_run_dir_token = "v2-1m-hostnet-wd03-from780k-lr3e6"
+    partial_child = "runs/v2-1m-hostnet-wd03-from780k-lr3e6"
+
+
+class CompanyFork750kLastWdLauncherTests(_ForkLauncherTestBase):
+    launcher = LAUNCHER_750K_LASTWD
+    parent_checkpoint = (
+        "preserved-pre-collapse/v2-1m-hostnet-wd03-from650k/step-000750000.pt"
+    )
+    expected_resume_step = "step-000750000.pt"
+    expected_run_dir_token = "v2-1m-hostnet-lastwd1-from750k"
+    partial_child = "runs/v2-1m-hostnet-lastwd1-from750k"
 
 
 if __name__ == "__main__":

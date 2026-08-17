@@ -1,0 +1,31 @@
+# Fork preserved wd03 750k. Not an unpublished NVIDIA recipe.
+#
+# Keep paper-aligned model, seven-term loss, and Kmax 1→20. Raise decay only
+# on the last body layer, where 750→790 uniquely grew. Keep parent LR
+# schedule (peak 1e-5 from 650k, decay to 2e-6 by 1M). Do not raise LR back
+# to Phase 1 2e-5 at onset. Do not freeze K, skip-grad, or add an 8th loss.
+#
+# Parent: preserved-pre-collapse/v2-1m-hostnet-wd03-from650k/step-000750000.pt
+curriculum:
+  sparse_keyframe_cap_mode: adjacent_mix
+  sparse_keyframes_max: 20
+  sparse_channel_budget: 0
+  sparse_same_frame_overlap_probability: 0.0
+
+optimizer:
+  name: adam_atan2
+  learning_rate: 1.0e-5
+  weight_decay: 0.3
+  last_layer_weight_decay: 1.0
+  warmup_steps: 2000
+  warmup_start_lr: 1.0e-6
+  lr_end: 2.0e-6
+  lr_schedule_start_step: 650000
+  gradient_clip_norm: 1.0
+  skip_gradient_norm: null
+
+runtime:
+  reset_optimizer: true
+  checkpoint_every: 5000
+  keep_last_checkpoints: 20
+  milestone_every: 50000

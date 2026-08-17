@@ -21,7 +21,7 @@ if(NOT pybind11_FOUND)
 endif()
 
 # Find or fetch Eigen
-find_package(Eigen3 3.3 CONFIG QUIET)
+find_package(Eigen3 CONFIG QUIET)
 if(NOT Eigen3_FOUND)
     message(STATUS "Eigen3 not found, fetching from GitLab...")
     include(FetchContent)

@@ -20,6 +20,16 @@ from kimodo.model.registry import (
     resolve_to_short_key,
 )
 
+
+def motion_correction_available() -> bool:
+    try:
+        from motion_correction import motion_postprocess  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+MOTION_CORRECTION_AVAILABLE = motion_correction_available()
 SERVER_NAME = os.environ.get("SERVER_NAME", "0.0.0.0")
 SERVER_PORT = int(os.environ.get("SERVER_PORT", "7860"))
 HF_MODE = os.environ.get("HF_MODE", False)
@@ -36,7 +46,7 @@ MIN_DURATION = 2.0
 MAX_DURATION = 10.0
 
 SHOW_TRANSITION_PARAMS = True
-INIT_POSTPROCESSING = True
+INIT_POSTPROCESSING = MOTION_CORRECTION_AVAILABLE
 NB_TRANSITION_FRAMES = 5
 
 LIGHT_THEME = dict(

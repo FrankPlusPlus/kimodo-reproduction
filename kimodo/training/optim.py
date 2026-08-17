@@ -10,6 +10,8 @@ from collections.abc import Iterable
 import torch
 from torch.optim import Optimizer
 
+from .modeling import unwrap_model
+
 
 class AdamAtan2(Optimizer):
     """Adam with the scale-invariant atan2 update from Everett et al. (2024).
@@ -50,6 +52,9 @@ class AdamAtan2(Optimizer):
         )
         self.last_update_norm = 0.0
         self.last_update_param_ratio = 0.0
+        # Collapse watches jsonl on log steps. Computing ‖Δw‖ every step used
+        # CPU accumulators, which implicit-synced GPU→host once per parameter.
+        self.track_update_stats = False
 
     @torch.no_grad()
     def step(self, closure=None):
@@ -58,8 +63,9 @@ class AdamAtan2(Optimizer):
             with torch.enable_grad():
                 loss = closure()
 
-        update_sq = torch.zeros((), dtype=torch.float32)
-        param_sq = torch.zeros((), dtype=torch.float32)
+        track_update_stats = bool(self.track_update_stats)
+        update_sq = None
+        param_sq = None
         for group in self.param_groups:
             beta1, beta2 = group["betas"]
             lr = group["lr"]
@@ -98,13 +104,24 @@ class AdamAtan2(Optimizer):
                 if weight_decay:
                     parameter.mul_(1.0 - lr * weight_decay)
                 parameter.add_(update, alpha=-lr)
-                update_sq = update_sq + (update.detach().float().pow(2).sum() * (lr * lr))
-                param_sq = param_sq + parameter.detach().float().pow(2).sum()
-        self.last_update_norm = float(update_sq.sqrt())
-        param_norm = float(param_sq.sqrt())
-        self.last_update_param_ratio = (
-            self.last_update_norm / param_norm if param_norm > 0.0 else float("nan")
-        )
+                if track_update_stats:
+                    if update_sq is None:
+                        update_sq = torch.zeros(
+                            (), device=parameter.device, dtype=torch.float32
+                        )
+                        param_sq = torch.zeros(
+                            (), device=parameter.device, dtype=torch.float32
+                        )
+                    update_sq = update_sq + (
+                        update.detach().float().pow(2).sum() * (lr * lr)
+                    )
+                    param_sq = param_sq + parameter.detach().float().pow(2).sum()
+        if track_update_stats and update_sq is not None:
+            self.last_update_norm = float(update_sq.sqrt().item())
+            param_norm = float(param_sq.sqrt().item())
+            self.last_update_param_ratio = (
+                self.last_update_norm / param_norm if param_norm > 0.0 else float("nan")
+            )
         return loss
 
 
@@ -142,11 +159,38 @@ def scheduled_learning_rate(
     return peak_lr + fraction * (float(lr_end) - peak_lr)
 
 
+def _body_last_layer_parameters(model: torch.nn.Module) -> list[torch.nn.Parameter]:
+    encoder = getattr(getattr(unwrap_model(model), "body_model", None), "seqTransEncoder", None)
+    layers = getattr(encoder, "layers", None)
+    if layers is None or len(layers) == 0:
+        raise ValueError("last_layer_weight_decay requires body_model.seqTransEncoder.layers")
+    parameters = [parameter for parameter in layers[-1].parameters() if parameter.requires_grad]
+    if not parameters:
+        raise ValueError("last body layer has no trainable parameters")
+    return parameters
+
+
+def _optimizer_param_groups(model: torch.nn.Module, config) -> list[dict]:
+    trainable = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    last_decay = getattr(config, "last_layer_weight_decay", None)
+    if last_decay is None:
+        return [{"params": trainable, "weight_decay": float(config.weight_decay), "name": "rest"}]
+    last_ids = {id(parameter) for parameter in _body_last_layer_parameters(model)}
+    last = [parameter for parameter in trainable if id(parameter) in last_ids]
+    rest = [parameter for parameter in trainable if id(parameter) not in last_ids]
+    if not rest:
+        raise ValueError("last_layer_weight_decay left no remaining parameter group")
+    return [
+        {"params": rest, "weight_decay": float(config.weight_decay), "name": "rest"},
+        {"params": last, "weight_decay": float(last_decay), "name": "last_layer"},
+    ]
+
+
 def build_optimizer(model: torch.nn.Module, config) -> Optimizer:
-    parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
+    groups = _optimizer_param_groups(model, config)
     if config.name == "adam_atan2":
         return AdamAtan2(
-            parameters,
+            groups,
             lr=config.learning_rate,
             betas=tuple(config.betas),
             weight_decay=config.weight_decay,
@@ -154,7 +198,7 @@ def build_optimizer(model: torch.nn.Module, config) -> Optimizer:
         )
     if config.name == "adamw":
         return torch.optim.AdamW(
-            parameters,
+            groups,
             lr=config.learning_rate,
             betas=tuple(config.betas),
             weight_decay=config.weight_decay,

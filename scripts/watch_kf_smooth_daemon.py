@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Long-running 开发机 daemon: loss email alerts + 10k health + 50k eval reports.
+"""Long-running 开发机 daemon: loss email alerts + 10k health + 20k eval reports.
 
 This host has no GPU. It will not run the benchmark itself. It emails:
-  - loss/grad collapse alerts from train.jsonl
-  - a gradient/health snapshot every 10k from 610k
+  - loss/grad collapse alerts from a live train.jsonl when train-watch is on
+  - a gradient/health snapshot every 10k when train-watch is on
   - a benchmark-only analysis when stratified-10pct summary_rows.json appears
-    at each 50k from 650k (same metrics as the previous 100k eval mails)
-  - one Official SEED-v1.1 vs 695k head-to-head once both summaries exist
+    if eval-watch is on (defaults to train-watch unless KIMODO_EVAL_WATCH is set)
+  - one Official SEED-v1.1 vs 695k head-to-head when that mode is enabled
+
+Do not point train-watch at a stopped run; that only produces stall mail.
 
 SMTP 授权码 can be added to PVC .env after start; the loop reloads empty env keys.
 """
@@ -33,11 +35,12 @@ import watch_train_loss_alert as watch  # noqa: E402
 
 DEFAULT_EVAL_ROOT = (
     "/home/share/yezitao-kimodo-reproduction/eval-results/"
-    "v2-1m-hostnet-cap800-from695k-stratified10pct"
+    "v2-1m-hostnet-lastwd1-from750k-stratified10pct"
 )
+DEFAULT_WATCH_NAME = "v2-1m-hostnet-lastwd1-from750k"
 DEFAULT_PRIOR_EVAL_ROOT = (
     "/home/share/yezitao-kimodo-reproduction/eval-results/"
-    "v2-1m-hostnet-kf-smooth-lr1e5-stratified10pct"
+    "v2-1m-hostnet-wd03-from650k-stratified10pct"
 )
 DEFAULT_OFFICIAL_EVAL_SUMMARY = (
     "/home/share/yezitao-kimodo-reproduction/eval-results/"
@@ -61,10 +64,11 @@ CONTEXT_EVAL_SUMMARIES = (
         "step-000650000/summary_rows.json",
     ),
 )
-FORK_BASELINE_STEP = 695_000
-MILESTONES = tuple(range(700_000, 1_000_001, 50_000))
-HEALTH_10K_START = 700_000
+FORK_BASELINE_STEP = 750_000
+MILESTONES = tuple(range(760_000, 1_000_001, 20_000))
+HEALTH_10K_START = 760_000
 HEALTH_10K_EVERY = 10_000
+EVAL_MILESTONE_EVERY = 20_000
 CONTENT_KEYS = (
     "Full-Body Pos (gen, cm)",
     "End-Effector Pos (gen, cm)",
@@ -464,6 +468,37 @@ def eval_summary_path(eval_root: Path, step: int) -> Path:
     return eval_root / f"step-{step:09d}" / "summary_rows.json"
 
 
+def next_eval_milestone(
+    milestones: tuple[int, ...], emailed: list[int]
+) -> int | None:
+    seen = {int(step) for step in emailed}
+    for step in milestones:
+        if int(step) not in seen:
+            return int(step)
+    return None
+
+
+def maybe_log_eval_wait(
+    *,
+    state: dict[str, Any],
+    eval_root: Path,
+    milestones: tuple[int, ...],
+    emailed: list[int],
+    now: float,
+) -> None:
+    milestone = next_eval_milestone(milestones, emailed)
+    if milestone is None:
+        return
+    summary = eval_summary_path(eval_root, milestone)
+    if summary.is_file():
+        return
+    last = float(state.get("eval_wait_log_unix") or 0)
+    if now - last < 600:
+        return
+    state["eval_wait_log_unix"] = now
+    watch.log(f"waiting eval {milestone}={summary} pending")
+
+
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name, "").strip()
     if not raw:
@@ -697,7 +732,7 @@ def parse_args() -> argparse.Namespace:
         default=Path(
             os.environ.get(
                 "KIMODO_WATCH_DIR",
-                str(Path(os.environ.get("KIMODO_CODE_ROOT", "/home/share/yzt/kimodo-reproduction")) / "watch" / "v2-1m-hostnet-cap800-from695k"),
+                str(Path(os.environ.get("KIMODO_CODE_ROOT", "/home/share/yzt/kimodo-reproduction")) / "watch" / DEFAULT_WATCH_NAME),
             )
         ),
     )
@@ -727,7 +762,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--eval-every",
         type=int,
-        default=_env_int("KIMODO_EVAL_MILESTONE_EVERY", 50_000),
+        default=_env_int("KIMODO_EVAL_MILESTONE_EVERY", EVAL_MILESTONE_EVERY),
     )
     parser.add_argument(
         "--eval-stop",
@@ -743,14 +778,42 @@ def parse_args() -> argparse.Namespace:
         "--head-to-head",
         dest="head_to_head",
         action="store_true",
-        default=_env_flag("KIMODO_HEAD_TO_HEAD", "1"),
+        default=_env_flag("KIMODO_HEAD_TO_HEAD", "0"),
     )
     parser.add_argument(
         "--no-head-to-head",
         dest="head_to_head",
         action="store_false",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--train-watch",
+        dest="train_watch",
+        action="store_true",
+        default=_env_flag("KIMODO_TRAIN_WATCH", "1"),
+    )
+    parser.add_argument(
+        "--no-train-watch",
+        dest="train_watch",
+        action="store_false",
+    )
+    parser.add_argument(
+        "--eval-watch",
+        dest="eval_watch",
+        action="store_true",
+        default=None,
+    )
+    parser.add_argument(
+        "--no-eval-watch",
+        dest="eval_watch",
+        action="store_false",
+    )
+    args = parser.parse_args()
+    if args.eval_watch is None:
+        if os.environ.get("KIMODO_EVAL_WATCH", "").strip():
+            args.eval_watch = _env_flag("KIMODO_EVAL_WATCH", "0")
+        else:
+            args.eval_watch = args.train_watch
+    return args
 
 
 def main() -> int:
@@ -777,6 +840,14 @@ def main() -> int:
         )
     else:
         watch.log("head-to-head disabled")
+    if args.eval_watch:
+        watch.log(
+            f"eval watch {args.eval_root} from {args.eval_start} every {args.eval_every}"
+        )
+    else:
+        watch.log("eval watch disabled")
+    if not args.train_watch:
+        watch.log("train watch disabled")
     state = watch.load_state(state_path)
     state.setdefault("emailed_milestones", [])
     state.setdefault("emailed_evals", [])
@@ -787,27 +858,45 @@ def main() -> int:
         watch.load_env_files()
         now = time.time()
         previous_step = int(state.get("last_step") or 0)
-        events, state = watch.watch_once(
-            jsonl=jsonl,
-            state=state,
-            stall_s=args.stall_seconds,
-            now=now,
-        )
-        current_step = int(state.get("last_step") or previous_step)
+        events: list = []
+        current_step = previous_step
+        if args.train_watch:
+            events, state = watch.watch_once(
+                jsonl=jsonl,
+                state=state,
+                stall_s=args.stall_seconds,
+                now=now,
+            )
+            current_step = int(state.get("last_step") or previous_step)
 
         if not state.get("startup_emailed"):
             last_try = float(state.get("startup_last_attempt_unix") or 0)
             if now - last_try >= 600:
                 state["startup_last_attempt_unix"] = now
-                latest = read_jsonl_tail(jsonl, 3)
+                latest = read_jsonl_tail(jsonl, 3) if args.train_watch else []
                 record = latest[-1] if latest else None
-                body = (
-                    "开发机守护已启动。电脑可以带走。\n"
-                f"当前 step={current_step}。loss 异常会立即发信；"
-                f"每 {args.health_every // 1000}k 发梯度健康；"
-                f"{args.eval_start // 1000}k 起每 {args.eval_every // 1000}k 只发 benchmark 指标分析。\n"
-                    "开发机无 GPU，benchmark 需另开 1xH200。"
-                )
+                if args.train_watch:
+                    body = (
+                        "开发机守护已启动。电脑可以带走。\n"
+                        f"当前 step={current_step}。loss 异常会立即发信；"
+                        f"每 {args.health_every // 1000}k 发梯度健康。"
+                        "测评由单独的 eval 守护发信。\n"
+                    )
+                elif args.head_to_head:
+                    body = (
+                        "开发机守护已启动：只盯 Official SEED-v1.1 vs 695k。"
+                        "两份 summary_rows.json 齐了发 MiMo 全面对照。"
+                        "不监控已停的训练 run。\n"
+                    )
+                elif args.eval_watch:
+                    body = (
+                        "开发机守护已启动：盯住当前测评。"
+                        f"{args.eval_start // 1000}k 起每 {args.eval_every // 1000}k "
+                        "summary_rows.json 齐了发 MiMo 指标分析。"
+                        "不监控 train.jsonl。\n"
+                    )
+                else:
+                    body = "开发机守护已启动。\n"
                 sent = send_report(
                     subject_kind="watcher-online",
                     alerts=[watch.Alert("startup", f"monitor online step={current_step}")],
@@ -821,117 +910,126 @@ def main() -> int:
                     state["startup_emailed"] = True
                     watch.log("startup email sent")
 
-        for alerts, record in events:
-            due = watch.maybe_alert(
-                alerts=alerts,
+        if args.train_watch:
+            for alerts, record in events:
+                due = watch.maybe_alert(
+                    alerts=alerts,
+                    state=state,
+                    cooldown_s=args.cooldown_seconds,
+                    now=now,
+                )
+                if not due:
+                    continue
+                watch.log("; ".join(alert.summary for alert in due))
+                sent = send_report(
+                    subject_kind="LOSS-ALERT",
+                    alerts=due,
+                    body="对照上次 696.8k 坍缩：若 loss≥1 或 clip 打满，优先停任务而不是继续训。",
+                    run_dir=run_dir,
+                    to_addr=args.to,
+                    from_addr=args.from_addr,
+                    record=record,
+                )
+                if not sent:
+                    for alert in due:
+                        state.setdefault("last_alert_unix", {}).pop(alert.reason, None)
+
+            emailed_10k = [int(value) for value in state.get("emailed_10k", [])]
+            due_10k = [
+                step
+                for step in crossed_grid(
+                    previous_step,
+                    current_step,
+                    start=args.health_start,
+                    stop=args.eval_stop,
+                    every=args.health_every,
+                    skip=(),
+                )
+                if step not in emailed_10k
+            ]
+            if not due_10k and not emailed_10k and current_step >= args.health_start:
+                aligned = current_step - (current_step % args.health_every)
+                if aligned >= args.health_start:
+                    due_10k = [aligned]
+            if due_10k:
+                rows = read_jsonl_tail(jsonl, 2_500)
+                for step in due_10k:
+                    report = gradient_health_report(rows, step)
+                    llm = llm_analysis(
+                        "这是 10k 梯度健康快照，不要写测评数字。"
+                        "判断健康/观察/异常是否合理，梯度是否在爬向 696.8k 那种炸法。\n\n"
+                        + report,
+                        system=HEALTH_MIMO_SYSTEM,
+                    )
+                    body = report + (
+                        "\n\nMiMo 分析：\n" + llm if llm else "\n\nMiMo 分析：本次未拿到，仅规则判断。"
+                    )
+                    latest = rows[-1] if rows else None
+                    sent = send_report(
+                        subject_kind=f"{step // 1000}k-health",
+                        alerts=[watch.Alert("health_10k", f"10k health snapshot step={step}")],
+                        body=body,
+                        run_dir=run_dir,
+                        to_addr=args.to,
+                        from_addr=args.from_addr,
+                        record=latest,
+                    )
+                    if sent:
+                        emailed_10k.append(step)
+                        watch.log(f"emailed {step} 10k health")
+            state["emailed_10k"] = emailed_10k
+
+        if args.eval_watch:
+            emailed_evals = [int(value) for value in state.get("emailed_evals", [])]
+            maybe_log_eval_wait(
                 state=state,
-                cooldown_s=args.cooldown_seconds,
+                eval_root=args.eval_root,
+                milestones=milestones,
+                emailed=emailed_evals,
                 now=now,
             )
-            if not due:
-                continue
-            watch.log("; ".join(alert.summary for alert in due))
-            sent = send_report(
-                subject_kind="LOSS-ALERT",
-                alerts=due,
-                body="对照上次 696.8k 坍缩：若 loss≥1 或 clip 打满，优先停任务而不是继续训。",
-                run_dir=run_dir,
-                to_addr=args.to,
-                from_addr=args.from_addr,
-                record=record,
-            )
-            if not sent:
-                for alert in due:
-                    state.setdefault("last_alert_unix", {}).pop(alert.reason, None)
-
-        emailed_10k = [int(value) for value in state.get("emailed_10k", [])]
-        due_10k = [
-            step
-            for step in crossed_grid(
-                previous_step,
-                current_step,
-                start=args.health_start,
-                stop=args.eval_stop,
-                every=args.health_every,
-                skip=(),
-            )
-            if step not in emailed_10k
-        ]
-        if not due_10k and not emailed_10k and current_step >= args.health_start:
-            aligned = current_step - (current_step % args.health_every)
-            if aligned >= args.health_start:
-                due_10k = [aligned]
-        if due_10k:
-            rows = read_jsonl_tail(jsonl, 2_500)
-            for step in due_10k:
-                report = gradient_health_report(rows, step)
+            for milestone in milestones:
+                if milestone in emailed_evals:
+                    continue
+                summary = eval_summary_path(args.eval_root, milestone)
+                if not summary.is_file():
+                    continue
+                eval_text = compose_eval_text(
+                    args.eval_root,
+                    args.prior_eval_root,
+                    milestone,
+                    milestones=milestones,
+                    baseline=args.fork_baseline,
+                )
+                rule = deterministic_eval_analysis(
+                    milestone=milestone,
+                    eval_text=eval_text,
+                    milestones=milestones,
+                    baseline=args.fork_baseline,
+                )
                 llm = llm_analysis(
-                    "这是 10k 梯度健康快照，不要写测评数字。"
-                    "判断健康/观察/异常是否合理，梯度是否在爬向 696.8k 那种炸法。\n\n"
-                    + report,
-                    system=HEALTH_MIMO_SYSTEM,
+                    "下面是 Phase 2 的 stratified 10% 测评。"
+                    "主写约束有没有收；先验指标只说有没有退步；足滑只说有没有进步。"
+                    "不要讨论 train loss。\n\n" + rule,
+                    system=EVAL_MIMO_SYSTEM,
                 )
-                body = report + (
-                    "\n\nMiMo 分析：\n" + llm if llm else "\n\nMiMo 分析：本次未拿到，仅规则判断。"
-                )
-                latest = rows[-1] if rows else None
+                if not llm:
+                    watch.log(f"defer {milestone} eval mail: waiting for MiMo analysis")
+                    continue
+                body = rule + "\n\nMiMo 分析：\n" + llm
                 sent = send_report(
-                    subject_kind=f"{step // 1000}k-health",
-                    alerts=[watch.Alert("health_10k", f"10k health snapshot step={step}")],
+                    subject_kind=f"{milestone // 1000}k-eval",
+                    alerts=[watch.Alert("eval_ready", f"eval summary for {milestone}")],
                     body=body,
                     run_dir=run_dir,
                     to_addr=args.to,
                     from_addr=args.from_addr,
-                    record=latest,
+                    record=None,
                 )
                 if sent:
-                    emailed_10k.append(step)
-                    watch.log(f"emailed {step} 10k health")
-        state["emailed_10k"] = emailed_10k
-
-        emailed_evals = [int(value) for value in state.get("emailed_evals", [])]
-        for milestone in milestones:
-            if milestone in emailed_evals:
-                continue
-            summary = eval_summary_path(args.eval_root, milestone)
-            if not summary.is_file():
-                continue
-            eval_text = compose_eval_text(
-                args.eval_root,
-                args.prior_eval_root,
-                milestone,
-                milestones=milestones,
-                baseline=args.fork_baseline,
-            )
-            rule = deterministic_eval_analysis(
-                milestone=milestone,
-                eval_text=eval_text,
-                milestones=milestones,
-                baseline=args.fork_baseline,
-            )
-            llm = llm_analysis(
-                "下面是 Phase 2 的 stratified 10% 测评。"
-                "主写约束有没有收；先验指标只说有没有退步；足滑只说有没有进步。"
-                "不要讨论 train loss。\n\n" + rule,
-                system=EVAL_MIMO_SYSTEM,
-            )
-            if not llm:
-                watch.log(f"defer {milestone} eval mail: waiting for MiMo analysis")
-                continue
-            body = rule + "\n\nMiMo 分析：\n" + llm
-            sent = send_report(
-                subject_kind=f"{milestone // 1000}k-eval",
-                alerts=[watch.Alert("eval_ready", f"eval summary for {milestone}")],
-                body=body,
-                run_dir=run_dir,
-                to_addr=args.to,
-                from_addr=args.from_addr,
-                record=None,
-            )
-            if sent:
-                emailed_evals.append(milestone)
-                watch.log(f"emailed {milestone} eval")
-        state["emailed_evals"] = emailed_evals
+                    emailed_evals.append(milestone)
+                    watch.log(f"emailed {milestone} eval")
+            state["emailed_evals"] = emailed_evals
         if args.head_to_head:
             maybe_email_official_vs_695k(
                 state=state,

@@ -1,0 +1,36 @@
+# Rescue fork from healthy wd03 780k. Same stability family as
+# v2_1m_wd03_from650k: keep wd=0.3, Kmax 1→20, Adam-atan2, clip=1.
+# Only change the step size: peak 3e-6 (was ~7e-6 at 780k on the parent
+# schedule) then linear to 1.5e-6 by 1M. Do not freeze K, skip-grad, or
+# raise LR.
+#
+# Parent: runs/v2-1m-hostnet-wd03-from650k/checkpoints/step-000780000.pt
+curriculum:
+  sparse_keyframe_cap_mode: adjacent_mix
+  sparse_keyframes_max: 20
+  sparse_channel_budget: 0
+  sparse_same_frame_overlap_probability: 0.0
+
+optimizer:
+  name: adam_atan2
+  learning_rate: 3.0e-6
+  weight_decay: 0.3
+  warmup_steps: 2000
+  warmup_start_lr: 1.0e-6
+  lr_end: 1.5e-6
+  lr_schedule_start_step: 780000
+  gradient_clip_norm: 1.0
+  skip_gradient_norm: null
+
+data:
+  # Profile default; 20 workers/rank oversubscribed the 2x8 hostnet box.
+  num_workers: 16
+  prefetch_factor: 4
+  persistent_workers: true
+
+runtime:
+  reset_optimizer: true
+  checkpoint_every: 5000
+  keep_last_checkpoints: 20
+  milestone_every: 50000
+  log_every: 20

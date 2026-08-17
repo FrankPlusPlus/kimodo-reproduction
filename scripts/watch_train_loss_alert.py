@@ -30,7 +30,7 @@ from typing import Any
 CST = timezone(timedelta(hours=8))
 
 DEFAULT_RUN_DIR = (
-    "/home/share/yezitao-kimodo-reproduction/runs/v2-1m-hostnet-kf-smooth-lr1e5"
+    "/home/share/yezitao-kimodo-reproduction/runs/v2-1m-hostnet-lastwd1-from750k"
 )
 DEFAULT_TO = "171024830@qq.com"
 ENV_FILES = (

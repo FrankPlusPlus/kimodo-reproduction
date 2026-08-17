@@ -141,9 +141,32 @@ def test_encoder_wrapper_resolves_and_forwards_all_three_local_snapshots(monkeyp
         peft_revision="supervised-sha",
         torch_dtype=torch.float32,
         cache_dir=None,
+        low_cpu_mem_usage=True,
     )
     assert encoder.model is model
     assert not model.training
+
+
+def test_encoder_wrapper_maps_cuda_load_without_cpu_materialize(monkeypatch):
+    monkeypatch.delenv("TEXT_ENCODERS_DIR", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_CACHE_DIR", raising=False)
+    monkeypatch.delenv("TEXT_ENCODER_DEVICE", raising=False)
+    model = _DummyModel("meta-llama/Meta-Llama-3-8B-Instruct")
+    with patch(
+        "kimodo.model.llm2vec.llm2vec_wrapper.LLM2Vec.from_pretrained",
+        return_value=model,
+    ) as load:
+        encoder = LLM2VecEncoder(
+            base_model_name_or_path="mntp",
+            peft_model_name_or_path="supervised",
+            dtype="bfloat16",
+            llm_dim=4096,
+            device="cuda:0",
+        )
+    kwargs = load.call_args.kwargs
+    assert kwargs["low_cpu_mem_usage"] is True
+    assert kwargs["device_map"] == "cuda:0"
+    assert encoder.model is model
 
 
 def _local_cache_args(tmp_path) -> argparse.Namespace:

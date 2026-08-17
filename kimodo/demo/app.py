@@ -13,7 +13,7 @@ import torch
 
 import viser
 from kimodo.assets import DEMO_ASSETS_ROOT
-from kimodo.model.load_model import load_model
+from kimodo.model.load_model import load_checkpoint_bundle, load_model
 from kimodo.model.registry import resolve_model_name
 from kimodo.skeleton import SkeletonBase, SOMASkeleton30
 from kimodo.tools import load_json
@@ -28,6 +28,7 @@ from kimodo.viz.viser_utils import (
 from viser.theme import TitlebarButton, TitlebarConfig, TitlebarImage
 
 from . import generation, ui
+from .local_bundles import ensure_inference_bundle, skinning_mesh_mode
 from .config import (
     DARK_THEME,
     DEFAULT_CUR_DURATION,
@@ -53,27 +54,39 @@ from .state import ClientSession, ModelBundle
 
 
 class Demo:
-    def __init__(self, default_model_name: str = DEFAULT_MODEL):
+    def __init__(
+        self,
+        default_model_name: str = DEFAULT_MODEL,
+        local_bundles: dict[str, str] | None = None,
+    ):
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
         self.models: dict[str, ModelBundle] = {}
         self._text_encoder = None
-        resolved = resolve_model_name(default_model_name, "Kimodo")
-        if resolved not in MODEL_NAMES:
-            raise ValueError(f"Unknown model '{default_model_name}'. Expected one of: {MODEL_NAMES}")
-        self.default_model_name = resolved
+        self.local_bundles = {
+            label: os.path.abspath(os.path.expanduser(path))
+            for label, path in (local_bundles or {}).items()
+        }
+        if default_model_name in self.local_bundles:
+            self.default_model_name = default_model_name
+        else:
+            resolved = resolve_model_name(default_model_name, "Kimodo")
+            if resolved not in MODEL_NAMES:
+                raise ValueError(f"Unknown model '{default_model_name}'. Expected one of: {MODEL_NAMES}")
+            self.default_model_name = resolved
         self.ensure_examples_layout()
-        self.load_model(self.default_model_name)
 
         # Serialize GPU-bound generation across all clients
         self._generation_lock = threading.Lock()
         self._cuda_healthy = True
+        self._model_ready = threading.Event()
 
         # Per-client sessions
         self.client_sessions: dict[int, ClientSession] = {}
         self.start_direction_markers: dict[int, viser_utils.WaypointMesh] = {}
         self.grid_handles: dict[int, viser.GridHandle] = {}
 
+        # Bind the UI port before the multi-minute model load so the tunnel works.
         self.server = viser.ViserServer(
             host=SERVER_NAME,
             port=SERVER_PORT,
@@ -82,6 +95,7 @@ class Demo:
         )
         self.server.scene.world_axes.visible = False  # used for debugging
         self.server.scene.set_up_direction("+y")
+        print(f"Demo UI listening on http://127.0.0.1:{SERVER_PORT} (model still loading)", flush=True)
 
         # Register callbacks for session handling
         self.server.on_client_connect(self.on_client_connect)
@@ -102,6 +116,9 @@ class Demo:
 
         # create grid and floor
         self.floor_len = 20.0  # meters
+        self.load_model(self.default_model_name)
+        self._model_ready.set()
+        print(f"Default model ready: {self.default_model_name}", flush=True)
 
     def ensure_examples_layout(self) -> None:
         os.makedirs(EXAMPLES_ROOT_DIR, exist_ok=True)
@@ -122,7 +139,13 @@ class Demo:
                 shutil.move(src, dst)
 
     def get_examples_base_dir(self, model_name: str, absolute: bool = True) -> str:
-        return MODEL_EXAMPLES_DIRS[model_name]
+        if model_name in MODEL_EXAMPLES_DIRS:
+            return MODEL_EXAMPLES_DIRS[model_name]
+        if model_name in self.local_bundles:
+            seed_examples = MODEL_EXAMPLES_DIRS.get("kimodo-soma-seed")
+            if seed_examples:
+                return seed_examples
+        raise KeyError(f"No demo examples directory for model {model_name!r}")
 
     def load_model(self, model_name: str) -> ModelBundle:
         if model_name in self.models:
@@ -130,11 +153,19 @@ class Demo:
 
         print(f"Loading model {model_name}...")
         try:
-            model = load_model(
-                modelname=model_name,
-                device=self.device,
-                text_encoder=self._text_encoder,
-            )
+            if model_name in self.local_bundles:
+                bundle_path = ensure_inference_bundle(self.local_bundles[model_name])
+                model = load_checkpoint_bundle(
+                    str(bundle_path),
+                    device=self.device,
+                    text_encoder=self._text_encoder,
+                )
+            else:
+                model = load_model(
+                    modelname=model_name,
+                    device=self.device,
+                    text_encoder=self._text_encoder,
+                )
         except Exception as e:
             print(f"Error loading model: {e}\nMake sure text encoder server is running!")
             raise e
@@ -154,7 +185,7 @@ class Demo:
             model_fps=model.motion_rep.fps,
         )
         self.models[model_name] = bundle
-        print(f"Model {model_name} loaded successfully")
+        print(f"Model {model_name} loaded successfully", flush=True)
         self.prewarm_embedding_cache(model_name, bundle.model)
         return bundle
 
@@ -165,23 +196,30 @@ class Demo:
 
         prompt_set = set()
         prompt_set.add(DEFAULT_PROMPT)
-
-        examples_dir = MODEL_EXAMPLES_DIRS.get(model_name)
-        if examples_dir and os.path.isdir(examples_dir):
-            for entry in os.listdir(examples_dir):
-                example_dir = os.path.join(examples_dir, entry)
-                if not os.path.isdir(example_dir):
-                    continue
-                meta_path = os.path.join(example_dir, "meta.json")
-                if not os.path.exists(meta_path):
-                    continue
-                try:
-                    meta = load_json(meta_path)
-                except Exception:
-                    continue
-                for prompt in meta.get("prompts_text", []):
-                    if isinstance(prompt, str):
-                        prompt_set.add(prompt)
+        skip_examples = os.environ.get("KIMODO_DEMO_SKIP_PREWARM", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        if skip_examples:
+            print(f"Prewarming default prompt only ({DEFAULT_PROMPT!r})", flush=True)
+        else:
+            examples_dir = MODEL_EXAMPLES_DIRS.get(model_name)
+            if examples_dir and os.path.isdir(examples_dir):
+                for entry in os.listdir(examples_dir):
+                    example_dir = os.path.join(examples_dir, entry)
+                    if not os.path.isdir(example_dir):
+                        continue
+                    meta_path = os.path.join(example_dir, "meta.json")
+                    if not os.path.exists(meta_path):
+                        continue
+                    try:
+                        meta = load_json(meta_path)
+                    except Exception:
+                        continue
+                    for prompt in meta.get("prompts_text", []):
+                        if isinstance(prompt, str):
+                            prompt_set.add(prompt)
 
         if prompt_set:
             encoder.prewarm(list(prompt_set))
@@ -346,7 +384,9 @@ class Demo:
 
     def on_client_connect(self, client: viser.ClientHandle) -> None:
         """Initialize GUI and state for each new client."""
-        print(f"Client {client.client_id} connected")
+        print(f"Client {client.client_id} connected", flush=True)
+        if not self._model_ready.wait(timeout=900):
+            raise RuntimeError("Timed out waiting for the default model to finish loading")
 
         if HF_MODE and self.queue_manager is not None:
             self.queue_manager.on_client_connect(client)
@@ -429,18 +469,11 @@ class Demo:
 
         ci = len(session.motions)
         character_name = f"character{ci}"
-        # build character skeleton and skinning mesh
-        if "g1" in session.model_name:
-            mesh_mode = "g1_stl"
-        elif "smplx" in session.model_name:
-            mesh_mode = "smplx_skin"
-        elif "soma" in session.model_name:
-            if session.gui_elements.gui_use_soma_layer_checkbox.value:
-                mesh_mode = "soma_layer_skin"
-            else:
-                mesh_mode = "soma_skin"
-        else:
-            raise ValueError("The model name is not recognized for skinning.")
+        mesh_mode = skinning_mesh_mode(
+            session.model_name,
+            use_soma_layer=bool(session.gui_elements.gui_use_soma_layer_checkbox.value),
+            local_labels=self.local_bundles,
+        )
 
         new_character = Character(
             character_name,

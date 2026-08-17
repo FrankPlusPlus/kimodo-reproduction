@@ -326,6 +326,35 @@ def test_fork_reset_optimizer_drops_moments_and_keeps_ema(training_fixture, tmp_
         assert torch.equal(trainer.ema.shadow[name].cpu(), value.cpu())
 
 
+def test_fork_last_layer_weight_decay_survives_scheduled_hyperparams(
+    training_fixture, tmp_path
+):
+    project_root = Path(__file__).resolve().parents[2]
+    parent = tmp_path / "parent-lastwd"
+    parent_config = _config(training_fixture, parent, 1)
+    parent_config.model.num_layers = 2
+    KimodoTrainer(parent_config, project_root).train()
+    checkpoint = parent / "checkpoints" / "step-000000001.pt"
+
+    child = tmp_path / "child-lastwd"
+    config = _config(training_fixture, child, 2)
+    config.model.num_layers = 2
+    config.optimizer.weight_decay = 0.3
+    config.optimizer.last_layer_weight_decay = 1.0
+    config.optimizer.learning_rate = 1.0e-5
+    config.optimizer.lr_schedule_start_step = 1
+    config.runtime.resume = str(checkpoint)
+    config.runtime.resume_mode = "fork"
+    config.runtime.reset_optimizer = True
+    trainer = KimodoTrainer(config, project_root)
+    by_name = {group["name"]: group for group in trainer.optimizer.param_groups}
+    assert by_name["rest"]["weight_decay"] == pytest.approx(0.3)
+    assert by_name["last_layer"]["weight_decay"] == pytest.approx(1.0)
+    trainer._apply_scheduled_optimizer_hyperparams()
+    assert by_name["rest"]["weight_decay"] == pytest.approx(0.3)
+    assert by_name["last_layer"]["weight_decay"] == pytest.approx(1.0)
+
+
 def test_scheduled_learning_rate_warms_then_decays():
     from kimodo.training.optim import scheduled_learning_rate
 

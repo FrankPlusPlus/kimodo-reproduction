@@ -2,12 +2,23 @@
 # SPDX-License-Identifier: Apache-2.0
 """LLM2Vec encoder wrapper for Kimodo text conditioning."""
 
+import contextlib
 import os
 
 import numpy as np
 import torch
 
 from .llm2vec import LLM2Vec
+
+
+def _math_sdpa_context():
+    """Avoid Triton/flash attention, which needs a C compiler missing on demo pods."""
+    try:
+        from torch.nn.attention import SDPBackend, sdpa_kernel
+
+        return sdpa_kernel(SDPBackend.MATH)
+    except Exception:
+        return contextlib.nullcontext()
 
 
 class LLM2VecEncoder:
@@ -38,7 +49,14 @@ class LLM2VecEncoder:
                     os.environ["TEXT_ENCODERS_DIR"], foundation_model_name_or_path
                 )
 
-        self.model = LLM2Vec.from_pretrained(
+        env_device = os.environ.get("TEXT_ENCODER_DEVICE")
+        if env_device:
+            device = env_device
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._device = device
+
+        load_kwargs = dict(
             base_model_name_or_path=base_model_name_or_path,
             peft_model_name_or_path=peft_model_name_or_path,
             torch_dtype=torch_dtype,
@@ -47,15 +65,25 @@ class LLM2VecEncoder:
             peft_revision=peft_revision,
             foundation_model_name_or_path=foundation_model_name_or_path,
             foundation_revision=foundation_revision,
+            # 16GB cgroup pods OOM if 8B weights materialize on CPU then .to(cuda).
+            low_cpu_mem_usage=True,
         )
+        mapped = isinstance(device, str) and device.startswith("cuda")
+        if mapped:
+            load_kwargs["device_map"] = device if ":" in device else f"{device}:0"
+            # Demo pods often have no gcc; Llama SDPA/Triton compile then crashes.
+            load_kwargs["attn_implementation"] = "eager"
 
-        env_device = os.environ.get("TEXT_ENCODER_DEVICE")
-        if env_device:
-            device = env_device
-        if device == "auto":
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-        self._device = device
-        if device is not None:
+        self.model = LLM2Vec.from_pretrained(**load_kwargs)
+        if mapped:
+            torch.backends.cuda.enable_flash_sdp(False)
+            torch.backends.cuda.enable_mem_efficient_sdp(False)
+            torch.backends.cuda.enable_math_sdp(True)
+            inner = getattr(self.model, "model", self.model)
+            config = getattr(inner, "config", None)
+            if config is not None:
+                config._attn_implementation = "eager"
+        if device is not None and not mapped:
             self.model = self.model.to(device)
 
         self.model.eval()
@@ -80,7 +108,7 @@ class LLM2VecEncoder:
             text = [text]
             is_string = True
 
-        with torch.no_grad():
+        with torch.no_grad(), _math_sdpa_context():
             encoded_text = self.model.encode(
                 text,
                 # IMPORTANT: different batch sizes unexpectedly change the output embeddings, so we always set it to 1

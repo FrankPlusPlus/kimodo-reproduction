@@ -151,6 +151,9 @@ class OptimizerConfig:
     learning_rate: float = 2e-5
     betas: tuple[float, float] = (0.9, 0.999)
     weight_decay: float = 0.0
+    # Extra decay on the last body Transformer layer. None uses weight_decay
+    # for every parameter. Requires two Adam groups; do not clobber on resume.
+    last_layer_weight_decay: float | None = None
     atan2_lambda: float = 8.0
     gradient_clip_norm: float | None = 1.0
     # Skip the optimizer step (no Adam write) when the pre-clip grad norm
@@ -380,6 +383,11 @@ class TrainingConfig:
             raise ValueError("optimizer.lr_schedule_start_step must be >= 0")
         if self.optimizer.weight_decay < 0:
             raise ValueError("optimizer.weight_decay must be >= 0")
+        if (
+            self.optimizer.last_layer_weight_decay is not None
+            and self.optimizer.last_layer_weight_decay < 0
+        ):
+            raise ValueError("optimizer.last_layer_weight_decay must be >= 0 when set")
         if self.loss.smooth_l1_beta <= 0:
             raise ValueError("loss.smooth_l1_beta must be positive")
         if self.ema.enabled and (not 0.0 < self.ema.decay < 1.0 or self.ema.update_every < 1):

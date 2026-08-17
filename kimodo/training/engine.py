@@ -499,14 +499,15 @@ class KimodoTrainer:
             configured_lr = self._scheduled_learning_rate()
             for group in self.optimizer.param_groups:
                 group["lr"] = configured_lr
-                group["weight_decay"] = float(self.config.optimizer.weight_decay)
+                group["weight_decay"] = self._weight_decay_for_group(group)
             if (
                 config.runtime.resume_mode == "fork"
                 and config.runtime.reset_optimizer
             ):
                 self._boot_log(
                     "fork reset optimizer moments; EMA restored from parent "
-                    f"weight_decay={self.config.optimizer.weight_decay}"
+                    f"weight_decay={self.config.optimizer.weight_decay} "
+                    f"last_layer_weight_decay={self.config.optimizer.last_layer_weight_decay}"
                 )
             self._boot_log(f"optimizer learning_rate={configured_lr}")
 
@@ -566,12 +567,23 @@ class KimodoTrainer:
             schedule_start_step=int(optimizer.lr_schedule_start_step),
         )
 
+    def _weight_decay_for_group(self, group: dict) -> float:
+        last_decay = self.config.optimizer.last_layer_weight_decay
+        if last_decay is not None and group.get("name") == "last_layer":
+            return float(last_decay)
+        return float(self.config.optimizer.weight_decay)
+
+    def _optimizer_group(self, name: str) -> dict:
+        for group in self.optimizer.param_groups:
+            if group.get("name") == name:
+                return group
+        return self.optimizer.param_groups[0]
+
     def _apply_scheduled_optimizer_hyperparams(self) -> None:
         learning_rate = self._scheduled_learning_rate()
-        weight_decay = float(self.config.optimizer.weight_decay)
         for group in self.optimizer.param_groups:
             group["lr"] = learning_rate
-            group["weight_decay"] = weight_decay
+            group["weight_decay"] = self._weight_decay_for_group(group)
 
     def _body_layer_grad_norms(self) -> dict[str, float]:
         body = unwrap_model(self.model).body_model
@@ -827,8 +839,6 @@ class KimodoTrainer:
         interval_gradient_norm_sum = 0.0
         interval_gradient_clip_hits = 0
         interval_extreme_skips = 0
-        interval_update_norm_sum = 0.0
-        interval_update_ratio_sum = 0.0
         interval_body_layer_sums: dict[str, float] = {}
         first_batch_logged = False
         first_committed_step = self.global_step + 1
@@ -1012,7 +1022,14 @@ class KimodoTrainer:
                             f"Non-finite gradient norm at global_step={self.global_step}"
                         )
                     gradient_norm_value = float(gradient_norm.detach().float().item())
-                    step_body_layer_norms = self._body_layer_grad_norms()
+                    # Per-layer norms sync GPU→CPU for every body block. Do that
+                    # only on log steps; collapse watches jsonl, not the 20-step mean.
+                    log_every = max(int(self.config.runtime.log_every), 1)
+                    step_body_layer_norms = (
+                        self._body_layer_grad_norms()
+                        if (self.global_step + 1) % log_every == 0
+                        else {}
+                    )
                     skip_extreme = torch.tensor(0.0, device=self.context.device)
                     skip_threshold = self.config.optimizer.skip_gradient_norm
                     if skip_threshold is not None and gradient_norm_value > skip_threshold:
@@ -1045,6 +1062,10 @@ class KimodoTrainer:
                 self._apply_scheduled_optimizer_hyperparams()
                 with self._observed_section("optimizer"):
                     previous_scale = self.scaler.get_scale()
+                    if hasattr(self.optimizer, "track_update_stats"):
+                        self.optimizer.track_update_stats = (
+                            (self.global_step + 1) % log_every == 0
+                        )
                     self.scaler.step(self.optimizer)
                     self.scaler.update()
                     self.optimizer.zero_grad(set_to_none=True)
@@ -1063,14 +1084,8 @@ class KimodoTrainer:
                     )
                 interval_optimizer_steps += 1
                 interval_gradient_norm_sum += gradient_norm_value
-                interval_update_norm_sum += float(
-                    getattr(self.optimizer, "last_update_norm", 0.0) or 0.0
-                )
-                interval_update_ratio_sum += float(
-                    getattr(self.optimizer, "last_update_param_ratio", 0.0) or 0.0
-                )
                 for name, value in step_body_layer_norms.items():
-                    interval_body_layer_sums[name] = interval_body_layer_sums.get(name, 0.0) + value
+                    interval_body_layer_sums[name] = value
                 interval_gradient_clip_hits += int(
                     self.config.optimizer.gradient_clip_norm is not None
                     and gradient_norm_value > self.config.optimizer.gradient_clip_norm
@@ -1230,15 +1245,24 @@ class KimodoTrainer:
                         "conditioning/mask_channel_load_max": float(mask_load_max.item()),
                         "optimizer/learning_rate": float(self.optimizer.param_groups[0]["lr"]),
                         "optimizer/weight_decay": float(
-                            self.optimizer.param_groups[0].get(
+                            self._optimizer_group("rest").get(
                                 "weight_decay", self.config.optimizer.weight_decay
                             )
                         ),
-                        "optimizer/update_norm": (
-                            interval_update_norm_sum / max(interval_optimizer_steps, 1)
+                        "optimizer/last_layer_weight_decay": float(
+                            self._optimizer_group("last_layer").get(
+                                "weight_decay",
+                                self.config.optimizer.last_layer_weight_decay
+                                if self.config.optimizer.last_layer_weight_decay is not None
+                                else self.config.optimizer.weight_decay,
+                            )
                         ),
-                        "optimizer/update_param_ratio": (
-                            interval_update_ratio_sum / max(interval_optimizer_steps, 1)
+                        "optimizer/update_norm": float(
+                            getattr(self.optimizer, "last_update_norm", 0.0) or 0.0
+                        ),
+                        "optimizer/update_param_ratio": float(
+                            getattr(self.optimizer, "last_update_param_ratio", 0.0)
+                            or 0.0
                         ),
                         "optimizer/gradient_norm_before_clip": (
                             float(optimization_values[0].item()) / gradient_observations
@@ -1277,9 +1301,8 @@ class KimodoTrainer:
                         "system/peak_cuda_allocated_bytes": peak_allocated_bytes,
                         "system/peak_cuda_reserved_bytes": peak_reserved_bytes,
                     }
-                    denom = max(interval_optimizer_steps, 1)
                     for name, value in interval_body_layer_sums.items():
-                        record[f"optimizer/{name}"] = value / denom
+                        record[f"optimizer/{name}"] = value
                     for branch in ("joint", "constraint_only", "text_only", "unconditional"):
                         record[f"conditioning/{branch}_fraction"] = global_counts[branch] / sample_count
                     for pattern in self.constraint_sampler.ALL_PATTERNS:
@@ -1310,8 +1333,6 @@ class KimodoTrainer:
                     interval_extreme_skips = 0
                     interval_gradient_norm_sum = 0.0
                     interval_gradient_clip_hits = 0
-                    interval_update_norm_sum = 0.0
-                    interval_update_ratio_sum = 0.0
                     interval_body_layer_sums.clear()
                     if self.context.device.type == "cuda":
                         torch.cuda.reset_peak_memory_stats(self.context.device)

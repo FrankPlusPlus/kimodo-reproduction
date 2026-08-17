@@ -8,6 +8,7 @@ This script recursively generates motions using Kimodo from a test suite folder 
 """
 
 import argparse
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,7 @@ from torch.utils.data import DataLoader, Dataset
 from tqdm.auto import tqdm
 
 from kimodo.constraints import load_constraints_lst
+from kimodo.evaluation.generate_shards import resolve_generation_shard, select_example_shard
 from kimodo.meta import parse_prompts_from_meta
 from kimodo.model.load_model import DEFAULT_MODEL, load_checkpoint_bundle, load_model
 from kimodo.tools import load_json, seed_everything
@@ -82,7 +84,33 @@ def parse_args():
         action="store_true",
         help="Uses fp32 for instantiating the text encoder (if API is not already running) rather than default bfloat16.",
     )
+    parser.add_argument(
+        "--shard-index",
+        type=int,
+        default=None,
+        help="Zero-based generation shard. Defaults to RANK when torchrun sets it.",
+    )
+    parser.add_argument(
+        "--shard-count",
+        type=int,
+        default=None,
+        help="Number of generation shards. Defaults to WORLD_SIZE when torchrun sets it.",
+    )
     return parser.parse_args()
+
+
+def resolve_generation_device(*, environ: dict[str, str] | None = None) -> str:
+    """Pick one visible GPU. torchrun may expose all local devices or a single sliced one."""
+    if not torch.cuda.is_available():
+        return "cpu"
+    env = os.environ if environ is None else environ
+    local_rank = int(env.get("LOCAL_RANK", "0"))
+    visible = torch.cuda.device_count()
+    if visible <= 1:
+        return "cuda:0"
+    if local_rank < 0 or local_rank >= visible:
+        raise ValueError(f"LOCAL_RANK={local_rank} is outside visible CUDA devices 0..{visible - 1}")
+    return f"cuda:{local_rank}"
 
 
 def discover_example_folders(root: Path) -> list[tuple[Path, Path]]:
@@ -209,10 +237,22 @@ def _crop_output(output: dict[str, Any], num_frames: int) -> dict[str, Any]:
 
 
 def main():
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
-
     args = parse_args()
+    try:
+        shard_index, shard_count = resolve_generation_shard(
+            args.shard_index,
+            args.shard_count,
+            environ=dict(os.environ),
+        )
+        device = resolve_generation_device()
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    if device.startswith("cuda"):
+        os.environ.setdefault("TEXT_ENCODER_DEVICE", device)
+    print(f"Using device: {device}")
+    if shard_count > 1:
+        print(f"Generation shard {shard_index}/{shard_count} (RANK/WORLD_SIZE or --shard-*).")
+
     testsuite_root = Path(args.benchmark).resolve()
     if args.output is not None:
         generated_root = Path(args.output).resolve()
@@ -223,7 +263,15 @@ def main():
     examples = discover_example_folders(testsuite_root)
     if not examples:
         raise SystemExit(f"No folders with meta.json found under {testsuite_root}")
-    print(f"Discovered {len(examples)} example folders.")
+    total_discovered = len(examples)
+    examples = select_example_shard(examples, shard_index, shard_count)
+    print(
+        f"Discovered {total_discovered} example folders; "
+        f"this shard owns {len(examples)}."
+    )
+    if not examples:
+        print("This shard has no examples; exiting.")
+        return
 
     if args.checkpoint_bundle:
         model = load_checkpoint_bundle(

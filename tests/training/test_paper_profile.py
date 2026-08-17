@@ -212,6 +212,46 @@ def test_v2_1m_wd03_from650k_overlay_keeps_k20_and_sets_stability_knobs():
     assert config.runtime.keep_last_checkpoints == 20
 
 
+def test_v2_1m_lastwd1_from750k_overlay_keeps_parent_lr_and_splits_wd():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",
+        ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/v2_1m_lastwd1_from750k.yaml"],
+    )
+
+    assert config.curriculum.sparse_keyframes_max == 20
+    assert config.curriculum.sparse_keyframes_hard_cap == 0
+    assert config.optimizer.learning_rate == pytest.approx(1.0e-5)
+    assert config.optimizer.weight_decay == pytest.approx(0.3)
+    assert config.optimizer.last_layer_weight_decay == pytest.approx(1.0)
+    assert config.optimizer.warmup_steps == 2000
+    assert config.optimizer.lr_end == pytest.approx(2.0e-6)
+    assert config.optimizer.lr_schedule_start_step == 650_000
+    assert config.optimizer.skip_gradient_norm is None
+    assert config.runtime.reset_optimizer is True
+
+
+def test_v2_1m_wd03_from780k_lr3e6_overlay_drops_peak_lr_and_keeps_wd():
+    config = load_training_config(
+        PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",
+        ["runtime.dry_run=true"],
+        overlays=[PROJECT_ROOT / "configs/overlays/v2_1m_wd03_from780k_lr3e6.yaml"],
+    )
+
+    assert config.curriculum.sparse_keyframes_max == 20
+    assert config.curriculum.sparse_keyframes_hard_cap == 0
+    assert config.curriculum.sparse_keyframe_cap_mode == "adjacent_mix"
+    assert config.optimizer.learning_rate == pytest.approx(3.0e-6)
+    assert config.optimizer.weight_decay == pytest.approx(0.3)
+    assert config.optimizer.warmup_steps == 2000
+    assert config.optimizer.lr_end == pytest.approx(1.5e-6)
+    assert config.optimizer.lr_schedule_start_step == 780_000
+    assert config.optimizer.skip_gradient_norm is None
+    assert config.runtime.reset_optimizer is True
+    assert config.data.num_workers == 16
+    assert config.runtime.log_every == 20
+
+
 def test_v2_1m_k7_reseed696k_overlay_changes_seed_and_stops_at_698k():
     config = load_training_config(
         PROJECT_ROOT / "configs/training/kimodo_soma_seed_v2_1m_16h200.yaml",

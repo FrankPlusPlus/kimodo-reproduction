@@ -21,6 +21,18 @@ from .embedding_cache import CachedTextEncoder
 from .state import ClientSession, ModelBundle
 
 
+def try_begin_generation(session: ClientSession) -> bool:
+    """Claim the Generate click. Return False if a run is already in flight."""
+    if session.generating:
+        return False
+    session.generating = True
+    return True
+
+
+def finish_generation(session: ClientSession) -> None:
+    session.generating = False
+
+
 def compute_model_constraints_lst(
     session: ClientSession,
     model_bundle: ModelBundle,

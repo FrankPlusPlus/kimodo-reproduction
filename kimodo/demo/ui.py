@@ -39,9 +39,11 @@ from .config import (
     HF_MODE,
     INIT_POSTPROCESSING,
     MODEL_NAMES,
+    MOTION_CORRECTION_AVAILABLE,
     NB_TRANSITION_FRAMES,
     SHOW_TRANSITION_PARAMS,
 )
+from .local_bundles import uses_soma_visuals, version_options_with_training
 from .state import ClientSession
 from kimodo.skeleton import G1Skeleton34, SOMASkeleton30, SOMASkeleton77
 
@@ -212,12 +214,18 @@ def create_gui(
                 if initial_skeleton_key is not None
                 else []
             )
-            version_options = [m.display_name for m in models_for_pair]
-            initial_version = (
-                info.display_name
-                if info.display_name in version_options
-                else (version_options[0] if version_options else "")
+            version_options = version_options_with_training(
+                [m.display_name for m in models_for_pair],
+                skeleton_key=initial_skeleton_key,
+                dataset_ui_label=dataset_ui_label,
+                local_labels=demo.local_bundles,
             )
+            if model_name in demo.local_bundles and model_name in version_options:
+                initial_version = model_name
+            elif info.display_name in version_options:
+                initial_version = info.display_name
+            else:
+                initial_version = version_options[0] if version_options else ""
             gui_dataset_selector = client.gui.add_dropdown(
                 "Training dataset",
                 options=datasets,
@@ -231,16 +239,16 @@ def create_gui(
             )
             gui_version_selector = client.gui.add_dropdown(
                 "Version",
-                options=version_options,
+                options=version_options or [""],
                 initial_value=initial_version,
             )
-            gui_version_selector.visible = len(models_for_pair) > 1
+            gui_version_selector.visible = len(version_options) > 1
             gui_model_display = client.gui.add_markdown(
                 content=f"**Model:** {initial_version}",
             )
             gui_load_model_button = client.gui.add_button(
                 "Load model",
-                hint="Load the selected model (dataset, skeleton, version).",
+                hint="Load the selected official model or training checkpoint. One choice at a time.",
             )
 
             class ModelSelectorHandle:
@@ -252,11 +260,48 @@ def create_gui(
                     self._version = gui_version_selector
                     self._display = gui_model_display
 
+                def _set_version_options(self, dataset_ui_label: str, skeleton_key: Optional[str], preferred: Optional[str] = None) -> None:
+                    models = (
+                        get_models_for_dataset_skeleton(dataset_ui_label, skeleton_key, family="Kimodo")
+                        if skeleton_key is not None
+                        else []
+                    )
+                    options = version_options_with_training(
+                        [m.display_name for m in models],
+                        skeleton_key=skeleton_key,
+                        dataset_ui_label=dataset_ui_label,
+                        local_labels=demo.local_bundles,
+                    )
+                    if not options:
+                        return
+                    self._version.options = options
+                    if preferred and preferred in options:
+                        self._version.value = preferred
+                    else:
+                        self._version.value = options[0]
+                    self._version.visible = len(options) > 1
+                    self._display.content = f"**Model:** {self._version.value}"
+
                 @property
                 def value(self) -> str:
-                    return get_short_key_from_display_name(self._version.value) or ""
+                    version = self._version.value
+                    if version in demo.local_bundles:
+                        return version
+                    return get_short_key_from_display_name(version) or ""
 
                 def set_from_short_key(self, short_key: str) -> None:
+                    if short_key in demo.local_bundles:
+                        dataset_ui_label = "SEED"
+                        self._dataset.value = dataset_ui_label
+                        self._skeleton.options = get_allowed_skeleton_labels(dataset_ui_label)
+                        skeleton_label = get_skeleton_display_name("SOMA")
+                        if skeleton_label not in self._skeleton.options and self._skeleton.options:
+                            skeleton_label = self._skeleton.options[0]
+                        if skeleton_label in self._skeleton.options:
+                            self._skeleton.value = skeleton_label
+                        skeleton_key = get_skeleton_key_from_display_name(self._skeleton.value)
+                        self._set_version_options(dataset_ui_label, skeleton_key, preferred=short_key)
+                        return
                     info = get_model_info(short_key)
                     if info is None:
                         return
@@ -270,13 +315,7 @@ def create_gui(
                     skeleton_key = get_skeleton_key_from_display_name(skeleton_label)
                     if skeleton_key is None:
                         return
-                    models = get_models_for_dataset_skeleton(dataset_ui_label, skeleton_key, family="Kimodo")
-                    self._version.options = [m.display_name for m in models]
-                    self._version.value = (
-                        info.display_name if info.display_name in self._version.options else self._version.options[0]
-                    )
-                    self._version.visible = len(models) > 1
-                    self._display.content = f"**Model:** {self._version.value}"
+                    self._set_version_options(dataset_ui_label, skeleton_key, preferred=info.display_name)
 
             gui_model_selector = ModelSelectorHandle()
 
@@ -362,7 +401,7 @@ def create_gui(
             gui_use_soma_layer_checkbox = client.gui.add_checkbox(
                 "SOMA layer",
                 initial_value=False,
-                visible="soma" in (model_name or ""),
+                visible=uses_soma_visuals(model_name, demo.local_bundles),
             )
 
             with client.gui.add_folder("Model Parameters", expand_by_default=False):
@@ -419,9 +458,14 @@ def create_gui(
                 gui_postprocess_checkbox = client.gui.add_checkbox(
                     "Enable",
                     initial_value=INIT_POSTPROCESSING,
-                    hint="Apply motion post-processing (not available for G1)",
+                    hint=(
+                        "Apply motion post-processing (not available for G1)"
+                        if MOTION_CORRECTION_AVAILABLE
+                        else "motion_correction is not installed on this machine; generation skips foot/root correction."
+                    ),
                     visible=_postprocess_visible,
                 )
+                gui_postprocess_checkbox.disabled = not MOTION_CORRECTION_AVAILABLE
                 gui_root_margin = client.gui.add_number(
                     "Root Margin",
                     min=0.0,
@@ -1797,19 +1841,25 @@ def create_gui(
             if skeleton_val is None:
                 return
             models = get_models_for_dataset_skeleton(dataset_ui, skeleton_val, family="Kimodo")
-            if not models:
+            options = version_options_with_training(
+                [m.display_name for m in models],
+                skeleton_key=skeleton_val,
+                dataset_ui_label=dataset_ui,
+                local_labels=demo.local_bundles,
+            )
+            if not options:
                 return
-            gui_version_selector.options = [m.display_name for m in models]
-            gui_version_selector.value = models[0].display_name
-            gui_version_selector.visible = len(models) > 1
-            gui_model_display.content = f"**Model:** {models[0].display_name}"
+            gui_version_selector.options = options
+            gui_version_selector.value = options[0]
+            gui_version_selector.visible = len(options) > 1
+            gui_model_display.content = f"**Model:** {options[0]}"
 
         def _update_visibility_for_loaded_model(loaded_model_name: str) -> None:
             """Update model-specific controls from the currently loaded model only."""
             if not loaded_model_name:
                 return
             _update_motion_export_dropdown(loaded_model_name)
-            gui_use_soma_layer_checkbox.visible = "soma" in loaded_model_name
+            gui_use_soma_layer_checkbox.visible = uses_soma_visuals(loaded_model_name, demo.local_bundles)
             _is_g1 = "g1" in loaded_model_name
             gui_real_robot_rotations_checkbox.visible = _is_g1
             gui_postprocess_checkbox.visible = not _is_g1
@@ -1820,29 +1870,32 @@ def create_gui(
             gui_gizmo_space_dropdown.disabled = _is_g1
 
         def _on_load_model_click(event: viser.GuiEvent) -> None:
-            """Load the currently selected model (called from Load model button)."""
+            """Load the currently selected official model or training checkpoint."""
             if get_active_session(event.client) is None:
                 return
             new_model_name = gui_model_selector.value
             if not new_model_name:
                 return
-            info = get_model_info(new_model_name)
-            if info is None:
+            is_local = new_model_name in demo.local_bundles
+            info = None if is_local else get_model_info(new_model_name)
+            if not is_local and info is None:
                 return
+            display_name = new_model_name if is_local else info.display_name
             session = demo.client_sessions[event.client.client_id]
             if new_model_name == session.model_name:
                 return
             loading_notif = event.client.add_notification(
                 title="Loading model...",
-                body=f"Loading {info.display_name}",
+                body=f"Loading {display_name}",
                 loading=True,
                 with_close_button=False,
             )
             try:
                 apply_model_selection(new_model_name)
                 _update_visibility_for_loaded_model(new_model_name)
+                gui_model_display.content = f"**Model:** {display_name}"
                 loading_notif.title = "Model loaded"
-                loading_notif.body = f"{info.display_name} is ready."
+                loading_notif.body = f"{display_name} is ready."
                 loading_notif.loading = False
                 loading_notif.with_close_button = True
                 loading_notif.auto_close_seconds = 5.0
@@ -1881,6 +1934,10 @@ def create_gui(
         def _(event: viser.GuiEvent) -> None:
             if get_active_session(event.client) is None:
                 return
+            version = gui_version_selector.value
+            if version in demo.local_bundles:
+                gui_model_display.content = f"**Model:** {version}"
+                return
             info = get_model_info(gui_model_selector.value)
             if info is not None:
                 gui_model_display.content = f"**Model:** {info.display_name}"
@@ -1888,7 +1945,7 @@ def create_gui(
         @gui_use_soma_layer_checkbox.on_update
         def _(event: viser.GuiEvent) -> None:
             session = get_active_session(event.client)
-            if session is None or "soma" not in (session.model_name or ""):
+            if session is None or not uses_soma_visuals(session.model_name or "", demo.local_bundles):
                 return
 
             loading_notif = event.client.add_notification(
@@ -2811,42 +2868,51 @@ def create_gui(
             session = get_active_session(event_client)
             if session is None:
                 return
+            if gui_generate_button.disabled or not generation.try_begin_generation(session):
+                return
 
-            generating_notif = event_client.add_notification(
-                title="Generating motion...",
-                body="Generating motions for the given prompt!",
-                loading=True,
-                with_close_button=False,
-            )
-            gui_generate_button.disabled = True
-            client.timeline.disable_constraints()
-
-            num_samples = gui_num_samples_slider.value
-            timeline = session.client.timeline
-
-            # sort them to avoid issues:
-            prompt_values = sorted([x for x in timeline._prompts.values()], key=lambda x: x.start_frame)
-
-            texts = [x.text for x in prompt_values]
-            num_frames = compute_prompt_num_frames(prompt_values)
-
-            # compute the total duration
-            total_nb_frames = sum(num_frames)
-            total_duration = total_nb_frames / session.model_fps
-
-            # update just in case
-            set_new_duration(client_id, total_duration)
-
-            transitions_parameters = {
-                "num_transition_frames": gui_num_transition_frames_slider.value,
-            }
-
-            # G1: postprocessing is disabled (does not work well for this model).
-            postprocess_parameters = {
-                "post_processing": (False if "g1" in session.model_name else gui_postprocess_checkbox.value),
-                "root_margin": gui_root_margin.value,
-            }
+            choose_sample = False
+            generating_notif = None
             try:
+                gui_generate_button.disabled = True
+                client.timeline.disable_constraints()
+                generating_notif = event_client.add_notification(
+                    title="Generating motion...",
+                    body="Generating motions for the given prompt!",
+                    loading=True,
+                    with_close_button=False,
+                )
+
+                num_samples = gui_num_samples_slider.value
+                timeline = session.client.timeline
+
+                # sort them to avoid issues:
+                prompt_values = sorted([x for x in timeline._prompts.values()], key=lambda x: x.start_frame)
+
+                texts = [x.text for x in prompt_values]
+                num_frames = compute_prompt_num_frames(prompt_values)
+
+                # compute the total duration
+                total_nb_frames = sum(num_frames)
+                total_duration = total_nb_frames / session.model_fps
+
+                # update just in case
+                set_new_duration(client_id, total_duration)
+
+                transitions_parameters = {
+                    "num_transition_frames": gui_num_transition_frames_slider.value,
+                }
+
+                # G1: postprocessing is disabled (does not work well for this model).
+                postprocess_on = (
+                    MOTION_CORRECTION_AVAILABLE
+                    and "g1" not in session.model_name
+                    and bool(gui_postprocess_checkbox.value)
+                )
+                postprocess_parameters = {
+                    "post_processing": postprocess_on,
+                    "root_margin": gui_root_margin.value,
+                }
                 demo.generate(
                     event_client,
                     texts,
@@ -2913,6 +2979,7 @@ def create_gui(
                             for handle in char.g1_mesh_rig.mesh_handles:
                                 handle.on_click(commit_motion, highlight_group=character_name)
 
+                    choose_sample = True
                     gui_edit_constraint_button.disabled = True
                     gui_generate_button.disabled = True
                     gui_snap_to_constraint_button.disabled = True
@@ -2945,24 +3012,30 @@ def create_gui(
 
                 traceback.print_exc()
                 print(f"Error during generation for client {event_client.client_id}: {e}")
-                # Re-enable buttons and notify the user
                 if event_client.client_id in demo.client_sessions:
-                    session = demo.client_sessions[event_client.client_id]
                     gui_generate_button.disabled = False
                     gui_load_example_button.disabled = False
                     gui_save_example_button.disabled = False
                     gui_save_motion_button.disabled = False
                     gui_download_button.disabled = False
                     try:
-                        event_client.add_notification(
-                            title="Generation failed!",
-                            body=f"Error: {str(e)}",
-                            auto_close_seconds=5.0,
-                            color="red",
-                        )
+                        client.timeline.enable_constraints()
+                    except Exception:
+                        pass
+                    try:
+                        generating_notif.title = "Generation failed!"
+                        generating_notif.body = f"Error: {e}"
+                        generating_notif.loading = False
+                        generating_notif.with_close_button = True
+                        generating_notif.auto_close_seconds = 8.0
+                        generating_notif.color = "red"
                     except Exception:
                         pass
                 demo.check_cuda_health()
+            finally:
+                generation.finish_generation(session)
+                if not choose_sample and event_client.client_id in demo.client_sessions:
+                    gui_generate_button.disabled = False
 
     #
     # Visualization settings
