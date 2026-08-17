@@ -1934,18 +1934,30 @@
   }
 
   /* —— Part 4 · Phase 1 vs Official v1 —— */
-  table.metric-table.p1-table col.metric-label { width: 22%; }
-  table.metric-table.p1-table col.metric-value { width: 13%; }
-  table.metric-table.p1-table th,
-  table.metric-table.p1-table td { padding-top: 4px; padding-bottom: 4px; font-variant-numeric: tabular-nums; }
-  table.metric-table.p1-table.p1-dense th,
-  table.metric-table.p1-table.p1-dense td {
-    padding-top: 2px;
-    padding-bottom: 2px;
-    font-size: 11.5px;
-    line-height: 1.22;
+  .p1-wide .metric-board {
+    width: 100%;
+    flex: 1 1 auto;
+    overflow: visible;
   }
-  table.metric-table.p1-table.p1-dense .metric-section td { padding: 3px 8px; font-size: 11px; }
+  table.metric-table.p1-table {
+    table-layout: auto;
+    width: 100%;
+  }
+  table.metric-table.p1-table col.metric-label,
+  table.metric-table.p1-table col.metric-value { width: auto; }
+  table.metric-table.p1-table th,
+  table.metric-table.p1-table td {
+    padding: 8px 14px;
+    font-size: 14.5px;
+    line-height: 1.3;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  table.metric-table.p1-table .metric-name { width: 1%; }
+  table.metric-table.p1-table .metric-section td {
+    padding: 6px 14px;
+    font-size: 12.5px;
+  }
   table.metric-table.p1-table th.official,
   table.metric-table.p1-table td.official {
     color: var(--const);
@@ -2012,6 +2024,71 @@
     margin-top: 8px;
   }
   .p1-read .metric-insight { margin: 0; }
+
+  .p2-issue-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    flex: 1 1 auto;
+    min-height: 0;
+    margin-top: 10px;
+  }
+  .p2-issue {
+    --axis: var(--line);
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 13px 15px;
+    border: 1px solid var(--line);
+    border-top: 4px solid var(--axis);
+    background: #fff;
+  }
+  .p2-issue.orig { --axis: var(--body); }
+  .p2-issue.delay { --axis: var(--warn); }
+  .p2-issue.wd { --axis: var(--accent); }
+  .p2-issue.cause { --axis: var(--const); }
+  .p2-issue .p2-k {
+    color: var(--axis);
+    font: 700 11px/1.2 "IBM Plex Sans", sans-serif;
+    letter-spacing: .04em;
+  }
+  .p2-issue h3 { margin: 5px 0 6px; font-size: clamp(16px, 1.35vw, 19px); }
+  .p2-issue p { margin: 0; color: var(--ink-soft); font-size: 13.5px; line-height: 1.42; }
+  .p2-issue-foot {
+    flex: 0 0 auto;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    background: #f7f9f7;
+    color: var(--ink-soft);
+    font-size: 13px;
+    line-height: 1.38;
+  }
+  table.metric-table.p2-table {
+    table-layout: auto;
+    width: 100%;
+  }
+  table.metric-table.p2-table th,
+  table.metric-table.p2-table td {
+    padding: 7px 12px;
+    font-size: 13.5px;
+    white-space: nowrap;
+    text-align: left;
+  }
+  table.metric-table.p2-table td:last-child,
+  table.metric-table.p2-table th:last-child { white-space: normal; }
+  .p2-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .p2-tag.no { color: var(--body); background: #f8eef0; }
+  .p2-tag.delay { color: var(--warn); background: #fff3df; }
+  .p2-tag.cause { color: var(--const); background: #f6f3fb; }
+  .p2-tag.best { color: var(--accent); background: var(--accent-soft); }
 
   .slide.qpipe-page .qpipe-flow {
     display: grid;
@@ -2145,6 +2222,11 @@
     table.metric-table td { padding: 3px 7px; }
     table.metric-table th { font-size: 10px; }
     table.metric-table .metric-section td { padding: 3px 7px; font-size: 10px; }
+    table.metric-table.p1-table th,
+    table.metric-table.p1-table td { padding: 6px 12px; font-size: 13.5px; }
+    table.metric-table.p1-table .metric-section td { padding: 5px 12px; font-size: 12px; }
+    table.metric-table.p2-table th,
+    table.metric-table.p2-table td { padding: 5px 10px; font-size: 12.5px; }
     .metric-split { gap: 7px; margin-top: 5px; }
     .metric-board-head .board-score { padding: 2px 6px; font-size: 9.5px; }
     .constraint-profile { grid-template-rows: minmax(58px,1fr) auto; margin: 6px 8px 8px; gap: 5px; }
@@ -2173,6 +2255,7 @@
     .metric-split,
     .p1-charts,
     .p1-read,
+    .p2-issue-grid,
     .qpipe-flow { grid-template-columns: 1fr; flex: none; }
     .qpipe-arrow { display: none; }
   }
@@ -5265,7 +5348,7 @@
   <section class="slide chapter" data-title="Part 4">
     <div class="chapter-num">04</div>
     <h1 class="title">全量训练与验证</h1>
-    <p class="subtitle">先对齐 Official v1：Phase 1 指标轨迹；Phase 2 / 1M 另报</p>
+    <p class="subtitle">Phase 1 文本与足部对齐 Official；Phase 2 讲坍塌与消融，不是 1M 完成</p>
     <ol class="chapter-track">
       <li><span class="n">01</span>目标与场景</li>
       <li><span class="n">02</span>论文原理</li>
@@ -5276,173 +5359,147 @@
   </section>
 
 
-  <section class="slide ablation-page" data-title="Phase 1 文本轨迹">
+  <section class="slide ablation-page p1-wide" data-title="Phase 1 文本 / 足部">
     <div class="kicker">Part 4 · Phase 1 · content 文本 / 足部</div>
-    <h2 class="title">content 文本 prior：FID / 相似度已打平或略优于 Official；R@1、Timeline 也在收</h2>
-    <p class="lead"><code>v2-1m-hostnet</code> · 16×H200 · text-only · stratified 10% · DDIM 100 · 同一 TMR。绿格 = Phase 1 最好点；紫列 = Official SEED-v1.1 复验。R@3 在 Overview 92 段上会跳，主信号看 FID。</p>
-    <div class="metric-split">
-      <div class="metric-board">
-        <div class="metric-board-head"><h3>Overview</h3><span>92 motions</span></div>
-        <table class="metric-table p1-table p1-dense">
-          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
-          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
-          <tbody>
-            <tr><td class="metric-name">R@3 ↑</td><td>94.6</td><td class="best-p1">100</td><td>98.9</td><td>98.9</td><td>96.7</td><td class="official">100</td></tr>
-            <tr><td class="metric-name">R@1 ↑</td><td>85.9</td><td>83.7</td><td class="best-p1">87.0</td><td class="best-p1">87.0</td><td>82.6</td><td class="official">83.7</td></tr>
-            <tr><td class="metric-name">m2m R@3 ↑</td><td>88.0</td><td>94.6</td><td>93.5</td><td class="best-p1">96.7</td><td class="best-p1">96.7</td><td class="official">96.7</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.165</td><td>0.141</td><td>0.135</td><td>0.126</td><td class="best-p1">0.110</td><td class="official">0.119</td></tr>
-            <tr><td class="metric-name">FID gen-text ↓</td><td>0.170</td><td>0.138</td><td>0.137</td><td>0.136</td><td class="best-p1">0.125</td><td class="official">0.137</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.902</td><td>0.927</td><td>0.925</td><td>0.927</td><td class="best-p1">0.929</td><td class="official">0.926</td></tr>
-            <tr><td class="metric-name">Contact ↑</td><td>0.937</td><td>0.949</td><td>0.957</td><td>0.955</td><td class="best-p1">0.961</td><td class="official">0.972</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>6.68</td><td>5.77</td><td>5.23</td><td>5.21</td><td class="best-p1">4.96</td><td class="official">4.09</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="metric-board">
-        <div class="metric-board-head"><h3>Timeline single / multi</h3><span>92 / 79 motions</span></div>
-        <table class="metric-table p1-table p1-dense">
-          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
-          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
-          <tbody>
-            <tr class="metric-section"><td colspan="7">Timeline-single</td></tr>
-            <tr><td class="metric-name">R@3 ↑</td><td>89.1</td><td>89.1</td><td>88.0</td><td class="best-p1">91.3</td><td>90.2</td><td class="official">89.1</td></tr>
-            <tr><td class="metric-name">R@1 ↑</td><td>60.9</td><td>71.7</td><td>69.6</td><td>76.1</td><td class="best-p1">78.3</td><td class="official">75.0</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.190</td><td>0.169</td><td>0.164</td><td class="best-p1">0.154</td><td>0.159</td><td class="official">0.160</td></tr>
-            <tr><td class="metric-name">FID gen-text ↓</td><td>0.198</td><td>0.177</td><td>0.173</td><td class="best-p1">0.145</td><td>0.151</td><td class="official">0.158</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.860</td><td>0.879</td><td>0.882</td><td class="best-p1">0.899</td><td>0.897</td><td class="official">0.891</td></tr>
-            <tr><td class="metric-name">Contact ↑</td><td>0.954</td><td>0.965</td><td class="best-p1">0.966</td><td>0.965</td><td>0.965</td><td class="official">0.976</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>6.19</td><td>5.51</td><td>5.30</td><td class="best-p1">4.90</td><td>5.04</td><td class="official">4.01</td></tr>
-            <tr class="metric-section"><td colspan="7">Timeline-multi</td></tr>
-            <tr><td class="metric-name">R@3 ↑</td><td>91.1</td><td>97.5</td><td class="best-p1">98.7</td><td>97.5</td><td>94.9</td><td class="official">96.2</td></tr>
-            <tr><td class="metric-name">R@1 ↑</td><td>78.5</td><td>82.3</td><td class="best-p1">86.1</td><td>84.8</td><td>82.3</td><td class="official">84.8</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.206</td><td>0.165</td><td>0.158</td><td class="best-p1">0.156</td><td>0.164</td><td class="official">0.158</td></tr>
-            <tr><td class="metric-name">FID gen-text ↓</td><td>0.218</td><td>0.182</td><td>0.186</td><td class="best-p1">0.181</td><td>0.193</td><td class="official">0.180</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.884</td><td class="best-p1">0.908</td><td>0.905</td><td>0.904</td><td>0.900</td><td class="official">0.906</td></tr>
-            <tr><td class="metric-name">Contact ↑</td><td>0.964</td><td>0.972</td><td>0.973</td><td class="best-p1">0.977</td><td>0.974</td><td class="official">0.985</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>4.78</td><td>4.15</td><td>4.18</td><td>4.07</td><td class="best-p1">3.78</td><td class="official">3.15</td></tr>
-          </tbody>
-        </table>
-      </div>
+    <h2 class="title">Phase 1 只验收文本 prior 和足部物理：FID / 相似度已打平或略优于 Official</h2>
+    <p class="lead"><code>v2-1m-hostnet</code> · 16×H200 · text-only · mask=0。绿格 = Phase 1 最好点；紫列 = Official SEED-v1.1。约束还没开课，Root / EE / FB 不报。R@3 在 Overview 92 段上会跳，主信号看 FID。</p>
+    <div class="metric-board">
+      <div class="metric-board-head"><h3>content · 文本 + 足部</h3><span>Overview 92 · Timeline-single 92 · Timeline-multi 79 · stratified 10% · DDIM 100</span></div>
+      <table class="metric-table p1-table">
+        <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
+        <tbody>
+          <tr class="metric-section"><td colspan="7">Overview</td></tr>
+          <tr><td class="metric-name">R@3 ↑</td><td>94.6</td><td class="best-p1">100</td><td>98.9</td><td>98.9</td><td>96.7</td><td class="official">100</td></tr>
+          <tr><td class="metric-name">R@1 ↑</td><td>85.9</td><td>83.7</td><td class="best-p1">87.0</td><td class="best-p1">87.0</td><td>82.6</td><td class="official">83.7</td></tr>
+          <tr><td class="metric-name">m2m R@3 ↑</td><td>88.0</td><td>94.6</td><td>93.5</td><td class="best-p1">96.7</td><td class="best-p1">96.7</td><td class="official">96.7</td></tr>
+          <tr><td class="metric-name">FID gen-GT ↓</td><td>0.165</td><td>0.141</td><td>0.135</td><td>0.126</td><td class="best-p1">0.110</td><td class="official">0.119</td></tr>
+          <tr><td class="metric-name">FID gen-text ↓</td><td>0.170</td><td>0.138</td><td>0.137</td><td>0.136</td><td class="best-p1">0.125</td><td class="official">0.137</td></tr>
+          <tr><td class="metric-name">t2m_sim ↑</td><td>0.902</td><td>0.927</td><td>0.925</td><td>0.927</td><td class="best-p1">0.929</td><td class="official">0.926</td></tr>
+          <tr><td class="metric-name">Contact ↑</td><td>0.937</td><td>0.949</td><td>0.957</td><td>0.955</td><td class="best-p1">0.961</td><td class="official">0.972</td></tr>
+          <tr><td class="metric-name">Skate cm/s ↓</td><td>6.68</td><td>5.77</td><td>5.23</td><td>5.21</td><td class="best-p1">4.96</td><td class="official">4.09</td></tr>
+          <tr class="metric-section"><td colspan="7">Timeline-single</td></tr>
+          <tr><td class="metric-name">R@3 ↑</td><td>89.1</td><td>89.1</td><td>88.0</td><td class="best-p1">91.3</td><td>90.2</td><td class="official">89.1</td></tr>
+          <tr><td class="metric-name">R@1 ↑</td><td>60.9</td><td>71.7</td><td>69.6</td><td>76.1</td><td class="best-p1">78.3</td><td class="official">75.0</td></tr>
+          <tr><td class="metric-name">FID gen-GT ↓</td><td>0.190</td><td>0.169</td><td>0.164</td><td class="best-p1">0.154</td><td>0.159</td><td class="official">0.160</td></tr>
+          <tr><td class="metric-name">FID gen-text ↓</td><td>0.198</td><td>0.177</td><td>0.173</td><td class="best-p1">0.145</td><td>0.151</td><td class="official">0.158</td></tr>
+          <tr><td class="metric-name">t2m_sim ↑</td><td>0.860</td><td>0.879</td><td>0.882</td><td class="best-p1">0.899</td><td>0.897</td><td class="official">0.891</td></tr>
+          <tr><td class="metric-name">Contact ↑</td><td>0.954</td><td>0.965</td><td class="best-p1">0.966</td><td>0.965</td><td>0.965</td><td class="official">0.976</td></tr>
+          <tr><td class="metric-name">Skate cm/s ↓</td><td>6.19</td><td>5.51</td><td>5.30</td><td class="best-p1">4.90</td><td>5.04</td><td class="official">4.01</td></tr>
+          <tr class="metric-section"><td colspan="7">Timeline-multi</td></tr>
+          <tr><td class="metric-name">R@3 ↑</td><td>91.1</td><td>97.5</td><td class="best-p1">98.7</td><td>97.5</td><td>94.9</td><td class="official">96.2</td></tr>
+          <tr><td class="metric-name">R@1 ↑</td><td>78.5</td><td>82.3</td><td class="best-p1">86.1</td><td>84.8</td><td>82.3</td><td class="official">84.8</td></tr>
+          <tr><td class="metric-name">FID gen-GT ↓</td><td>0.206</td><td>0.165</td><td>0.158</td><td class="best-p1">0.156</td><td>0.164</td><td class="official">0.158</td></tr>
+          <tr><td class="metric-name">FID gen-text ↓</td><td>0.218</td><td>0.182</td><td>0.186</td><td class="best-p1">0.181</td><td>0.193</td><td class="official">0.180</td></tr>
+          <tr><td class="metric-name">t2m_sim ↑</td><td>0.884</td><td class="best-p1">0.908</td><td>0.905</td><td>0.904</td><td>0.900</td><td class="official">0.906</td></tr>
+          <tr><td class="metric-name">Contact ↑</td><td>0.964</td><td>0.972</td><td>0.973</td><td class="best-p1">0.977</td><td>0.974</td><td class="official">0.985</td></tr>
+          <tr><td class="metric-name">Skate cm/s ↓</td><td>4.78</td><td>4.15</td><td>4.18</td><td>4.07</td><td class="best-p1">3.78</td><td class="official">3.15</td></tr>
+        </tbody>
+      </table>
     </div>
     <div class="metric-footer">
       <div class="metric-insight"><strong>Overview 已可同桌比：</strong>FID 0.165→0.110（Official 0.119）；FID-text 0.125 vs 0.137；t2m_sim 0.929 vs 0.926；m2m R@3 打平 96.7。</div>
       <div class="metric-insight warn"><strong>R@3 会跳：</strong>200k 顶到 100 时 FID 仍是 0.141。R@1 更稳：single 60.9→78.3，已高于 Official 75.0。</div>
-      <div class="metric-insight const"><strong>足部在收、还没齐：</strong>三类 skate 都在降，Overview 4.96 vs 4.09，multi 3.78 vs 3.15；contact 仍差约 0.01。</div>
+      <div class="metric-insight const"><strong>足部在收、还没齐：</strong>三类 skate 都在降，Overview 4.96 vs 4.09；contact 仍差约 0.01。Root / EE / FB 这章不报。</div>
     </div>
   </section>
 
-  <section class="slide ablation-page" data-title="Phase 1 约束轨迹">
-    <div class="kicker">Part 4 · Phase 1 · content 约束</div>
-    <h2 class="title">约束几乎不动：Root / pelvis / EE / FB 仍差一个数量级——课表如此，不是训崩</h2>
-    <p class="lead">Phase 1 mask 全零。cm、acc、pelvis p95 用来证明课程边界。with-text 的 TMR 仍可看：文本条件在约束桶里也在变好。</p>
-    <div class="metric-split">
-      <div class="metric-board">
-        <div class="metric-board-head"><h3>With text</h3><span>338 motions</span></div>
-        <table class="metric-table p1-table p1-dense">
-          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
-          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
-          <tbody>
-            <tr class="metric-section"><td colspan="7">几何 · paper cm</td></tr>
-            <tr><td class="metric-name">Root ↓</td><td>41.3</td><td>40.9</td><td>39.0</td><td class="best-p1">35.8</td><td>36.4</td><td class="official">5.33</td></tr>
-            <tr><td class="metric-name">Pelvis p95 ↓</td><td>137.9</td><td>137.2</td><td>131.8</td><td>132.4</td><td class="best-p1">127.8</td><td class="official">9.72</td></tr>
-            <tr><td class="metric-name">Root acc ↑</td><td>0.477</td><td>0.471</td><td>0.475</td><td>0.480</td><td class="best-p1">0.481</td><td class="official">0.911</td></tr>
-            <tr><td class="metric-name">End-Effector ↓</td><td>65.9</td><td>65.9</td><td>66.0</td><td>67.4</td><td class="best-p1">64.8</td><td class="official">4.86</td></tr>
-            <tr><td class="metric-name">Full-body ↓</td><td>66.9</td><td class="best-p1">65.3</td><td>65.4</td><td>67.1</td><td>65.9</td><td class="official">4.01</td></tr>
-            <tr class="metric-section"><td colspan="7">足部 + 该桶文本</td></tr>
-            <tr><td class="metric-name">Contact ↑</td><td>0.917</td><td>0.936</td><td>0.939</td><td>0.945</td><td class="best-p1">0.946</td><td class="official">0.958</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>7.52</td><td>6.61</td><td>6.36</td><td>6.03</td><td class="best-p1">5.86</td><td class="official">5.19</td></tr>
-            <tr><td class="metric-name">R@3 ↑</td><td>98.2</td><td>98.5</td><td>98.5</td><td class="best-p1">98.8</td><td class="best-p1">98.8</td><td class="official">99.1</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.443</td><td>0.377</td><td>0.368</td><td>0.356</td><td class="best-p1">0.343</td><td class="official">0.220</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.876</td><td>0.896</td><td>0.900</td><td>0.903</td><td class="best-p1">0.908</td><td class="official">0.907</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="metric-board">
-        <div class="metric-board-head"><h3>No text</h3><span>338 motions · 没有文本锚</span></div>
-        <table class="metric-table p1-table p1-dense">
-          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
-          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
-          <tbody>
-            <tr class="metric-section"><td colspan="7">几何 · paper cm</td></tr>
-            <tr><td class="metric-name">Root ↓</td><td class="best-p1">88.7</td><td>91.8</td><td>90.7</td><td>90.2</td><td class="gap-p1">94.4</td><td class="official">5.70</td></tr>
-            <tr><td class="metric-name">Pelvis p95 ↓</td><td>259.5</td><td class="best-p1">259.0</td><td>271.3</td><td class="gap-p1">286.4</td><td>282.8</td><td class="official">10.53</td></tr>
-            <tr><td class="metric-name">Root acc ↑</td><td class="best-p1">0.298</td><td>0.261</td><td>0.277</td><td>0.291</td><td>0.290</td><td class="official">0.887</td></tr>
-            <tr><td class="metric-name">End-Effector ↓</td><td>101.6</td><td>102.5</td><td class="best-p1">99.5</td><td>102.3</td><td class="gap-p1">107.8</td><td class="official">4.24</td></tr>
-            <tr><td class="metric-name">Full-body ↓</td><td class="best-p1">93.5</td><td>99.9</td><td>95.4</td><td>97.6</td><td class="gap-p1">104.1</td><td class="official">4.23</td></tr>
-            <tr class="metric-section"><td colspan="7">足部</td></tr>
-            <tr><td class="metric-name">Contact ↑</td><td>0.932</td><td>0.941</td><td class="best-p1">0.953</td><td>0.951</td><td>0.949</td><td class="official">0.964</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>5.00</td><td>4.69</td><td class="best-p1">4.24</td><td>4.39</td><td>4.41</td><td class="official">4.98</td></tr>
-          </tbody>
-        </table>
-        <div class="metric-insight warn" style="margin:8px 10px 10px"><strong>无文本几何略变差：</strong>Root 88.7→94.4，FB 93.5→104。没教过跟约束，prior 变好也不会自动命中关键帧。</div>
-      </div>
-    </div>
-    <div class="metric-legend">with-text Root 41→36 cm、t2m_sim 打平 Official，是运动 prior 的顺带结果。EE / FB 贴在 65 cm 量级（Official ~4 cm）。Phase 2 打开约束后才该往紫列靠。</div>
-  </section>
-
-  <section class="slide ablation-page" data-title="Phase 1 repetition">
+  <section class="slide ablation-page p1-wide" data-title="Phase 1 repetition">
     <div class="kicker">Part 4 · Phase 1 · repetition 对照</div>
-    <h2 class="title">repetition 上同样收束：Overview FID 500k 打平 Official 0.031；约束仍然差一个数量级</h2>
-    <p class="lead">同一 inventory 的 repetition split。用来看多样性/稳定性是否跟 content 一个方向，不是另一套尺子。</p>
-    <div class="metric-split">
-      <div class="metric-board">
-        <div class="metric-board-head"><h3>文本 / 足部</h3><span>Overview 238 · single 238 · multi 178</span></div>
-        <table class="metric-table p1-table p1-dense">
-          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
-          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
-          <tbody>
-            <tr class="metric-section"><td colspan="7">Overview</td></tr>
-            <tr><td class="metric-name">R@3 ↑</td><td>94.1</td><td>98.7</td><td class="best-p1">100</td><td>99.6</td><td>98.7</td><td class="official">99.6</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.064</td><td>0.045</td><td>0.035</td><td>0.032</td><td class="best-p1">0.031</td><td class="official">0.031</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.909</td><td>0.933</td><td>0.944</td><td class="best-p1">0.946</td><td>0.945</td><td class="official">0.947</td></tr>
-            <tr><td class="metric-name">Contact ↑</td><td>0.928</td><td>0.944</td><td>0.952</td><td>0.952</td><td class="best-p1">0.954</td><td class="official">0.973</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>7.53</td><td>6.62</td><td>6.01</td><td class="best-p1">5.77</td><td>5.81</td><td class="official">4.58</td></tr>
-            <tr class="metric-section"><td colspan="7">Timeline-single</td></tr>
-            <tr><td class="metric-name">R@3 ↑</td><td>85.7</td><td>85.7</td><td>84.9</td><td class="best-p1">89.5</td><td>87.8</td><td class="official">89.9</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.072</td><td>0.059</td><td>0.051</td><td>0.046</td><td class="best-p1">0.045</td><td class="official">0.039</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.882</td><td>0.897</td><td>0.899</td><td class="best-p1">0.911</td><td>0.910</td><td class="official">0.923</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>6.12</td><td>5.27</td><td>4.82</td><td class="best-p1">4.72</td><td>4.74</td><td class="official">3.80</td></tr>
-            <tr class="metric-section"><td colspan="7">Timeline-multi</td></tr>
-            <tr><td class="metric-name">R@3 ↑</td><td>94.9</td><td>97.2</td><td>97.8</td><td>97.2</td><td class="best-p1">98.3</td><td class="official">100</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.093</td><td>0.072</td><td>0.065</td><td>0.058</td><td class="best-p1">0.054</td><td class="official">0.038</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.901</td><td>0.917</td><td>0.924</td><td>0.930</td><td class="best-p1">0.935</td><td class="official">0.949</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>7.23</td><td>6.14</td><td>5.70</td><td>5.47</td><td class="best-p1">5.21</td><td class="official">4.32</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="metric-board">
-        <div class="metric-board-head"><h3>约束 paper cm</h3><span>with / no text 各 338</span></div>
-        <table class="metric-table p1-table p1-dense">
-          <colgroup><col class="metric-label"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"><col class="metric-value"></colgroup>
-          <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
-          <tbody>
-            <tr class="metric-section"><td colspan="7">With text</td></tr>
-            <tr><td class="metric-name">Root ↓</td><td>42.0</td><td>40.6</td><td>40.3</td><td>39.3</td><td class="best-p1">38.1</td><td class="official">5.41</td></tr>
-            <tr><td class="metric-name">End-Effector ↓</td><td>47.6</td><td>46.5</td><td>47.6</td><td>45.9</td><td class="best-p1">45.4</td><td class="official">4.31</td></tr>
-            <tr><td class="metric-name">Full-body ↓</td><td>58.9</td><td>57.8</td><td>57.5</td><td>53.4</td><td class="best-p1">53.2</td><td class="official">3.83</td></tr>
-            <tr><td class="metric-name">R@3 ↑</td><td>98.5</td><td>99.7</td><td>99.4</td><td>99.4</td><td class="best-p1">100</td><td class="official">99.7</td></tr>
-            <tr><td class="metric-name">FID gen-GT ↓</td><td>0.356</td><td>0.276</td><td>0.240</td><td>0.227</td><td class="best-p1">0.209</td><td class="official">0.134</td></tr>
-            <tr><td class="metric-name">t2m_sim ↑</td><td>0.887</td><td>0.914</td><td>0.925</td><td>0.930</td><td class="best-p1">0.935</td><td class="official">0.930</td></tr>
-            <tr class="metric-section"><td colspan="7">No text</td></tr>
-            <tr><td class="metric-name">Root ↓</td><td>67.8</td><td>69.0</td><td>68.7</td><td class="best-p1">67.4</td><td class="gap-p1">71.3</td><td class="official">4.66</td></tr>
-            <tr><td class="metric-name">End-Effector ↓</td><td>91.4</td><td>90.1</td><td class="best-p1">89.1</td><td>90.5</td><td class="gap-p1">93.2</td><td class="official">4.08</td></tr>
-            <tr><td class="metric-name">Full-body ↓</td><td class="best-p1">76.5</td><td>80.4</td><td>76.9</td><td>77.1</td><td class="gap-p1">82.3</td><td class="official">3.90</td></tr>
-            <tr><td class="metric-name">Contact ↑</td><td>0.947</td><td>0.955</td><td>0.959</td><td>0.959</td><td class="best-p1">0.960</td><td class="official">0.964</td></tr>
-            <tr><td class="metric-name">Skate cm/s ↓</td><td>4.40</td><td>4.10</td><td>3.80</td><td class="best-p1">3.70</td><td>3.90</td><td class="official">4.67</td></tr>
-          </tbody>
-        </table>
-      </div>
+    <h2 class="title">repetition 同方向：Overview FID 500k 打平 Official 0.031；足部仍差一截</h2>
+    <p class="lead">同一 inventory 的 repetition split，只看文本和足部。用来看多样性/稳定性是否跟 content 一个方向，不是另一套尺子。</p>
+    <div class="metric-board">
+      <div class="metric-board-head"><h3>repetition · 文本 + 足部</h3><span>Overview 238 · Timeline-single 238 · Timeline-multi 178</span></div>
+      <table class="metric-table p1-table">
+        <thead><tr><th class="metric-name">指标</th><th>100k</th><th>200k</th><th>300k</th><th>400k</th><th>500k</th><th class="official">Official v1</th></tr></thead>
+        <tbody>
+          <tr class="metric-section"><td colspan="7">Overview</td></tr>
+          <tr><td class="metric-name">R@3 ↑</td><td>94.1</td><td>98.7</td><td class="best-p1">100</td><td>99.6</td><td>98.7</td><td class="official">99.6</td></tr>
+          <tr><td class="metric-name">FID gen-GT ↓</td><td>0.064</td><td>0.045</td><td>0.035</td><td>0.032</td><td class="best-p1">0.031</td><td class="official">0.031</td></tr>
+          <tr><td class="metric-name">t2m_sim ↑</td><td>0.909</td><td>0.933</td><td>0.944</td><td class="best-p1">0.946</td><td>0.945</td><td class="official">0.947</td></tr>
+          <tr><td class="metric-name">Contact ↑</td><td>0.928</td><td>0.944</td><td>0.952</td><td>0.952</td><td class="best-p1">0.954</td><td class="official">0.973</td></tr>
+          <tr><td class="metric-name">Skate cm/s ↓</td><td>7.53</td><td>6.62</td><td>6.01</td><td class="best-p1">5.77</td><td>5.81</td><td class="official">4.58</td></tr>
+          <tr class="metric-section"><td colspan="7">Timeline-single</td></tr>
+          <tr><td class="metric-name">R@3 ↑</td><td>85.7</td><td>85.7</td><td>84.9</td><td class="best-p1">89.5</td><td>87.8</td><td class="official">89.9</td></tr>
+          <tr><td class="metric-name">FID gen-GT ↓</td><td>0.072</td><td>0.059</td><td>0.051</td><td>0.046</td><td class="best-p1">0.045</td><td class="official">0.039</td></tr>
+          <tr><td class="metric-name">t2m_sim ↑</td><td>0.882</td><td>0.897</td><td>0.899</td><td class="best-p1">0.911</td><td>0.910</td><td class="official">0.923</td></tr>
+          <tr><td class="metric-name">Skate cm/s ↓</td><td>6.12</td><td>5.27</td><td>4.82</td><td class="best-p1">4.72</td><td>4.74</td><td class="official">3.80</td></tr>
+          <tr class="metric-section"><td colspan="7">Timeline-multi</td></tr>
+          <tr><td class="metric-name">R@3 ↑</td><td>94.9</td><td>97.2</td><td>97.8</td><td>97.2</td><td class="best-p1">98.3</td><td class="official">100</td></tr>
+          <tr><td class="metric-name">FID gen-GT ↓</td><td>0.093</td><td>0.072</td><td>0.065</td><td>0.058</td><td class="best-p1">0.054</td><td class="official">0.038</td></tr>
+          <tr><td class="metric-name">t2m_sim ↑</td><td>0.901</td><td>0.917</td><td>0.924</td><td>0.930</td><td class="best-p1">0.935</td><td class="official">0.949</td></tr>
+          <tr><td class="metric-name">Skate cm/s ↓</td><td>7.23</td><td>6.14</td><td>5.70</td><td>5.47</td><td class="best-p1">5.21</td><td class="official">4.32</td></tr>
+        </tbody>
+      </table>
     </div>
     <div class="metric-footer">
       <div class="metric-insight"><strong>和 content 同方向：</strong>repetition Overview FID 0.064→0.031，打平 Official；t2m_sim 0.946 vs 0.947。</div>
-      <div class="metric-insight warn"><strong>约束仍未开课：</strong>with-text FB 53 cm vs Official 3.8 cm。repetition 上 EE 比 content 好看（45 vs 65），但相对官方仍约 10×。</div>
-      <div class="metric-insight const"><strong>Phase 2 / 1M 另报：</strong>这三页只验收 Phase 1 文本 prior。不要把 600k 以后的约束收紧或坍塌写进这张表。</div>
+      <div class="metric-insight warn"><strong>足部仍欠一截：</strong>Overview skate 5.81 vs 4.58；Timeline FID / t2m_sim 也还没齐。</div>
+      <div class="metric-insight const"><strong>约束不报：</strong>Phase 1 mask 全零。Phase 2 打开约束后才该看 Root / EE / FB；下面改讲训练中碰到的问题。</div>
     </div>
     <div class="dims" style="margin-top:8px">
       <span class="chip"><em>数据</em>V2 full · v2-1m-hostnet</span>
       <span class="chip"><em>评测</em>stratified 10% · paper protocol · inventory bd7db29d</span>
       <span class="chip"><em>推理</em>DDIM 100 · batch 1 · fp32 TMR</span>
       <span class="chip"><em>对照</em>official-seed-v1-stratified10pct</span>
+    </div>
+  </section>
+
+  <section class="slide gap-page" data-title="Phase 2 训练问题">
+    <div class="kicker">Part 4 · Phase 2 · 训练问题</div>
+    <h2 class="title">Phase 2 中后期同一条「抹掉」路：能推迟发病，换不了病</h2>
+    <p class="lead">结构能训、课表能过 K=8/9；官方同结构到过 K=20。没有还在健康训练的 1M 主线。可报点仍是 wd03 <strong>750k</strong>（Overview FID 0.116 / R@3 98.9%），不是 1M 完成。</p>
+    <div class="p2-issue-grid">
+      <article class="p2-issue orig">
+        <div class="p2-k">原线 · 696.8k</div>
+        <h3>loss 锁死 ~10.4</h3>
+        <p>KF8 窗口内 clip 灌满。696,780→800 二十步里 loss 0.37→4.50，随后锁到 721k。body 炸、root 稳。700k 评测 R@3 98.9%→1.1%，不能当质量点。</p>
+      </article>
+      <article class="p2-issue delay">
+        <div class="p2-k">延迟家族 · 已穷尽</div>
+        <h3>K=8 能学，696.6k 仍起飞</h3>
+        <p>平滑课表 + LR 1e-5：K=8 整段健康，证伪「8 是容量墙」。800 cap、冻 K=7、换 seed 都在同一时钟抬梯度。再降到 3e-6：起飞钟几乎不推迟，795k 文本已坏。</p>
+      </article>
+      <article class="p2-issue wd">
+        <div class="p2-k">wd=0.3 · 从 650k 分叉</div>
+        <h3>过了 696k，800k 再炸</h3>
+        <p>进了 K=9。750k Overview FID 0.116，打平或略优于 Official 0.119；800k 退到 0.137 / 96.7%。wd 推迟发病，没有换病。jsonl 停在 806340。</p>
+      </article>
+      <article class="p2-issue cause">
+        <div class="p2-k">近因 · 末层残差对冲</div>
+        <h3>注意力与残差对着干</h3>
+        <p>post-norm：\(x \leftarrow \mathrm{LN}(x+\mathrm{attn}(x))\)。750k 起夹角过零，800k 余弦 −0.82，σ 剩 0.44。Adam-atan2 几乎不看「有多大」。发病是跨许多 batch 的慢漂，不是单步 1/σ。</p>
+      </article>
+    </div>
+    <div class="p2-issue-foot"><strong>下一枪若训：</strong>从还没翻的 50 万或 65 万加大衰减。不要垫最小散度，不要从 75 万加第八项损失，不要用救援 795k 当分叉父本。</div>
+  </section>
+
+  <section class="slide ablation-page p1-wide" data-title="Phase 2 消融列表">
+    <div class="kicker">Part 4 · Phase 2 · 消融列表</div>
+    <h2 class="title">对照已经闭合：延迟旋钮全否；近因是末层注意力对冲，不是课表针</h2>
+    <p class="lead">训练分叉 A–H 在 16×H200 上实训；I–P 是只读探针。数字来自 <code>training_collapse_ablation.zh-CN.md</code>，不另编。</p>
+    <div class="metric-board">
+      <div class="metric-board-head"><h3>Phase 2 坍塌消融</h3><span>父线 v2-1m-hostnet · 截至 2026-08-17</span></div>
+      <table class="metric-table p2-table">
+        <thead><tr><th>轮次</th><th>实验</th><th>改动</th><th>结果</th><th>结论</th></tr></thead>
+        <tbody>
+          <tr><td>A</td><td>原线</td><td>lr=2e-5 · wd=0 · round() 整数课表</td><td>696.8k loss 锁死 ~10.4</td><td><span class="p2-tag no">否决当成果</span></td></tr>
+          <tr><td>B</td><td>平滑 + 半 LR</td><td>adjacent_mix · lr=1e-5 · from 600k</td><td>K=8 能学；~696.6k 仍起飞</td><td><span class="p2-tag no">证伪容量墙</span></td></tr>
+          <tr><td>C</td><td>800 cap</td><td>稀疏通道预算 800 + skip=2 · from 695k</td><td>平均负载被勒住，gnorm 仍同一时钟爬</td><td><span class="p2-tag no">否决负载针</span></td></tr>
+          <tr><td>D</td><td>冻 K=7</td><td>hard_cap=7，课表仍 1→20</td><td>仍在 ~696.6k 起飞</td><td><span class="p2-tag no">否决 K=8 针</span></td></tr>
+          <tr><td>E</td><td>换 seed</td><td>runtime.seed=4321 · 从 696k 再走 2k</td><td>同一时刻仍起飞</td><td><span class="p2-tag no">否决数据走廊</span></td></tr>
+          <tr><td>G</td><td>wd=0.3</td><td>from 650k · 重置 Adam · 收到 1M</td><td>过了 696.6k；<strong>750k 最好</strong>；~800k 再炸</td><td><span class="p2-tag delay">推迟，未换病</span></td></tr>
+          <tr><td>H</td><td>救援 3e-6</td><td>from 780k · 峰值 lr 3e-6</td><td>起飞钟几乎不推迟；795k FID 0.278 / R@3 82.6%</td><td><span class="p2-tag no">质量先死</span></td></tr>
+          <tr><td>I / K</td><td>近因探针</td><td>残差对冲 + 把 LN σ 垫回 750k</td><td>800k 余弦 −0.82；垫 σ 后 L15 梯度 2615→938</td><td><span class="p2-tag cause">近因 = 对冲 × 1/σ</span></td></tr>
+          <tr><td>L / O</td><td>损失探针</td><td>剥反向分量 / 发病时拨夹角</td><td>锁死后损失 5.8×；发病时更反向 1.040×</td><td><span class="p2-tag cause">损失不发奖金</span></td></tr>
+          <tr><td>J / N</td><td>时钟 / 同源</td><td>换约束时钟；696k 前打同一探针</td><td>时钟比 ≈1；695k 刚翻、原线 690k 已抹干净</td><td><span class="p2-tag cause">同一条路</span></td></tr>
+          <tr><td>P</td><td>发病路径</td><td>同一批虚走 20 步</td><td>atan2 夹角只掉 0.003；切断 σ 反而掉 0.14</td><td><span class="p2-tag cause">慢漂，非单步油门</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="metric-footer">
+      <div class="metric-insight"><strong>已排除：</strong>8/20 容量墙、round() 硬切、K=8/9 采样针、800 负载、单个 seed、FK/6D 奇点、800k 当天课表针、LN γ / QKV 爆炸。</div>
+      <div class="metric-insight warn"><strong>不当默认续训：</strong>末层 pre-norm、第八项「不许对着干」、训练时垫最小 σ。这些改的是论文配方，不是被证伪的根因药。</div>
+      <div class="metric-insight const"><strong>可报点：</strong>wd03 750k Overview FID 0.116。不要写救援 795k，不要 Restart 已死的 16 卡任务。</div>
     </div>
   </section>
 
